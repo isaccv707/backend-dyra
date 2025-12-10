@@ -1,15 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { CreateStudyDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
+import { PrismaService } from 'prisma/prisma/prisma.service';
+import { v4 as uuid } from 'uuid';
 
 @Injectable()
 export class StudiesService {
+  constructor(private readonly prisma: PrismaService) { }
+
   create(createStudyDto: CreateStudyDto) {
-    return 'This action adds a new study';
+    return this.prisma.study.create({
+      data: {
+        id: uuid(),
+        ...createStudyDto,
+      },
+    });
   }
 
   findAll() {
-    return `This action returns all studies`;
+    return this.prisma.study.findMany();
   }
 
   findOne(id: number) {

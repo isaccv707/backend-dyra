@@ -33,6 +33,7 @@ export class QuotationsService {
     const data = this.buildPdfData(dto);
     this.pdfRenderer.render(doc, data);
   }
+  
   private buildPdfData(dto: CreateQuotationDto): QuotationPdfData {
     const { clientType, name, lastName, phoneNumber, email, studies } = dto;
 

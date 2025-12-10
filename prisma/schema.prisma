@@ -11,3 +11,18 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Study {
+  id           String  @id @default(uuid())
+  name         String
+  code         String  @unique
+  description  String?
+  price        Decimal @db.Decimal(10, 2)
+  sampleType   String?
+  deliveryTime Int?
+  preparation  String?
+  isActive     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updateAt  DateTime @updatedAt
+}
