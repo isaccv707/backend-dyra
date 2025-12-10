@@ -1,7 +1,7 @@
 // src/quotations/quotations.controller.ts
 import { Body, Controller, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import PDFDocument = require('pdfkit'); // 👈 IMPORT ESTILO require
+import PDFDocument = require('pdfkit'); 
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { QuotationsService } from './quotations.service';
 
