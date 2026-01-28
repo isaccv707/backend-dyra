@@ -1,5 +1,5 @@
 export class Study {
-    id: string;
+    id?: string;
     name: string;
     code: string;
     description?: string;

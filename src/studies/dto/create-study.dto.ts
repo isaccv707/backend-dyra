@@ -6,7 +6,7 @@ export class CreateStudyDto implements Partial<Study> {
     @IsString()
     @IsNotEmpty()
     @MinLength(3)
-    @MaxLength(100)
+    @MaxLength(200)
     name: string;
 
     @IsString()

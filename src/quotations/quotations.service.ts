@@ -15,9 +15,9 @@ import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
 const COMPANY_INFO: CompanyInfo = {
   name: 'Diagnóstico y Referencia Analítica',
   subtitle: 'Cotización de estudios de laboratorio',
-  address: 'Lázaro Cárdenas',
-  phone: '1234567890',
-  email: 'diagnostico@gmail.com',
+  address: 'Calle Ignacio Sandoval #1801, col. Girasoles, Colima, col.',
+  phone: '33 2230 0412',
+  email: 'luis.ramirez@dyranalitica.com',
 };
 
 @Injectable()

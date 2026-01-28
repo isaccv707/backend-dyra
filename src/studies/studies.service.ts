@@ -1,8 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { CreateStudyDto } from './dto/create-study.dto';
-import { UpdateStudyDto } from './dto/update-study.dto';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { CreateStudyDto } from './dto/create-study.dto';
+import { plainToInstance } from 'class-transformer';
+import { toOptionalBool, toOptionalInt, toRequiredNumber } from './utils/excel-normalizers';
 import { v4 as uuid } from 'uuid';
+import * as XLSX from "xlsx";
+import { validate } from 'class-validator';
+import { PaginationDto } from './dto/pagination-study.dto';
 
 @Injectable()
 export class StudiesService {
@@ -17,19 +21,108 @@ export class StudiesService {
     });
   }
 
-  findAll() {
-    return this.prisma.study.findMany();
+  async findAll({ limit = 10, page = 1 }: PaginationDto) {
+    const skip = (page - 1) * limit;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.study.findMany({
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.study.count(),
+    ])
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      }
+    };
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} study`;
-  }
+  async importFromExcel(buffer: Buffer) {
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new BadRequestException("El archivo de Excel no contiene hojas.");
 
-  update(id: number, updateStudyDto: UpdateStudyDto) {
-    return `This action updates a #${id} study`;
-  }
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
+      defval: null,
+      raw: false,
+      blankrows: false,
+    });
 
-  remove(id: number) {
-    return `This action removes a #${id} study`;
+    if (!rows.length) {
+      throw new BadRequestException("El Excel no contiene filas de datos");
+    }
+    const valid: CreateStudyDto[] = [];
+    const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const initialRow = i + 2;
+
+      const normalizedData = {
+        name: rows[i].name.toString()?.trim(),
+        code: rows[i].code.toString()?.trim(),
+        description: rows[i]?.description?.toString()?.trim() ?? undefined,
+        sampleType: rows[i]?.sampleType?.toString()?.trim() ?? undefined,
+        preparation: rows[i]?.preparation?.toString()?.trim() ?? undefined,
+        price: toRequiredNumber(rows[i].price),
+
+        deliveryTime: toOptionalInt(rows[i].deliveryTime),
+        isActive: toOptionalBool(rows[i].isActive),
+      }
+      const dto = plainToInstance(CreateStudyDto, normalizedData, {
+        enableImplicitConversion: true,
+      });
+
+      const errors = await validate(dto, { whitelist: true });
+
+      if (errors.length) {
+        invalid.push({
+          row: initialRow,
+          code: dto.code,
+          errors: errors.flatMap((e) => Object.values(e.constraints ?? {})),
+        })
+      } else {
+        valid.push(dto);
+      }
+    }
+
+    let created = 0;
+    let updated = 0;
+
+    await this.prisma.$transaction(async (tx) => {
+
+      console.log(tx);
+      for (const item of valid) {
+        const exists = await tx.study.findUnique({ where: { code: item.code } });
+
+        await tx.study.upsert({
+          where: { code: item.code },
+          create: {
+            id: uuid(),
+            ...item,
+          },
+          update: {
+            ...item,
+          }
+        });
+
+        exists ? updated++ : created++;
+      }
+    });
+
+    return {
+      sheetName,
+      totalRows: rows.length,
+      validRows: valid.length,
+      created,
+      updated,
+    }
   }
 }
+
+

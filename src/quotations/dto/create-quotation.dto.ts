@@ -40,8 +40,8 @@ export class CreateQuotationDto {
     @IsNotEmpty()
     phoneNumber: string;
 
-    @IsEmail()
-    @IsNotEmpty()
+    // @IsEmail()
+    @IsOptional()
     email: string;
 
     @IsArray()

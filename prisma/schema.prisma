@@ -26,3 +26,20 @@ model Study {
   createdAt DateTime @default(now())
   updateAt  DateTime @updatedAt
 }
+
+enum BannerPlacement {
+  HOME
+}
+
+model Banner {
+  id        String          @id @default(uuid())
+  placement BannerPlacement @default(HOME)
+
+  imageUrl String
+  order    Int       @default(0)
+  isActive Boolean?   @default(true)
+  startAt  DateTime?
+  endAt    DateTime?
+
+  @@index([placement, isActive, order])
+}
