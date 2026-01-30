@@ -7,6 +7,7 @@ import { v4 as uuid } from 'uuid';
 import * as XLSX from "xlsx";
 import { validate } from 'class-validator';
 import { PaginationDto } from './dto/pagination-study.dto';
+import { Prisma } from "@prisma/client";
 
 @Injectable()
 export class StudiesService {
@@ -21,16 +22,30 @@ export class StudiesService {
     });
   }
 
-  async findAll({ limit = 10, page = 1 }: PaginationDto) {
+  async findAll({ limit = 10, page = 1, search }: PaginationDto) {
     const skip = (page - 1) * limit;
+    const term = search?.trim().replace(/\s+/g, " ");
+    const MIN_SEARCH_LEN = 2;
+    const effectiveTerm = term && term.length >= MIN_SEARCH_LEN ? term : undefined;
+    const where: Prisma.StudyWhereInput | undefined = term
+      ? {
+        OR: [
+          { name: { contains: effectiveTerm, mode: Prisma.QueryMode.insensitive } },
+          { code: { contains: effectiveTerm, mode: Prisma.QueryMode.insensitive } },
+        ],
+      }
+      : undefined;
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.study.findMany({
         skip,
         take: limit,
+        where,
         orderBy: { name: 'asc' },
       }),
-      this.prisma.study.count(),
+      this.prisma.study.count({ where }),
     ])
+
     return {
       items,
       meta: {
