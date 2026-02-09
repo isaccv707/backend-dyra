@@ -3,8 +3,8 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  const allowedOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : [];
+  const app = await NestFactory.create(AppModule, {cors: true});
+  const allowedOrigins = process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [];
 
   app.setGlobalPrefix('api');
   app.enableCors({
@@ -18,6 +18,6 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     })
   );
-  await app.listen(process.env.PORT ?? 3000), '0.0.0.0';
+  await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 bootstrap();
