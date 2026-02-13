@@ -32,6 +32,61 @@ model Banner {
   @@index([placement, isActive, order])
 }
 
+model Athor {
+  id     String  @id @default(uuid())
+  name   String
+  avatar String?
+  bio    String?
+
+  posts     Post[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id              String     @id @default(uuid())
+  title           String
+  slug            String     @unique
+  description     String
+  excerpt         String
+  image           String?
+  readingTime     Int?
+  metaDescription String?
+  status          PostStatus @default(DRAFT)
+  createdAt       DateTime   @default(now())
+  updateAt        DateTime   @updatedAt
+  tags            String[]
+  category        String
+
+  authorId String?
+  author   Athor?  @relation(fields: [authorId], references: [id])
+
+  contentBlock ContentBlock[]
+}
+
+model ContentBlock {
+  id      String    @id @default(uuid())
+  type    BlockType
+  content String?
+  src     String?
+  alt     String?
+  post    Post?     @relation(fields: [postId], references: [id])
+  postId  String?
+}
+
 enum BannerPlacement {
   HOME
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum BlockType {
+  PARAGRAPH
+  LIST
+  SUBTITLE
+  QUOTE
+  IMAGE
 }
