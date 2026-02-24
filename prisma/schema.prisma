@@ -17,7 +17,7 @@ model Study {
   preparation  String?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
-  updateAt     DateTime @updatedAt
+  updatedAt    DateTime @updatedAt
 }
 
 model Banner {
@@ -32,6 +32,65 @@ model Banner {
   @@index([placement, isActive, order])
 }
 
+model Author {
+  id      String  @id @default(uuid())
+  name    String  @unique
+  nameKey String  @unique
+  avatar  String?
+  bio     String?
+
+  posts     Post[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Post {
+  id              String     @id @default(uuid())
+  title           String
+  slug            String     @unique
+  description     String
+  excerpt         String
+  image           String?
+  readingTime     Int?
+  metaDescription String?
+  status          PostStatus @default(DRAFT)
+  tags            String[]
+  category        String
+
+  authorId String?
+  author   Author? @relation(fields: [authorId], references: [id])
+
+  contentBlocks ContentBlock[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ContentBlock {
+  id      String    @id @default(uuid())
+  type    BlockType
+  order   Int
+  content String?
+  src     String?
+  alt     String?
+
+  postId String
+  post   Post   @relation(fields: [postId], references: [id])
+}
+
 enum BannerPlacement {
   HOME
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum BlockType {
+  PARAGRAPH
+  LIST
+  SUBTITLE
+  QUOTE
+  IMAGE
 }

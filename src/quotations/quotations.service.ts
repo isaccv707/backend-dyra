@@ -102,8 +102,8 @@ export class QuotationsService {
     const rootDir = process.cwd();
 
     const candidatePaths = [
-      path.join(rootDir, 'dist', 'assets', 'logo.png'), // build
-      path.join(rootDir, 'src', 'assets', 'logo.png'),  // dev
+      path.join(rootDir, 'dist', 'assets', 'logo.png'), 
+      path.join(rootDir, 'src', 'assets', 'logo.png'),  
     ];
 
     for (const p of candidatePaths) {

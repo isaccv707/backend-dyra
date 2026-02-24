@@ -1,7 +1,8 @@
 import { Transform, Type } from "class-transformer";
 import { IsInt, IsNumber, IsOptional, IsString, Max, Min } from "class-validator";
 
-export class PaginationDto {
+
+export class PaginationAuthorDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
@@ -11,9 +12,9 @@ export class PaginationDto {
     @Type(() => Number)
     @IsNumber()
     @Min(1)
-    @IsOptional()
+    // @IsOptional()
     @Max(30)
-    limit?: number = 10;
+    limit: number = 10;
 
     @IsOptional()
     @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
