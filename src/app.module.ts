@@ -4,7 +4,8 @@ import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { StudiesModule } from './studies/studies.module';
 import { BannersModule } from './banners/banners.module';
-import { BlogModule } from './blog/blog.module';
+import { AuthorsModule } from './authors/authors.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -15,7 +16,8 @@ import { BlogModule } from './blog/blog.module';
     QuotationsModule,
     StudiesModule,
     BannersModule,
-    BlogModule,
+    AuthorsModule,
+    PostsModule,
   ],
   controllers: [],
   providers: [],
