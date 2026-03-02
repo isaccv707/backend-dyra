@@ -1,7 +1,8 @@
 import { Prisma, Study } from "@prisma/client";
+import slugify from "slugify";
 
 
-export const STUDIES: Prisma.StudyCreateInput[] = [
+const rawStudies = [
     {
         name: 'Hemoglobina glicosilada',
         code: 'hba1c',
@@ -23,3 +24,8 @@ export const STUDIES: Prisma.StudyCreateInput[] = [
         isActive: true,
     }
 ]
+
+export const STUDIES = rawStudies.map((study) => ({
+    ...study,
+    slug: slugify(study.name, { lower: true, strict: true })
+}))

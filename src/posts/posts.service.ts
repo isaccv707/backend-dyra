@@ -75,6 +75,8 @@ export class PostsService {
         total,
         page,
         lastPage: Math.ceil(total / limit),
+        limit,
+        totalPages: Math.ceil(total / limit)
       },
     };
   }

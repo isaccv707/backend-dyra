@@ -9,6 +9,7 @@ datasource db {
 model Study {
   id           String   @id @default(uuid())
   name         String
+  slug         String   @unique
   code         String   @unique
   description  String?
   price        Decimal  @db.Decimal(10, 2)
