@@ -6,6 +6,7 @@ import { StudiesModule } from './studies/studies.module';
 import { BannersModule } from './banners/banners.module';
 import { AuthorsModule } from './authors/authors.module';
 import { PostsModule } from './posts/posts.module';
+import { ServicesModule } from './services/services.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PostsModule } from './posts/posts.module';
     BannersModule,
     AuthorsModule,
     PostsModule,
+    ServicesModule,
   ],
   controllers: [],
   providers: [],

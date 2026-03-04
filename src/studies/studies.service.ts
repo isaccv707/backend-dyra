@@ -8,7 +8,7 @@ import * as XLSX from "xlsx";
 import { validate } from 'class-validator';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from "@prisma/client";
-import slugify from 'slugify';
+import { generateSlug } from 'src/common/utils/slugger.util';
 
 @Injectable()
 export class StudiesService {
@@ -16,8 +16,7 @@ export class StudiesService {
 
   create(createStudyDto: CreateStudyDto) {
     const { name, } = createStudyDto;
-    const slug = slugify(name, { lower: true, strict: true });
-
+    const slug = generateSlug(name)
     return this.prisma.study.create({
       data: {
         id: uuid(),
@@ -63,13 +62,19 @@ export class StudiesService {
   }
 
   async findOne(id: string) {
-    const study = await this.prisma.study.findUnique({ where: { id } });
+    const study = await this.prisma.study.findFirst({
+      where: {
+        OR: [
+          { id },
+          { slug: id }
+        ]
+      }
+    });
     if (!study) {
-      return new BadRequestException(`Study with id ${id} not found`);
+      throw new NotFoundException(`Study with id ${id} not found`);
     }
     return study;
   }
-
 
   async importFromExcel(buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
@@ -97,7 +102,7 @@ export class StudiesService {
       const normalizedData = {
         name,
         code: rows[i].code.toString()?.trim(),
-        slug: slugify(name, { lower: true, strict: true }),
+        slug: generateSlug(name),
         description: rows[i]?.description?.toString()?.trim() ?? undefined,
         sampleType: rows[i]?.sampleType?.toString()?.trim() ?? undefined,
         preparation: rows[i]?.preparation?.toString()?.trim() ?? undefined,

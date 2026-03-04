@@ -1,5 +1,5 @@
 import { Prisma, Study } from "@prisma/client";
-import slugify from "slugify";
+import { generateSlug } from "src/common/utils/slugger.util";
 
 
 const rawStudies = [
@@ -27,5 +27,5 @@ const rawStudies = [
 
 export const STUDIES = rawStudies.map((study) => ({
     ...study,
-    slug: slugify(study.name, { lower: true, strict: true })
+    slug: generateSlug(study.name)
 }))
