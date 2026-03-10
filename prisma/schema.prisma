@@ -6,6 +6,49 @@ datasource db {
   provider = "postgresql"
 }
 
+model State {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  branches Branch[]
+
+  @@map("states")
+}
+
+model Address {
+  id           Int     @id @default(autoincrement())
+  zipCode      String  @map("zip_code")
+  extNumber    String  @map("ext_number")
+  intNumber    String? @map("int_number")
+  references   String? @db.Text
+  street       String
+  neighborhood String?
+  city         String
+
+  branch Branch?
+
+  @@map("addresses")
+}
+
+model Branch {
+  id       String  @id @default(uuid())
+  name     String  @unique
+  phone    String?
+  email    String?
+  isActive Boolean @default(true)
+
+  // Relaciones
+  stateId Int   @map("state_id")
+  state   State @relation(fields: [stateId], references: [id])
+
+  addressId Int     @unique @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("branches")
+}
+
 model Banner {
   id        String          @id @default(uuid())
   placement BannerPlacement @default(HOME)
@@ -16,6 +59,7 @@ model Banner {
   endAt     DateTime?
 
   @@index([placement, isActive, order])
+  @@map("banners")
 }
 
 model Service {
@@ -33,6 +77,8 @@ model Service {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("services")
 }
 
 model ServiceDetail {
@@ -44,6 +90,8 @@ model ServiceDetail {
 
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("service_details")
 }
 
 model Benefit {
@@ -54,6 +102,8 @@ model Benefit {
   serviceId   String
 
   service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("benefits")
 }
 
 model Study {
@@ -73,6 +123,8 @@ model Study {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("studies")
 }
 
 model Author {
@@ -86,6 +138,8 @@ model Author {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("authors")
 }
 
 model Post {
@@ -107,6 +161,8 @@ model Post {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("posts")
 }
 
 model ContentBlock {
@@ -119,6 +175,8 @@ model ContentBlock {
 
   postId String
   post   Post   @relation(fields: [postId], references: [id])
+
+  @@map("content_blocks")
 }
 
 enum BannerPlacement {
