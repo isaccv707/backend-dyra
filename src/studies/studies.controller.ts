@@ -19,6 +19,10 @@ export class StudiesController {
   findAll(@Query() pagination: PaginationDto) {
     return this.studiesService.findAll(pagination);
   }
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.studiesService.findOne(id);
+  }
 
   @Post("import-excel")
   @UseInterceptors(FileInterceptor('file'))

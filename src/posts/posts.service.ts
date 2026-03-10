@@ -2,10 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import slugify from 'slugify';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
+import { generateSlug } from 'src/common/utils/slugger.util';
 
 @Injectable()
 export class PostsService {
@@ -13,14 +13,12 @@ export class PostsService {
 
   async create(createPostDto: CreatePostDto) {
     const { contentBlocks, title, ...postData } = createPostDto;
-
-    const slug = slugify(title);
     try {
       return await this.prisma.post.create({
         data: {
           ...postData,
           title,
-          slug,
+          slug: generateSlug(title),
           contentBlocks: {
             create: contentBlocks,
           },
@@ -75,6 +73,8 @@ export class PostsService {
         total,
         page,
         lastPage: Math.ceil(total / limit),
+        limit,
+        totalPages: Math.ceil(total / limit)
       },
     };
   }
@@ -108,7 +108,7 @@ export class PostsService {
     const dataToUpdate: any = { ...postData };
     if (title) {
       dataToUpdate.title = title;
-      dataToUpdate.slug = slugify(title);
+      dataToUpdate.slug = generateSlug(title);
     }
 
     if (contentBlocks) {

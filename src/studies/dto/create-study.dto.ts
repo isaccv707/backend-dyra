@@ -1,4 +1,4 @@
-import { IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsInt, IsLowercase, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
 import { Study } from "../entities/study.entity";
 import { Type } from "class-transformer";
 
@@ -8,6 +8,11 @@ export class CreateStudyDto implements Partial<Study> {
     @MinLength(3)
     @MaxLength(200)
     name: string;
+
+    @IsString()
+    @IsOptional()
+    @IsLowercase() // Opcional: asegura que siempre sea minúsculas
+    slug?: string;
 
     @IsString()
     @IsNotEmpty()

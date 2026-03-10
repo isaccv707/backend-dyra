@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { CreateStudyDto } from './dto/create-study.dto';
 import { plainToInstance } from 'class-transformer';
@@ -8,16 +8,20 @@ import * as XLSX from "xlsx";
 import { validate } from 'class-validator';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from "@prisma/client";
+import { generateSlug } from 'src/common/utils/slugger.util';
 
 @Injectable()
 export class StudiesService {
   constructor(private readonly prisma: PrismaService) { }
 
   create(createStudyDto: CreateStudyDto) {
+    const { name, } = createStudyDto;
+    const slug = generateSlug(name)
     return this.prisma.study.create({
       data: {
         id: uuid(),
         ...createStudyDto,
+        slug,
       },
     });
   }
@@ -57,6 +61,21 @@ export class StudiesService {
     };
   }
 
+  async findOne(id: string) {
+    const study = await this.prisma.study.findFirst({
+      where: {
+        OR: [
+          { id },
+          { slug: id }
+        ]
+      }
+    });
+    if (!study) {
+      throw new NotFoundException(`Study with id ${id} not found`);
+    }
+    return study;
+  }
+
   async importFromExcel(buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -78,9 +97,12 @@ export class StudiesService {
     for (let i = 0; i < rows.length; i++) {
       const initialRow = i + 2;
 
+      const name = rows[i].name.toString()?.trim()
+
       const normalizedData = {
-        name: rows[i].name.toString()?.trim(),
+        name,
         code: rows[i].code.toString()?.trim(),
+        slug: generateSlug(name),
         description: rows[i]?.description?.toString()?.trim() ?? undefined,
         sampleType: rows[i]?.sampleType?.toString()?.trim() ?? undefined,
         preparation: rows[i]?.preparation?.toString()?.trim() ?? undefined,
@@ -92,6 +114,7 @@ export class StudiesService {
       const dto = plainToInstance(CreateStudyDto, normalizedData, {
         enableImplicitConversion: true,
       });
+
 
       const errors = await validate(dto, { whitelist: true });
 
@@ -110,8 +133,6 @@ export class StudiesService {
     let updated = 0;
 
     await this.prisma.$transaction(async (tx) => {
-
-      console.log(tx);
       for (const item of valid) {
         const exists = await tx.study.findUnique({ where: { code: item.code } });
 
@@ -120,10 +141,10 @@ export class StudiesService {
           create: {
             id: uuid(),
             ...item,
-          },
+          } as Prisma.StudyCreateInput,
           update: {
             ...item,
-          }
+          } as Prisma.StudyCreateInput,
         });
 
         exists ? updated++ : created++;
