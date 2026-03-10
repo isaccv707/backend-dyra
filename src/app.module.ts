@@ -7,6 +7,8 @@ import { BannersModule } from './banners/banners.module';
 import { AuthorsModule } from './authors/authors.module';
 import { PostsModule } from './posts/posts.module';
 import { ServicesModule } from './services/services.module';
+import { BranchesModule } from './branches/branches.module';
+import { StatesModule } from './states/states.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ServicesModule } from './services/services.module';
     AuthorsModule,
     PostsModule,
     ServicesModule,
+    BranchesModule,
+    StatesModule,
   ],
   controllers: [],
   providers: [],
