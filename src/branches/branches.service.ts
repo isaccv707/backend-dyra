@@ -1,26 +1,111 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
+import { PrismaService } from 'prisma/prisma/prisma.service';
 
 @Injectable()
 export class BranchesService {
-  create(createBranchDto: CreateBranchDto) {
-    return 'This action adds a new branch';
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(createBranchDto: CreateBranchDto) {
+    const { address, stateId, ...branchData } = createBranchDto;
+
+    
+    const existingBranch = await this.prisma.branch.findUnique({
+      where: { name: branchData.name },
+    });
+
+    if (existingBranch) {
+      throw new ConflictException(`Branch with name '${branchData.name}' already exists`);
+    }
+
+    return this.prisma.branch.create({
+      data: {
+        ...branchData,
+        state: {
+          connect: { id: stateId },
+        },
+        address: {
+          create: address,
+        },
+      },
+      include: {
+        address: true,
+        state: true,
+      },
+    });
   }
 
-  findAll() {
-    return `This action returns all branches`;
+  async findAll() {
+    return this.prisma.branch.findMany({
+      include: {
+        address: true,
+        state: true,
+      },
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} branch`;
+  async findOne(id: string) {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id },
+      include: {
+        address: true,
+        state: true,
+      },
+    });
+
+    if (!branch) {
+      throw new NotFoundException(`Branch with ID #${id} not found`);
+    }
+
+    return branch;
   }
 
-  update(id: number, updateBranchDto: UpdateBranchDto) {
-    return `This action updates a #${id} branch`;
+  async update(id: string, updateBranchDto: UpdateBranchDto) {
+    const { address, stateId, ...branchData } = updateBranchDto;
+
+    // Ensure branch exists
+    await this.findOne(id);
+
+    // Check if new name is already taken by another branch
+    if (branchData.name) {
+      const existingBranch = await this.prisma.branch.findUnique({
+        where: { name: branchData.name },
+      });
+
+      if (existingBranch && existingBranch.id !== id) {
+        throw new ConflictException(`Branch with name '${branchData.name}' already exists`);
+      }
+    }
+
+    return this.prisma.branch.update({
+      where: { id },
+      data: {
+        ...branchData,
+        ...(stateId && {
+          state: {
+            connect: { id: stateId },
+          },
+        }),
+        ...(address && {
+          address: {
+            update: address,
+          },
+        }),
+      },
+      include: {
+        address: true,
+        state: true,
+      },
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} branch`;
+  async remove(id: string) {
+    // Ensure branch exists
+    await this.findOne(id);
+
+    return this.prisma.branch.delete({
+      where: { id },
+    });
   }
 }
