@@ -60,14 +60,17 @@ export class ServicesService {
           select: {
             id: true,
             name: true,
+            code: true,
             price: true,
             slug: true,
-            code: true
             // No traemos 'preparation' o 'description' aquí para que la 
             // respuesta no sea gigante si hay 500 estudios.
           }
-        }
-      }
+        },
+        _count: {
+          select: { studies: true },
+        },
+      },
     }
     )
     if (!service) throw new NotFoundException(`The Service with id: ${id} not found`)

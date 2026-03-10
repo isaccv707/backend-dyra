@@ -18,4 +18,5 @@ export async function seedStudies(prisma: PrismaClient) {
             create: study
         });
     }
+    console.log('✅ Seeding studies finished.');
 }
