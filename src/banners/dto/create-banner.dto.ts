@@ -11,7 +11,11 @@ export class CreateBannerDto {
     @IsUrl()
     imageUrl: string;
 
-    @IsOptional()    
+    @IsOptional()
+    @IsString()
+    mobileImageUrl: string;
+
+    @IsOptional()
     @IsInt()
     @Min(0)
     order?: number;

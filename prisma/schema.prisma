@@ -50,13 +50,14 @@ model Branch {
 }
 
 model Banner {
-  id        String          @id @default(uuid())
-  placement BannerPlacement @default(HOME)
-  imageUrl  String
-  order     Int             @default(0)
-  isActive  Boolean?        @default(true)
-  startAt   DateTime?
-  endAt     DateTime?
+  id             String          @id @default(uuid())
+  placement      BannerPlacement @default(HOME)
+  imageUrl       String          @map("image_url")
+  mobileImageUrl String          @map("mobile_image_url")
+  order          Int             @default(0)
+  isActive       Boolean?        @default(true)
+  startAt        DateTime?
+  endAt          DateTime?
 
   @@index([placement, isActive, order])
   @@map("banners")
