@@ -44,9 +44,12 @@ export class CreateServiceDto {
     @IsString()
     description?: string;
 
-    @IsOptional()
     @IsString()
-    imageUrl?: string;
+    imageUrl: string;
+
+    @IsOptional()
+    @IsOptional()
+    mobileImageUrl?: string;
 
     @IsOptional()
     @IsBoolean()
