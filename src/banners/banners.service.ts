@@ -1,8 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { v4 as uuid } from 'uuid';
 import { BannerPlacement } from '@prisma/client';
 
 @Injectable()
@@ -11,18 +10,52 @@ export class BannersService {
     private readonly prisma: PrismaService,
   ) { }
 
-  findOne(id: string) {
-    return this.prisma.banner.findUnique({
+  async findOne(id: string) {
+    const banner = await this.prisma.banner.findUnique({
       where: { id }
-    })
+    });
+
+    if (!banner) throw new NotFoundException(`Banner with id ${id} not found`);
+
+    return banner;
   }
 
   findAll() {
-    return this.prisma.banner.findMany();
+    return this.prisma.banner.findMany({
+      orderBy: { order: 'asc' }
+    });
   }
 
-  create(dto: CreateBannerDto) {
-    const placement = dto.placement ?? BannerPlacement.HOME
+  async findActiveBanners(placement: BannerPlacement) {
+    const now = new Date();
+
+    return this.prisma.banner.findMany({
+      where: {
+        isActive: true,
+        placement,
+        AND: [
+          {
+            OR: [
+              { startAt: null },
+              { startAt: { lte: now } },
+            ],
+          },
+          {
+            OR: [
+              { endAt: null },
+              { endAt: { gte: now } },
+            ],
+          },
+        ],
+      },
+      orderBy: {
+        order: 'asc',
+      },
+    });
+  }
+
+  async create(dto: CreateBannerDto) {
+    const placement = dto.placement ?? BannerPlacement.HOME;
     const order = dto.order ?? 0;
     const isActive = dto.isActive ?? true;
     const startAt = dto.startAt ? new Date(dto.startAt) : null;
@@ -37,31 +70,133 @@ export class BannersService {
     }
 
     if (startAt && endAt && startAt >= endAt) {
-      throw new BadRequestException("startAt must be before endAt");
+      throw new BadRequestException('startAt must be before endAt');
     }
 
     const imageUrl = dto.imageUrl.trim();
-    const id = uuid();
+    const mobileImageUrl = dto.mobileImageUrl?.trim();
 
-    return this.prisma.banner.create({
-      data: {
-        id,
-        placement,
+    // Logical duplication check
+    const existingBanner = await this.prisma.banner.findFirst({
+      where: {
         imageUrl,
-        order,
-        isActive,
-        startAt,
-        endAt
+        mobileImageUrl,
+        placement,
       },
-      select: {
-        id: true,
-        placement: true,
-        imageUrl: true,
-        order: true,
-        isActive: true,
-        startAt: true,
-        endAt: true,
+    });
+
+    if (existingBanner) {
+      throw new ConflictException('A banner with this configuration already exists');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Shift others to make room
+      await tx.banner.updateMany({
+        where: { placement, order: { gte: order } },
+        data: { order: { increment: 1 } },
+      });
+
+      return tx.banner.create({
+        data: {
+          placement,
+          imageUrl,
+          mobileImageUrl,
+          order,
+          isActive,
+          startAt,
+          endAt,
+        },
+      });
+    });
+  }
+
+  async update(id: string, dto: UpdateBannerDto) {
+    const currentBanner = await this.findOne(id);
+    const { order: newOrder, placement: newPlacement, ...rest } = dto;
+
+    const oldOrder = currentBanner.order;
+    const oldPlacement = currentBanner.placement;
+    const targetPlacement = newPlacement ?? oldPlacement;
+
+    return this.prisma.$transaction(async (tx) => {
+      // Logic for reordering
+      if (newOrder !== undefined && (newOrder !== oldOrder || newPlacement !== oldPlacement)) {
+        if (newOrder < 0) throw new BadRequestException('Order cannot be less than 0');
+
+        if (newPlacement === undefined || newPlacement === oldPlacement) {
+          // Reordering within same placement
+          if (newOrder > oldOrder) {
+            await tx.banner.updateMany({
+              where: {
+                placement: oldPlacement,
+                order: { gt: oldOrder, lte: newOrder },
+              },
+              data: { order: { decrement: 1 } },
+            });
+          } else if (newOrder < oldOrder) {
+            await tx.banner.updateMany({
+              where: {
+                placement: oldPlacement,
+                order: { gte: newOrder, lt: oldOrder },
+              },
+              data: { order: { increment: 1 } },
+            });
+          }
+        } else {
+          // Moving between placements
+          // 1. Close gap in old placement
+          await tx.banner.updateMany({
+            where: { placement: oldPlacement, order: { gt: oldOrder } },
+            data: { order: { decrement: 1 } },
+          });
+          // 2. Open space in new placement
+          await tx.banner.updateMany({
+            where: { placement: targetPlacement, order: { gte: newOrder } },
+            data: { order: { increment: 1 } },
+          });
+        }
+      } else if (newPlacement !== undefined && newPlacement !== oldPlacement) {
+        // Placement changed but order not specified - move to end or keep same order?
+        // Let's assume we keep the order and just close the gap in the old one
+        await tx.banner.updateMany({
+          where: { placement: oldPlacement, order: { gt: oldOrder } },
+          data: { order: { decrement: 1 } },
+        });
+        // We could shift in the new placement but since order is not provided, 
+        // it might conflict or create gaps. For safety, we shift in the new placement too.
+        await tx.banner.updateMany({
+          where: { placement: targetPlacement, order: { gte: oldOrder } },
+          data: { order: { increment: 1 } },
+        });
       }
-    })
+
+      return tx.banner.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(newOrder !== undefined && { order: newOrder }),
+          ...(newPlacement !== undefined && { placement: newPlacement }),
+        },
+      });
+    });
+  }
+
+  async remove(id: string) {
+    const banner = await this.findOne(id);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.banner.delete({ where: { id } });
+
+      // Close the gap
+      await tx.banner.updateMany({
+        where: {
+          placement: banner.placement,
+          order: { gt: banner.order },
+        },
+        data: { order: { decrement: 1 } },
+      });
+
+      return { deleted: true };
+    });
   }
 }

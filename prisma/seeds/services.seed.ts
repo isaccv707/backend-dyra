@@ -7,10 +7,12 @@ export async function seedServices(prisma: PrismaClient) {
     for (const service of SERVICES) {
         await prisma.service.upsert({
             where: { slug: service.slug },
-            update: {},
+            update: { },
             create: {
                 name: service.name,
                 slug: service.slug,
+                imageUrl: service.imageUrl,
+                mobileImageUrl: service.mobileImageUrl,
                 description: service.description,
                 isActive: true,
                 benefits: {
