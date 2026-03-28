@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, ValidateNested } from 'class-validator';
 import { CreateAddressDto } from './create-address.dto';
 
 export class CreateBranchDto {
@@ -15,6 +15,10 @@ export class CreateBranchDto {
   @IsOptional()
   email?: string;
 
+  @IsUrl()
+  @IsString()
+  urlResults: string;
+  
   @IsInt()
   @IsNotEmpty()
   stateId: number;

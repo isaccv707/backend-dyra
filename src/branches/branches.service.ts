@@ -5,12 +5,11 @@ import { PrismaService } from 'prisma/prisma/prisma.service';
 
 @Injectable()
 export class BranchesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async create(createBranchDto: CreateBranchDto) {
     const { address, stateId, ...branchData } = createBranchDto;
 
-    
     const existingBranch = await this.prisma.branch.findUnique({
       where: { name: branchData.name },
     });
@@ -101,7 +100,6 @@ export class BranchesService {
   }
 
   async remove(id: string) {
-    // Ensure branch exists
     await this.findOne(id);
 
     return this.prisma.branch.delete({
