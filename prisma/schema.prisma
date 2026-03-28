@@ -30,15 +30,15 @@ model Address {
 }
 
 model Branch {
-  id       String  @id @default(uuid())
-  name     String  @unique
-  phone    String?
-  email    String?
-  isActive Boolean @default(true)
-
+  id         String  @id @default(uuid())
+  name       String  @unique
+  phone      String?
+  email      String?
+  isActive   Boolean @default(true)
+  urlResults String
   // Relaciones
-  stateId Int   @map("state_id")
-  state   State @relation(fields: [stateId], references: [id])
+  stateId    Int     @map("state_id")
+  state      State   @relation(fields: [stateId], references: [id])
 
   addressId Int     @unique @map("address_id")
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
@@ -64,13 +64,13 @@ model Banner {
 }
 
 model Service {
-  id          String  @id @default(uuid())
-  name        String  @unique
-  slug        String  @unique
-  description String?
-  imageUrl    String  @map("image_url")
+  id             String  @id @default(uuid())
+  name           String  @unique
+  slug           String  @unique
+  description    String?
+  imageUrl       String  @map("image_url")
   mobileImageUrl String? @map("mobile_image_url")
-  isActive    Boolean @default(true)
+  isActive       Boolean @default(true)
 
   studies Study[]
 
@@ -179,6 +179,19 @@ model ContentBlock {
   post   Post   @relation(fields: [postId], references: [id])
 
   @@map("content_blocks")
+}
+
+model Review {
+  id         Int      @id @default(autoincrement())
+  fullName   String
+  avatarUrl  String?
+  rating     Int
+  comment    String?  @db.Text
+  isApproved Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("reviews")
 }
 
 enum BannerPlacement {

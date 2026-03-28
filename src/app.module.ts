@@ -9,6 +9,7 @@ import { PostsModule } from './posts/posts.module';
 import { ServicesModule } from './services/services.module';
 import { BranchesModule } from './branches/branches.module';
 import { StatesModule } from './states/states.module';
+import { ReviewsModule } from './reviews/reviews.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { StatesModule } from './states/states.module';
     ServicesModule,
     BranchesModule,
     StatesModule,
+    ReviewsModule,
   ],
   controllers: [],
   providers: [],
