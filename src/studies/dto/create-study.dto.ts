@@ -47,6 +47,11 @@ export class CreateStudyDto implements Partial<Study> {
     preparation?: string;
 
     @IsOptional()
+    @IsString()
+    serviceId!: string;
+
+    @IsOptional()
     @IsBoolean()
     isActive?: boolean;
+
 }

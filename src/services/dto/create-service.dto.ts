@@ -46,7 +46,7 @@ export class CreateServiceDto {
 
     @IsOptional()
     @IsString()
-    iconUrl?: string;
+    icon?: string;
 
     @IsString()
     imageUrl: string;
