@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
@@ -17,23 +17,22 @@ export class ReviewsController {
     return this.reviewsService.findAll();
   }
 
-  @Get()
+  @Get('approved')
   findAllApproved() {
     return this.reviewsService.findAllApproved();
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.reviewsService.findOne(+id);
-  }
-
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateReviewDto: UpdateReviewDto) {
-    return this.reviewsService.update(+id, updateReviewDto);
+  approveReview(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateReviewDto: UpdateReviewDto
+  ) {
+    return this.reviewsService.approveReview(id, updateReviewDto);
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.reviewsService.remove(+id);
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.reviewsService.remove(id)
   }
+
 }
