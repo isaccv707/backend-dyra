@@ -91,23 +91,33 @@ export class StudiesService {
     if (!rows.length) {
       throw new BadRequestException("El Excel no contiene filas de datos");
     }
-    const valid: CreateStudyDto[] = [];
+    const valid: (CreateStudyDto & { slug: string })[] = [];
     const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
 
     for (let i = 0; i < rows.length; i++) {
       const initialRow = i + 2;
 
-      const name = rows[i].name.toString()?.trim()
+      const name = rows[i]?.name?.toString()?.trim() ?? '';
+      const code = rows[i]?.code?.toString()?.trim() ?? '';
+
+      if (!name || !code) {
+        invalid.push({
+          row: initialRow,
+          code,
+          errors: ['El nombre y el código son obligatorios'],
+        });
+        continue;
+      }
 
       const normalizedData = {
         name,
-        code: rows[i].code.toString()?.trim(),
+        code,
         slug: generateSlug(name),
         description: rows[i]?.description?.toString()?.trim() ?? undefined,
         sampleType: rows[i]?.sampleType?.toString()?.trim() ?? undefined,
         preparation: rows[i]?.preparation?.toString()?.trim() ?? undefined,
         price: toRequiredNumber(rows[i].price),
-
+        serviceId: rows[i]?.serviceId?.toString()?.trim() ?? undefined,
         deliveryTime: toOptionalInt(rows[i].deliveryTime),
         isActive: toOptionalBool(rows[i].isActive),
       }
@@ -125,38 +135,49 @@ export class StudiesService {
           errors: errors.flatMap((e) => Object.values(e.constraints ?? {})),
         })
       } else {
-        valid.push(dto);
+        valid.push({ ...dto, slug: normalizedData.slug });
       }
     }
 
-    let created = 0;
-    let updated = 0;
+    let processed = 0;
+    const BATCH_SIZE = 50;
+    const importErrors: Array<{ code: string; error: string }> = [];
 
     await this.prisma.$transaction(async (tx) => {
-      for (const item of valid) {
-        const exists = await tx.study.findUnique({ where: { code: item.code } });
-
-        await tx.study.upsert({
-          where: { code: item.code },
-          create: {
-            id: uuid(),
-            ...item,
-          } as Prisma.StudyCreateInput,
-          update: {
-            ...item,
-          } as Prisma.StudyCreateInput,
-        });
-
-        exists ? updated++ : created++;
+      for (let i = 0; i < valid.length; i += BATCH_SIZE) {
+        const batch = valid.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (item) => {
+            try {
+              await tx.study.upsert({
+                where: { code: item.code },
+                create: {
+                  id: uuid(),
+                  ...item,
+                } as Prisma.StudyCreateInput,
+                update: {
+                  ...item,
+                } as Prisma.StudyUpdateInput,
+              });
+              processed++;
+            } catch (error) {
+              importErrors.push({ code: item.code, error: error.message });
+              throw error; // Re-throw to rollback the transaction if any row fails
+            }
+          }),
+        );
       }
+    }, {
+      timeout: 30000,
     });
 
     return {
       sheetName,
       totalRows: rows.length,
       validRows: valid.length,
-      created,
-      updated,
+      processed,
+      invalid,
+      importErrors: importErrors.length > 0 ? importErrors : undefined,
     }
   }
 }
