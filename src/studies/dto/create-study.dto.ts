@@ -1,57 +1,86 @@
-import { IsBoolean, IsInt, IsLowercase, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, MaxLength, MinLength } from "class-validator";
-import { Study } from "../entities/study.entity";
-import { Type } from "class-transformer";
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsLowercase,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { Study } from '../entities/study.entity';
+import { Type } from 'class-transformer';
 
-export class CreateStudyDto implements Partial<Study> {
-    @IsString()
-    @IsNotEmpty()
-    @MinLength(3)
-    @MaxLength(200)
-    name: string;
+class StudyPriceDto {
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  price!: number;
 
-    @IsString()
-    @IsOptional()
-    @IsLowercase() // Opcional: asegura que siempre sea minúsculas
-    slug?: string;
+  @IsInt()
+  @IsNotEmpty()
+  stateId!: number;
 
-    @IsString()
-    @IsNotEmpty()
-    @MinLength(1)
-    @MaxLength(20)
-    code: string;
+  @IsBoolean()
+  @IsOptional()
+  showPrice?: boolean = true;
+}
 
-    @IsString()
-    @MaxLength(500)
-    @IsOptional()
-    description?: string;
+export class CreateStudyDto {
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(200)
+  name!: string;
 
-    @Type(() => Number)
-    @IsNumber({ maxDecimalPlaces: 2 })
-    @IsPositive()
-    price: number;
+  @IsString()
+  @IsOptional()
+  @IsLowercase()
+  slug?: string;
 
-    @IsString()
-    @MaxLength(100)
-    @IsOptional()
-    sampleType?: string;
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(1)
+  @MaxLength(20)
+  code!: string;
 
-    @Type(() => Number)
-    @IsInt()
-    @IsPositive()
-    @IsOptional()
-    deliveryTime?: number;
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  description?: string;
 
-    @IsString()
-    @MaxLength(500)
-    @IsOptional()
-    preparation?: string;
+  // --- CAMBIO CLAVE: Precios relacionados ---
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => StudyPriceDto)
+  @IsNotEmpty()
+  studyPrices!: StudyPriceDto[];
 
-    @IsOptional()
-    @IsString()
-    serviceId!: string;
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  sampleType?: string;
 
-    @IsOptional()
-    @IsBoolean()
-    isActive?: boolean;
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  deliveryTime?: number;
 
+  @IsString()
+  @MaxLength(500)
+  @IsOptional()
+  preparation?: string;
+
+  @IsOptional()
+  @IsString()
+  serviceId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
 }

@@ -1,22 +1,46 @@
-import { PrismaClient } from "@prisma/client";
-import { STUDIES } from "../constants/studies";
-
+import { PrismaClient } from '@prisma/client';
+import { STUDIES } from '../constants/studies';
 
 export async function seedStudies(prisma: PrismaClient) {
-    for (const study of STUDIES) {
-        await prisma.study.upsert({
-            where: { code: study.code },
-            update: {
-                name: study.name,
-                description: study.description,
-                price: study.price,
-                sampleType: study.sampleType,
-                deliveryTime: study.deliveryTime,
-                preparation: study.preparation,
-                isActive: study.isActive
+  const jalisco = await prisma.state.findUnique({ where: { name: 'Jalisco' } });
+  const colima = await prisma.state.findUnique({ where: { name: 'Colima' } });
+
+  if (!jalisco || !colima) {
+    throw new Error('Debes ejecutar seedStates antes que seedStudies');
+  }
+
+  for (const study of STUDIES) {
+    const { price, ...studyData } = study;
+
+    await prisma.study.upsert({
+      where: { code: study.code },
+      update: {
+        name: studyData.name,
+        description: studyData.description,
+        sampleType: studyData.sampleType,
+        deliveryTime: studyData.deliveryTime,
+        preparation: studyData.preparation,
+        isActive: studyData.isActive,
+        serviceId: studyData.serviceId,
+      },
+      create: {
+        ...studyData,
+        studyPrices: {
+          create: [
+            {
+              price: price,
+              stateId: jalisco.id,
+              showPrice: true,
             },
-            create: study
-        });
-    }
-    console.log('✅ Seeding studies finished.');
+            {
+              price: 0,
+              stateId: colima.id,
+              showPrice: false, // Oculto en Colima
+            },
+          ],
+        },
+      },
+    });
+  }
+  console.log('✅ Seeding studies with prices finished.');
 }

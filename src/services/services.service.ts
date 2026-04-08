@@ -6,7 +6,7 @@ import { generateSlug } from 'src/common/utils/slugger.util';
 
 @Injectable()
 export class ServicesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createServiceDto: CreateServiceDto) {
     const { benefits, details, ...serviceData } = createServiceDto;
@@ -17,13 +17,13 @@ export class ServicesService {
         ...serviceData,
         slug,
         benefits: benefits ? { create: benefits } : undefined,
-        details: details ? { create: details } : undefined
+        details: details ? { create: details } : undefined,
       },
       include: {
         benefits: true,
         details: true,
-      }
-    })
+      },
+    });
   }
 
   async findAll() {
@@ -47,10 +47,7 @@ export class ServicesService {
   async findOne(id: string) {
     const service = await this.prisma.service.findFirst({
       where: {
-        OR: [
-          { id },
-          { slug: id }
-        ]
+        OR: [{ id }, { slug: id }],
       },
       include: {
         benefits: true,
@@ -61,21 +58,20 @@ export class ServicesService {
             id: true,
             name: true,
             code: true,
-            price: true,
             slug: true,
-            // No traemos 'preparation' o 'description' aquí para que la 
+            // No traemos 'preparation' o 'description' aquí para que la
             // respuesta no sea gigante si hay 500 estudios.
-          }
+          },
         },
         _count: {
           select: { studies: true },
         },
       },
-    }
-    )
-    if (!service) throw new NotFoundException(`The Service with id: ${id} not found`)
+    });
+    if (!service)
+      throw new NotFoundException(`The Service with id: ${id} not found`);
 
-    return service
+    return service;
   }
 
   async update(id: string, updateServiceDto: UpdateServiceDto) {
@@ -84,7 +80,9 @@ export class ServicesService {
 
     const { benefits, details, ...serviceData } = updateServiceDto;
 
-    const existingService = await this.prisma.service.findUnique({ where: { id } });
+    const existingService = await this.prisma.service.findUnique({
+      where: { id },
+    });
     if (!existingService) throw new NotFoundException('Servicio no encontrado');
 
     if (serviceData.name) {
@@ -105,8 +103,10 @@ export class ServicesService {
         data: {
           ...serviceData,
           // Solo creamos si el arreglo existe y tiene contenido
-          benefits: (benefits && benefits.length > 0) ? { create: benefits } : undefined,
-          details: (details && details.length > 0) ? { create: details } : undefined,
+          benefits:
+            benefits && benefits.length > 0 ? { create: benefits } : undefined,
+          details:
+            details && details.length > 0 ? { create: details } : undefined,
         },
         include: {
           benefits: true,
@@ -117,12 +117,13 @@ export class ServicesService {
   }
 
   async remove(id: string) {
-    const service = await this.prisma.service.findUnique({ where: { id } })
-    if (!service) throw new NotFoundException(`The service with id: ${id} not found`);
+    const service = await this.prisma.service.findUnique({ where: { id } });
+    if (!service)
+      throw new NotFoundException(`The service with id: ${id} not found`);
 
     await this.prisma.service.delete({
-      where: { id }
-    })
+      where: { id },
+    });
     return {
       message: `The service "${service.name}" and its related data have been deleted.`,
       deletedId: id,

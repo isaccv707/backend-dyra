@@ -7,9 +7,10 @@ datasource db {
 }
 
 model State {
-  id       Int      @id @default(autoincrement())
-  name     String   @unique
+  id       Int          @id @default(autoincrement())
+  name     String       @unique
   branches Branch[]
+  prices   StudyPrice[]
 
   @@map("states")
 }
@@ -110,12 +111,12 @@ model Benefit {
 }
 
 model Study {
-  id           String  @id @default(uuid())
-  name         String
-  slug         String  @unique
-  code         String  @unique
-  description  String?
-  price        Decimal @db.Decimal(10, 2)
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  code        String  @unique
+  description String?
+
   sampleType   String?
   deliveryTime Int?
   preparation  String?
@@ -124,10 +125,25 @@ model Study {
   service   Service? @relation(fields: [serviceId], references: [id])
   serviceId String?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  studyPrices StudyPrice[]
 
   @@map("studies")
+}
+
+model StudyPrice {
+  id        String  @id @default(uuid())
+  price     Decimal @db.Decimal(10, 2)
+  showPrice Boolean @default(true)
+  studyId   String
+  study     Study   @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  stateId Int
+  state   State @relation(fields: [stateId], references: [id], onDelete: Cascade)
+
+  @@unique([studyId, stateId])
+  @@map("study_prices")
 }
 
 model Author {
