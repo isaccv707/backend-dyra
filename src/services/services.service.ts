@@ -44,6 +44,65 @@ export class ServicesService {
     });
   }
 
+  // src/services/services.service.ts
+
+  async findAllByBranch(branchId: string) {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { priceSheetId: true },
+    });
+
+    // Error 1 Fix: Usamos un Type Guard más estricto
+    if (!branch || branch.priceSheetId === null) {
+      throw new NotFoundException(
+        `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
+      );
+    }
+
+    // Guardamos el ID en una constante que TS ya sabe que es string (no null)
+    const activePriceSheetId: string = branch.priceSheetId;
+
+    // Error 2 Fix: Agregamos el include y dejamos que Prisma infiera el tipo
+    const services = await this.prisma.service.findMany({
+      where: { isActive: true },
+      include: {
+        studies: {
+          where: { isActive: true },
+          include: {
+            priceSheets: {
+              where: { priceSheetId: activePriceSheetId },
+            },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return services.map((service) => ({
+      ...service,
+      studies: service.studies.map((study) => {
+        const regionalPrice = study.priceSheets[0];
+        return {
+          id: study.id,
+          name: study.name,
+          slug: study.slug,
+          code: study.code,
+          description: study.description,
+          sampleType: study.sampleType,
+          deliveryTime: study.deliveryTime,
+          preparation: study.preparation,
+          priceInfo: {
+            showPrice: regionalPrice?.showPrice ?? false,
+            price: regionalPrice?.showPrice ? regionalPrice.price : null,
+            message: regionalPrice?.showPrice
+              ? null
+              : 'Para mayor información consulte en sucursal',
+          },
+        };
+      }),
+    }));
+  }
+
   async findOne(id: string) {
     const service = await this.prisma.service.findFirst({
       where: {

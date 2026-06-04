@@ -1,11 +1,20 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, ValidateNested } from 'class-validator';
+import {
+  IsEmail,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
 import { CreateAddressDto } from './create-address.dto';
 
 export class CreateBranchDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsOptional()
@@ -17,14 +26,17 @@ export class CreateBranchDto {
 
   @IsUrl()
   @IsString()
-  urlResults: string;
-  
+  urlResults!: string;
+
   @IsInt()
   @IsNotEmpty()
-  stateId: number;
+  stateId!: number;
 
   @ValidateNested()
   @Type(() => CreateAddressDto)
   @IsNotEmpty()
-  address: CreateAddressDto;
+  address!: CreateAddressDto;
+
+  @IsString()
+  priceSheetId!: string;
 }

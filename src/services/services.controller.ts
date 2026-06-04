@@ -17,6 +17,11 @@ export class ServicesController {
     return this.servicesService.findAll();
   }
 
+  @Get('branch/:branchId')
+  findAllByBranch(@Param('branchId', ParseUUIDPipe) branchId: string) {
+    return this.servicesService.findAllByBranch(branchId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.servicesService.findOne(id);

@@ -7,10 +7,9 @@ datasource db {
 }
 
 model State {
-  id       Int          @id @default(autoincrement())
-  name     String       @unique
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
   branches Branch[]
-  prices   StudyPrice[]
 
   @@map("states")
 }
@@ -37,12 +36,15 @@ model Branch {
   email      String?
   isActive   Boolean @default(true)
   urlResults String
-  // Relaciones
-  stateId    Int     @map("state_id")
-  state      State   @relation(fields: [stateId], references: [id])
+
+  stateId Int   @map("state_id")
+  state   State @relation(fields: [stateId], references: [id])
 
   addressId Int     @unique @map("address_id")
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  priceSheetId String?      @map("price_sheet_id")
+  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -110,40 +112,50 @@ model Benefit {
   @@map("benefits")
 }
 
-model Study {
-  id          String  @id @default(uuid())
-  name        String
-  slug        String  @unique
-  code        String  @unique
-  description String?
+model PriceSheets {
+  id                 String              @id @default(uuid())
+  name               String
+  description        String
+  isActive           Boolean             @default(true)
+  branches           Branch[]
+  studyOnPriceSheets StudyOnPriceSheet[]
 
+  @@map("price_sheets")
+}
+
+model StudyOnPriceSheet {
+  id        String  @id @default(uuid())
+  price     Decimal @db.Decimal(10, 2)
+  showPrice Boolean @default(true)
+  studyId   String
+  study     Study   @relation(fields: [studyId], references: [id])
+
+  priceSheetId String
+  priceSheet   PriceSheets @relation(fields: [priceSheetId], references: [id])
+
+  @@unique([studyId, priceSheetId])
+  @@map("study_on_price_list")
+}
+
+model Study {
+  id           String  @id @default(uuid())
+  name         String
+  slug         String  @unique
+  code         String  @unique
+  description  String?
   sampleType   String?
   deliveryTime Int?
   preparation  String?
   isActive     Boolean @default(true)
 
-  service   Service? @relation(fields: [serviceId], references: [id])
-  serviceId String?
+  priceSheets StudyOnPriceSheet[]
+  serviceId   String
+  service     Service             @relation(fields: [serviceId], references: [id])
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  studyPrices StudyPrice[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("studies")
-}
-
-model StudyPrice {
-  id        String  @id @default(uuid())
-  price     Decimal @db.Decimal(10, 2)
-  showPrice Boolean @default(true)
-  studyId   String
-  study     Study   @relation(fields: [studyId], references: [id], onDelete: Cascade)
-
-  stateId Int
-  state   State @relation(fields: [stateId], references: [id], onDelete: Cascade)
-
-  @@unique([studyId, stateId])
-  @@map("study_prices")
 }
 
 model Author {

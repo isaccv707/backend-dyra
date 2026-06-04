@@ -8,13 +8,13 @@ export class Study {
   deliveryTime?: number;
   preparation?: string;
   isActive?: boolean;
-  studyPrices?: StudyPrice[];
+  priceSheets?: StudyOnPriceSheet[];
 }
 
-export class StudyPrice {
+export class StudyOnPriceSheet {
   id?: string;
   price!: number;
   showPrice!: boolean;
-  stateId!: number;
+  priceSheetId!: string;
   studyId?: string;
 }

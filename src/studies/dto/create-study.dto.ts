@@ -13,7 +13,6 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Study } from '../entities/study.entity';
 import { Type } from 'class-transformer';
 
 class StudyPriceDto {
@@ -21,9 +20,10 @@ class StudyPriceDto {
   @IsPositive()
   price!: number;
 
-  @IsInt()
+  @IsString()
+  @IsUUID()
   @IsNotEmpty()
-  stateId!: number;
+  priceSheetId!: string;
 
   @IsBoolean()
   @IsOptional()
@@ -53,7 +53,6 @@ export class CreateStudyDto {
   @IsOptional()
   description?: string;
 
-  // --- CAMBIO CLAVE: Precios relacionados ---
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StudyPriceDto)
@@ -76,9 +75,9 @@ export class CreateStudyDto {
   @IsOptional()
   preparation?: string;
 
-  @IsOptional()
+  @IsNotEmpty()
   @IsString()
-  serviceId?: string;
+  serviceId!: string;
 
   @IsOptional()
   @IsBoolean()

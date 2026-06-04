@@ -17,35 +17,47 @@ import { validate } from 'class-validator';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 
 @Injectable()
 export class StudiesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createStudyDto: CreateStudyDto) {
-    const { name, studyPrices, ...studyData } = createStudyDto;
+    const { name, studyPrices, serviceId, ...studyData } = createStudyDto;
     const slug = generateSlug(name);
 
-    return await this.prisma.study.create({
-      data: {
-        ...studyData,
-        name,
-        slug,
-        studyPrices: {
-          create: studyPrices.map((p) => ({
-            price: new Prisma.Decimal(p.price),
-            showPrice: p.showPrice ?? true,
-            stateId: p.stateId,
-          })),
+    try {
+      return await this.prisma.study.create({
+        data: {
+          ...studyData,
+          service: {
+            connect: { id: serviceId },
+          },
+          name,
+          slug,
+          priceSheets: {
+            create: studyPrices.map((p) => ({
+              price: new Prisma.Decimal(p.price),
+              showPrice: p.showPrice ?? true,
+              priceSheetId: p.priceSheetId,
+            })),
+          },
         },
-      },
-      include: {
-        studyPrices: true,
-      },
-    });
+        include: {
+          service: {
+            select: { name: true, slug: true },
+          },
+          priceSheets: true,
+        },
+      });
+    } catch (error: any) {
+      console.log(error);
+      handleDatabaseErrors(error, 'Study');
+    }
   }
 
-  async findAll({ limit = 10, page = 1, search, stateId }: PaginationDto) {
+  async findAll({ limit = 10, page = 1, search, priceSheetId }: PaginationDto) {
     const skip = (page - 1) * limit;
     const term = search?.trim().replace(/\s+/g, ' ');
     const MIN_SEARCH_LEN = 2;
@@ -70,8 +82,7 @@ export class StudiesService {
         }
       : undefined;
 
-    // Use Jalisco (stateId: 1) as default if not provided
-    const selectedStateId = stateId || 1;
+    const selectedPriceSheetId = priceSheetId || 'jalisco-sheet-id';
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.study.findMany({
@@ -80,8 +91,8 @@ export class StudiesService {
         where,
         orderBy: { name: 'asc' },
         include: {
-          studyPrices: {
-            where: { stateId: selectedStateId },
+          priceSheets: {
+            where: { priceSheetId: selectedPriceSheetId },
           },
         },
       }),
@@ -89,7 +100,24 @@ export class StudiesService {
     ]);
 
     return {
-      items,
+      items: items.map((study) => {
+        const regionalPrice = study.priceSheets[0]; // El precio filtrado por selectedPriceSheetId
+
+        return {
+          ...study,
+          priceInfo: {
+            showPrice: regionalPrice?.showPrice ?? false,
+            price: regionalPrice?.showPrice ? regionalPrice.price : null,
+            message: regionalPrice?.showPrice
+              ? null
+              : 'Para mayor información consulte en sucursal',
+            // Agregamos esto para debug o por si el estado no tiene precio cargado
+            hasConfiguredPrice: !!regionalPrice,
+          },
+          // Quitamos el arreglo original para limpiar la respuesta
+          priceSheets: undefined,
+        };
+      }),
       meta: {
         page,
         limit,
@@ -105,9 +133,9 @@ export class StudiesService {
         OR: [{ id }, { slug: id }],
       },
       include: {
-        studyPrices: {
+        priceSheets: {
           include: {
-            state: true,
+            priceSheet: true,
           },
         },
         service: true,
@@ -132,140 +160,112 @@ export class StudiesService {
       blankrows: false,
     });
 
-    if (!rows.length) {
+    if (!rows.length)
       throw new BadRequestException('El Excel no contiene filas de datos');
-    }
+
     const valid: (CreateStudyDto & { slug: string })[] = [];
     const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
 
+    // --- PRE-PROCESAMIENTO Y VALIDACIÓN ---
     for (let i = 0; i < rows.length; i++) {
       const initialRow = i + 2;
+      const row = rows[i];
 
-      const name = rows[i]?.name?.toString()?.trim() ?? '';
-      const code = rows[i]?.code?.toString()?.trim() ?? '';
-
-      if (!name || !code) {
-        invalid.push({
-          row: initialRow,
-          code,
-          errors: ['El nombre y el código son obligatorios'],
-        });
-        continue;
-      }
-
+      // Normalización de datos con lógica de negocio
       const normalizedData = {
-        name,
-        code,
-        slug: generateSlug(name),
-        description: rows[i]?.description?.toString()?.trim() ?? undefined,
-        sampleType: rows[i]?.sampleType?.toString()?.trim() ?? undefined,
-        preparation: rows[i]?.preparation?.toString()?.trim() ?? undefined,
-        serviceId: rows[i]?.serviceId?.toString()?.trim() ?? undefined,
-        deliveryTime: toOptionalInt(rows[i].deliveryTime),
-        isActive: toOptionalBool(rows[i].isActive),
+        name: row.name?.toString()?.trim(),
+        code: row.code?.toString()?.trim(),
+        description: row.description?.toString()?.trim(),
+        sampleType: row.sampleType?.toString()?.trim(),
+        preparation: row.preparation?.toString()?.trim(),
+        serviceId: row.serviceId?.toString()?.trim(), // AHORA OBLIGATORIO
+        deliveryTime: toOptionalInt(row.deliveryTime),
+        isActive: toOptionalBool(row.isActive) ?? true,
         studyPrices: [
           {
-            price: toRequiredNumber(rows[i].price),
-            stateId: 1, // Default to Jalisco
+            priceSheetId: 'jalisco-sheet-id', // JALISCO (Guadalajara)
+            price: toRequiredNumber(row.price_jalisco ?? row.price), // Soporta columna específica o general
             showPrice: true,
+          },
+          {
+            priceSheetId: 'colima-sheet-id', // COLIMA
+            price: toRequiredNumber(row.price_colima ?? 0),
+            showPrice: toOptionalBool(row.show_price_colima) ?? false, // Por defecto oculto en Colima
           },
         ],
       };
 
-      const dto = plainToInstance(CreateStudyDto, normalizedData, {
-        enableImplicitConversion: true,
-      });
-
+      const dto = plainToInstance(CreateStudyDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
 
-      if (errors.length) {
+      if (errors.length || !normalizedData.serviceId) {
         invalid.push({
           row: initialRow,
-          code: dto.code,
-          errors: errors.flatMap((e) => Object.values(e.constraints ?? {})),
+          code: normalizedData.code,
+          errors: [
+            ...errors.flatMap((e) => Object.values(e.constraints ?? {})),
+            ...(!normalizedData.serviceId
+              ? ['El serviceId es obligatorio']
+              : []),
+          ],
         });
       } else {
-        valid.push({ ...dto, slug: normalizedData.slug });
+        valid.push({ ...dto, slug: generateSlug(dto.name) });
       }
     }
 
+    // --- PROCESAMIENTO EN BASE DE DATOS ---
     let processed = 0;
-    const BATCH_SIZE = 50;
     const importErrors: Array<{ code: string; error: string }> = [];
 
     await this.prisma.$transaction(
       async (tx) => {
-        for (let i = 0; i < valid.length; i += BATCH_SIZE) {
-          const batch = valid.slice(i, i + BATCH_SIZE);
-          await Promise.all(
-            batch.map(async (item) => {
-              try {
-                const { studyPrices, ...studyData } = item;
+        for (const item of valid) {
+          try {
+            const { studyPrices, serviceId, ...studyData } = item;
 
-                // We use a custom upsert logic to handle prices
-                const existingStudy = await tx.study.findUnique({
-                  where: { code: item.code },
-                });
+            // Upsert de Study
+            await tx.study.upsert({
+              where: { code: item.code },
+              update: {
+                ...studyData,
+                service: { connect: { id: serviceId } },
+                priceSheets: {
+                  // Borramos y recreamos para asegurar que solo queden los estados definidos
+                  deleteMany: {},
+                  create: studyPrices.map((p) => ({
+                    price: new Prisma.Decimal(p.price),
+                    priceSheetId: p.priceSheetId,
+                    showPrice: p.showPrice,
+                  })),
+                },
+              },
+              create: {
+                ...studyData,
+                service: { connect: { id: serviceId } },
+                priceSheets: {
+                  create: studyPrices.map((p) => ({
+                    price: new Prisma.Decimal(p.price),
+                    priceSheetId: p.priceSheetId,
+                    showPrice: p.showPrice,
+                  })),
+                },
+              },
+            });
 
-                if (existingStudy) {
-                  await tx.study.update({
-                    where: { id: existingStudy.id },
-                    data: {
-                      ...studyData,
-                      studyPrices: {
-                        upsert: studyPrices.map((p) => ({
-                          where: {
-                            studyId_stateId: {
-                              studyId: existingStudy.id,
-                              stateId: p.stateId,
-                            },
-                          },
-                          create: {
-                            price: new Prisma.Decimal(p.price),
-                            stateId: p.stateId,
-                            showPrice: p.showPrice ?? true,
-                          },
-                          update: {
-                            price: new Prisma.Decimal(p.price),
-                            showPrice: p.showPrice ?? true,
-                          },
-                        })),
-                      },
-                    },
-                  });
-                } else {
-                  await tx.study.create({
-                    data: {
-                      id: uuid(),
-                      ...studyData,
-                      studyPrices: {
-                        create: studyPrices.map((p) => ({
-                          price: new Prisma.Decimal(p.price),
-                          stateId: p.stateId,
-                          showPrice: p.showPrice ?? true,
-                        })),
-                      },
-                    },
-                  });
-                }
-                processed++;
-              } catch (error) {
-                importErrors.push({ code: item.code, error: error?.message });
-                throw error;
-              }
-            }),
-          );
+            processed++;
+          } catch (error) {
+            importErrors.push({ code: item.code, error: error?.message });
+            // Opcional: lanzar error para hacer rollback total o continuar
+            throw error;
+          }
         }
       },
-      {
-        timeout: 60000,
-      },
-    );
+      { timeout: 30000 },
+    ); // 30s suele ser suficiente para lotes medianos
 
     return {
-      sheetName,
       totalRows: rows.length,
-      validRows: valid.length,
       processed,
       invalid,
       importErrors: importErrors.length > 0 ? importErrors : undefined,

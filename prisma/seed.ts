@@ -32,7 +32,7 @@ async function main() {
   await seedStudies(prisma);
   console.log('✅ Studies (with prices) seeded.');
 
-  console.log('✨ All seeds completed successfully!');
+  console.log('All seeds completed successfully!');
 }
 
 main()

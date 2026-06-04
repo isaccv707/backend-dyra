@@ -28,7 +28,6 @@ export class PaginationDto {
   search?: string;
 
   @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  stateId?: number;
+  @IsString()
+  priceSheetId?: string;
 }
