@@ -3,6 +3,7 @@ import { CreatePriceSheetDto } from './dto/create-price-sheet.dto';
 import { UpdatePriceSheetDto } from './dto/update-price-sheet.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
+import { PaginationPriceSheetDto } from './dto/pagination-price-sheet.dto';
 
 @Injectable()
 export class PriceSheetsService {
@@ -30,23 +31,44 @@ export class PriceSheetsService {
     });
   }
 
-  async findOne(id: string) {
-    const priceSheet = await this.prisma.priceSheets.findUnique({
-      where: { id },
-      include: {
-        studyOnPriceSheets: {
-          include: {
-            study: true,
+  async findOne(id: string, paginationPriceSheetDto: PaginationPriceSheetDto) {
+    const { page = 1, limit = 10 } = paginationPriceSheetDto;
+    const skip = (page - 1) * limit;
+
+    const [priceSheet, total] = await Promise.all([
+      this.prisma.priceSheets.findUnique({
+        where: { id },
+        include: {
+          studyOnPriceSheets: {
+            skip,
+            take: limit,
+            include: {
+              study: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.studyOnPriceSheet.count({
+        where: { priceSheetId: id },
+      }),
+    ]);
 
     if (!priceSheet) {
       throw new NotFoundException(`PriceSheet with id ${id} not found`);
     }
 
-    return priceSheet;
+    return {
+      ...priceSheet,
+      studyOnPriceSheets: {
+        data: priceSheet.studyOnPriceSheets,
+        meta: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    };
   }
 
   async update(id: string, updatePriceSheetDto: UpdatePriceSheetDto) {
