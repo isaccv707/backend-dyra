@@ -3,11 +3,11 @@ import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 export class CreateAddressDto {
   @IsString()
   @IsNotEmpty()
-  zipCode: string;
+  zipCode!: string;
 
   @IsString()
   @IsNotEmpty()
-  extNumber: string;
+  extNumber!: string;
 
   @IsString()
   @IsOptional()
@@ -19,7 +19,7 @@ export class CreateAddressDto {
 
   @IsString()
   @IsNotEmpty()
-  street: string;
+  street!: string;
 
   @IsString()
   @IsOptional()
@@ -27,5 +27,5 @@ export class CreateAddressDto {
 
   @IsString()
   @IsNotEmpty()
-  city: string;
+  city!: string;
 }

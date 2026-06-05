@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config'; 
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { StudiesModule } from './studies/studies.module';
@@ -10,6 +10,7 @@ import { ServicesModule } from './services/services.module';
 import { BranchesModule } from './branches/branches.module';
 import { StatesModule } from './states/states.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { PriceSheetsModule } from './price-sheets/price-sheets.module';
 
 @Module({
   imports: [
@@ -26,8 +27,9 @@ import { ReviewsModule } from './reviews/reviews.module';
     BranchesModule,
     StatesModule,
     ReviewsModule,
+    PriceSheetsModule,
   ],
   controllers: [],
   providers: [],
 })
-export class AppModule { }
+export class AppModule {}

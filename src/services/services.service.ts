@@ -6,7 +6,7 @@ import { generateSlug } from 'src/common/utils/slugger.util';
 
 @Injectable()
 export class ServicesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createServiceDto: CreateServiceDto) {
     const { benefits, details, ...serviceData } = createServiceDto;
@@ -17,13 +17,13 @@ export class ServicesService {
         ...serviceData,
         slug,
         benefits: benefits ? { create: benefits } : undefined,
-        details: details ? { create: details } : undefined
+        details: details ? { create: details } : undefined,
       },
       include: {
         benefits: true,
         details: true,
-      }
-    })
+      },
+    });
   }
 
   async findAll() {
@@ -44,13 +44,69 @@ export class ServicesService {
     });
   }
 
+  // src/services/services.service.ts
+
+  async findAllByBranch(branchId: string) {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { priceSheetId: true },
+    });
+
+    // Error 1 Fix: Usamos un Type Guard más estricto
+    if (!branch || branch.priceSheetId === null) {
+      throw new NotFoundException(
+        `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
+      );
+    }
+
+    // Guardamos el ID en una constante que TS ya sabe que es string (no null)
+    const activePriceSheetId: string = branch.priceSheetId;
+
+    // Error 2 Fix: Agregamos el include y dejamos que Prisma infiera el tipo
+    const services = await this.prisma.service.findMany({
+      where: { isActive: true },
+      include: {
+        studies: {
+          where: { isActive: true },
+          include: {
+            priceSheets: {
+              where: { priceSheetId: activePriceSheetId },
+            },
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return services.map((service) => ({
+      ...service,
+      studies: service.studies.map((study) => {
+        const regionalPrice = study.priceSheets[0];
+        return {
+          id: study.id,
+          name: study.name,
+          slug: study.slug,
+          code: study.code,
+          description: study.description,
+          sampleType: study.sampleType,
+          deliveryTime: study.deliveryTime,
+          preparation: study.preparation,
+          priceInfo: {
+            showPrice: regionalPrice?.showPrice ?? false,
+            price: regionalPrice?.showPrice ? regionalPrice.price : null,
+            message: regionalPrice?.showPrice
+              ? null
+              : 'Para mayor información consulte en sucursal',
+          },
+        };
+      }),
+    }));
+  }
+
   async findOne(id: string) {
     const service = await this.prisma.service.findFirst({
       where: {
-        OR: [
-          { id },
-          { slug: id }
-        ]
+        OR: [{ id }, { slug: id }],
       },
       include: {
         benefits: true,
@@ -61,21 +117,20 @@ export class ServicesService {
             id: true,
             name: true,
             code: true,
-            price: true,
             slug: true,
-            // No traemos 'preparation' o 'description' aquí para que la 
+            // No traemos 'preparation' o 'description' aquí para que la
             // respuesta no sea gigante si hay 500 estudios.
-          }
+          },
         },
         _count: {
           select: { studies: true },
         },
       },
-    }
-    )
-    if (!service) throw new NotFoundException(`The Service with id: ${id} not found`)
+    });
+    if (!service)
+      throw new NotFoundException(`The Service with id: ${id} not found`);
 
-    return service
+    return service;
   }
 
   async update(id: string, updateServiceDto: UpdateServiceDto) {
@@ -84,7 +139,9 @@ export class ServicesService {
 
     const { benefits, details, ...serviceData } = updateServiceDto;
 
-    const existingService = await this.prisma.service.findUnique({ where: { id } });
+    const existingService = await this.prisma.service.findUnique({
+      where: { id },
+    });
     if (!existingService) throw new NotFoundException('Servicio no encontrado');
 
     if (serviceData.name) {
@@ -105,8 +162,10 @@ export class ServicesService {
         data: {
           ...serviceData,
           // Solo creamos si el arreglo existe y tiene contenido
-          benefits: (benefits && benefits.length > 0) ? { create: benefits } : undefined,
-          details: (details && details.length > 0) ? { create: details } : undefined,
+          benefits:
+            benefits && benefits.length > 0 ? { create: benefits } : undefined,
+          details:
+            details && details.length > 0 ? { create: details } : undefined,
         },
         include: {
           benefits: true,
@@ -117,12 +176,13 @@ export class ServicesService {
   }
 
   async remove(id: string) {
-    const service = await this.prisma.service.findUnique({ where: { id } })
-    if (!service) throw new NotFoundException(`The service with id: ${id} not found`);
+    const service = await this.prisma.service.findUnique({ where: { id } });
+    if (!service)
+      throw new NotFoundException(`The service with id: ${id} not found`);
 
     await this.prisma.service.delete({
-      where: { id }
-    })
+      where: { id },
+    });
     return {
       message: `The service "${service.name}" and its related data have been deleted.`,
       deletedId: id,
