@@ -255,7 +255,9 @@ export class StudiesService {
 
             processed++;
           } catch (error) {
-            importErrors.push({ code: item.code, error: error?.message });
+            const message =
+              error instanceof Error ? error.message : String(error);
+            importErrors.push({ code: item.code, error: message });
             // Opcional: lanzar error para hacer rollback total o continuar
             throw error;
           }
