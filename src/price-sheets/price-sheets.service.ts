@@ -4,6 +4,7 @@ import { UpdatePriceSheetDto } from './dto/update-price-sheet.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPriceSheetDto } from './dto/pagination-price-sheet.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class PriceSheetsService {
@@ -32,14 +33,28 @@ export class PriceSheetsService {
   }
 
   async findOne(id: string, paginationPriceSheetDto: PaginationPriceSheetDto) {
-    const { page = 1, limit = 10 } = paginationPriceSheetDto;
+    const { page = 1, limit = 10, search } = paginationPriceSheetDto;
     const skip = (page - 1) * limit;
+
+    const where: Prisma.StudyOnPriceSheetWhereInput = {
+      priceSheetId: id,
+    };
+
+    if (search) {
+      where.study = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+        ],
+      };
+    }
 
     const [priceSheet, total] = await Promise.all([
       this.prisma.priceSheets.findUnique({
         where: { id },
         include: {
           studyOnPriceSheets: {
+            where,
             skip,
             take: limit,
             include: {
@@ -49,7 +64,7 @@ export class PriceSheetsService {
         },
       }),
       this.prisma.studyOnPriceSheet.count({
-        where: { priceSheetId: id },
+        where,
       }),
     ]);
 

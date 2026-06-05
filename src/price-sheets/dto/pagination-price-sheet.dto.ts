@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class PaginationPriceSheetDto {
   @Type(() => Number)
@@ -14,4 +14,8 @@ export class PaginationPriceSheetDto {
   @IsOptional()
   @Max(100)
   limit?: number = 10;
+
+  @IsString()
+  @IsOptional()
+  search?: string;
 }
