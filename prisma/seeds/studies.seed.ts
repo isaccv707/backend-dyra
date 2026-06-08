@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { STUDIES } from '../constants/studies';
+import { PRICE_SHEETS } from '../constants/price-sheets';
 
 export async function seedStudies(prisma: PrismaClient) {
   // Get a default service (Análisis Clínicos) to use if the hardcoded one fails
@@ -15,22 +16,22 @@ export async function seedStudies(prisma: PrismaClient) {
 
   // Create or get PriceSheets for Jalisco and Colima
   const jaliscoSheet = await prisma.priceSheets.upsert({
-    where: { id: 'jalisco-sheet-id' }, // Just a stable ID for seeding
+    where: { id: PRICE_SHEETS.JALISCO.id }, // Just a stable ID for seeding
     update: {},
     create: {
-      id: 'jalisco-sheet-id',
-      name: 'Lista de Precios Jalisco',
-      description: 'Precios para sucursales en Jalisco',
+      id: PRICE_SHEETS.JALISCO.id,
+      name: PRICE_SHEETS.JALISCO.name,
+      description: PRICE_SHEETS.JALISCO.description,
     },
   });
 
   const colimaSheet = await prisma.priceSheets.upsert({
-    where: { id: 'colima-sheet-id' },
+    where: { id: PRICE_SHEETS.COLIMA.id },
     update: {},
     create: {
-      id: 'colima-sheet-id',
-      name: 'Lista de Precios Colima',
-      description: 'Precios para sucursales en Colima',
+      id: PRICE_SHEETS.COLIMA.id,
+      name: PRICE_SHEETS.COLIMA.name,
+      description: PRICE_SHEETS.COLIMA.description,
     },
   });
 

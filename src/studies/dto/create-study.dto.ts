@@ -49,7 +49,9 @@ export class CreateStudyDto {
   code!: string;
 
   @IsString()
-  @MaxLength(500)
+  @MaxLength(3000, {
+    message: 'La descripción es demasiado larga (máximo 3000 caracteres).',
+  })
   @IsOptional()
   description?: string;
 
@@ -61,7 +63,9 @@ export class CreateStudyDto {
 
   @IsString()
   @IsOptional()
-  @MaxLength(100)
+  @MaxLength(500, {
+    message: 'El tipo de muestra es demasiado largo (máximo 500 caracteres).',
+  })
   sampleType?: string;
 
   @Type(() => Number)
@@ -71,7 +75,9 @@ export class CreateStudyDto {
   deliveryTime?: number;
 
   @IsString()
-  @MaxLength(500)
+  @MaxLength(3000, {
+    message: 'La preparación es demasiado larga (máximo 3000 caracteres).',
+  })
   @IsOptional()
   preparation?: string;
 

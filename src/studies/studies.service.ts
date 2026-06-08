@@ -183,21 +183,19 @@ export class StudiesService {
         isActive: toOptionalBool(row.isActive) ?? true,
         studyPrices: [
           {
-            priceSheetId: 'jalisco-sheet-id', // JALISCO (Guadalajara)
+            priceSheetId: '1a33374b-41bd-4074-a9b3-4bab047b3486', // JALISCO (Guadalajara)
             price: toRequiredNumber(row.price_jalisco ?? row.price), // Soporta columna específica o general
             showPrice: true,
           },
           {
-            priceSheetId: 'colima-sheet-id', // COLIMA
+            priceSheetId: 'eff8ccbb-1db3-445f-803a-201df806971f', // COLIMA
             price: toRequiredNumber(row.price_colima ?? 0),
             showPrice: toOptionalBool(row.show_price_colima) ?? false, // Por defecto oculto en Colima
           },
         ],
       };
-
       const dto = plainToInstance(CreateStudyDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
-
       if (errors.length || !normalizedData.serviceId) {
         invalid.push({
           row: initialRow,
