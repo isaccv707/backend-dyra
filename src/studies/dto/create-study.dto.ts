@@ -16,6 +16,7 @@ import {
 import { Type } from 'class-transformer';
 
 class StudyPriceDto {
+  @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   price!: number;
@@ -83,6 +84,7 @@ export class CreateStudyDto {
 
   @IsNotEmpty()
   @IsString()
+  @IsUUID()
   serviceId!: string;
 
   @IsOptional()

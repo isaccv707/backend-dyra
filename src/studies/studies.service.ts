@@ -196,6 +196,7 @@ export class StudiesService {
       };
       const dto = plainToInstance(CreateStudyDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
+      console.log(errors);
       if (errors.length || !normalizedData.serviceId) {
         invalid.push({
           row: initialRow,
@@ -215,7 +216,7 @@ export class StudiesService {
     // --- PROCESAMIENTO EN BASE DE DATOS ---
     let processed = 0;
     const importErrors: Array<{ code: string; error: string }> = [];
-
+    console.log(importErrors);
     await this.prisma.$transaction(
       async (tx) => {
         for (const item of valid) {
