@@ -15,10 +15,9 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class StudyPriceDto {
-  @Type(() => Number)
+export class StudyPriceDto {
   @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
+  // @IsPositive()
   price!: number;
 
   @IsString()
