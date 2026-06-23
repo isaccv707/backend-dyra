@@ -5,6 +5,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { seedStudies } from './seeds/studies.seed';
 import { seedServices } from './seeds/services.seed';
 import { seedStates } from './seeds/states.seed';
+import { seedRolesAndPermissions } from './seeds/roles-permissions.seed';
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -31,6 +32,10 @@ async function main() {
   // 3. Al final los Estudios (Dependen de States y Services)
   await seedStudies(prisma);
   console.log('✅ Studies (with prices) seeded.');
+
+  // 4. Roles y permisos (independientes)
+  await seedRolesAndPermissions(prisma);
+  console.log('✅ Roles and permissions seeded.');
 
   console.log('All seeds completed successfully!');
 }

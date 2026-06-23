@@ -6,6 +6,44 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+}
+
+model Role {
+  id                 String               @id @default(uuid())
+  name               String
+  description        String?
+  users              User[]
+  rolesOnPermissions RolesOnPermissions[]
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  action      String  @unique
+  description String?
+
+  roles RolesOnPermissions[]
+}
+
+model RolesOnPermissions {
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
 model State {
   id       Int      @id @default(autoincrement())
   name     String   @unique
