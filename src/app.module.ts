@@ -11,6 +11,8 @@ import { BranchesModule } from './branches/branches.module';
 import { StatesModule } from './states/states.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { PriceSheetsModule } from './price-sheets/price-sheets.module';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { PriceSheetsModule } from './price-sheets/price-sheets.module';
     StatesModule,
     ReviewsModule,
     PriceSheetsModule,
+    AuthModule,
+    UsersModule,
   ],
   controllers: [],
   providers: [],

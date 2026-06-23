@@ -4,16 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { CreateStudyDto } from './dto/create-study.dto';
+import { CreateStudyDto, StudyPriceDto } from './dto/create-study.dto';
 import { plainToInstance } from 'class-transformer';
 import {
   toOptionalBool,
   toOptionalInt,
   toRequiredNumber,
 } from './utils/excel-normalizers';
-import { v4 as uuid } from 'uuid';
 import * as XLSX from 'xlsx';
-import { validate } from 'class-validator';
+import { validate, ValidationError } from 'class-validator';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
@@ -166,33 +165,78 @@ export class StudiesService {
     const valid: (CreateStudyDto & { slug: string })[] = [];
     const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
 
+    // --- HELPERS INTERNOS PARA ROBUSTEZ ---
+
+    /**
+     * Extrae recursivamente los mensajes de error de class-validator,
+     * permitiendo visualizar fallos en DTOs anidados (ej. studyPrices).
+     */
+    const extractErrors = (errors: ValidationError[]): string[] => {
+      const messages: string[] = [];
+      for (const error of errors) {
+        if (error.constraints) {
+          messages.push(...Object.values(error.constraints));
+        }
+        if (error.children && error.children.length > 0) {
+          messages.push(...extractErrors(error.children));
+        }
+      }
+      return messages;
+    };
+
+    /**
+     * Limpia y evalúa valores numéricos del Excel.
+     * Previene que strings vacíos o espacios devuelvan NaN en helpers.
+     */
+    const getPriceValue = (val: any): number => {
+      if (val === null || val === undefined) return 0;
+      const cleaned = val.toString().trim();
+      return cleaned === '' ? 0 : Number(cleaned);
+    };
+
     // --- PRE-PROCESAMIENTO Y VALIDACIÓN ---
     for (let i = 0; i < rows.length; i++) {
       const initialRow = i + 2;
       const row = rows[i];
 
+      const name = row.name?.toString()?.trim();
+      const code = row.code?.toString()?.trim();
+
+      // 3. PREVENCIÓN DE FILAS FANTASMA
+      if (!name && !code) continue;
+
+      // 1. ROBUSTEZ EN PRECIOS (Filtrado de valores no positivos para DTO)
+      const studyPrices: StudyPriceDto[] = [];
+
+      // Jalisco (Principal) - Soporta columna específica o general
+      const jaliscoRaw = row.price_jalisco ?? row.price;
+      studyPrices.push({
+        priceSheetId: '1a33374b-41bd-4074-a9b3-4bab047b3486',
+        price: toRequiredNumber(getPriceValue(jaliscoRaw)),
+        showPrice: true,
+      });
+
+      // Colima (Secundaria) - Solo se agrega si el precio es > 0 para cumplir @IsPositive()
+      const colimaPrice = getPriceValue(row.price_colima);
+      if (colimaPrice > 0) {
+        studyPrices.push({
+          priceSheetId: 'eff8ccbb-1db3-445f-803a-201df806971f',
+          price: toRequiredNumber(colimaPrice),
+          showPrice: toOptionalBool(row.show_price_colima) ?? false,
+        });
+      }
+
       // Normalización de datos con lógica de negocio
       const normalizedData = {
-        name: row.name?.toString()?.trim(),
-        code: row.code?.toString()?.trim(),
+        name,
+        code,
         description: row.description?.toString()?.trim(),
         sampleType: row.sampleType?.toString()?.trim(),
         preparation: row.preparation?.toString()?.trim(),
-        serviceId: row.serviceId?.toString()?.trim(), // AHORA OBLIGATORIO
+        serviceId: row.serviceId?.toString()?.trim(),
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,
-        studyPrices: [
-          {
-            priceSheetId: 'jalisco-sheet-id', // JALISCO (Guadalajara)
-            price: toRequiredNumber(row.price_jalisco ?? row.price), // Soporta columna específica o general
-            showPrice: true,
-          },
-          {
-            priceSheetId: 'colima-sheet-id', // COLIMA
-            price: toRequiredNumber(row.price_colima ?? 0),
-            showPrice: toOptionalBool(row.show_price_colima) ?? false, // Por defecto oculto en Colima
-          },
-        ],
+        studyPrices,
       };
 
       const dto = plainToInstance(CreateStudyDto, normalizedData);
@@ -203,7 +247,7 @@ export class StudiesService {
           row: initialRow,
           code: normalizedData.code,
           errors: [
-            ...errors.flatMap((e) => Object.values(e.constraints ?? {})),
+            ...extractErrors(errors), // 2. EXTRACCIÓN RECURSIVA
             ...(!normalizedData.serviceId
               ? ['El serviceId es obligatorio']
               : []),
@@ -214,57 +258,66 @@ export class StudiesService {
       }
     }
 
-    // --- PROCESAMIENTO EN BASE DE DATOS ---
+    // --- PROCESAMIENTO EN BASE DE DATOS (CHUNKS PARA DATOS MASIVOS) ---
     let processed = 0;
     const importErrors: Array<{ code: string; error: string }> = [];
+    const BATCH_SIZE = 100; // Tamaño de lote para equilibrar velocidad y estabilidad
 
-    await this.prisma.$transaction(
-      async (tx) => {
-        for (const item of valid) {
-          try {
-            const { studyPrices, serviceId, ...studyData } = item;
+    for (let i = 0; i < valid.length; i += BATCH_SIZE) {
+      const chunk = valid.slice(i, i + BATCH_SIZE);
 
-            // Upsert de Study
-            await tx.study.upsert({
-              where: { code: item.code },
-              update: {
-                ...studyData,
-                service: { connect: { id: serviceId } },
-                priceSheets: {
-                  // Borramos y recreamos para asegurar que solo queden los estados definidos
-                  deleteMany: {},
-                  create: studyPrices.map((p) => ({
-                    price: new Prisma.Decimal(p.price),
-                    priceSheetId: p.priceSheetId,
-                    showPrice: p.showPrice,
-                  })),
+      try {
+        await this.prisma.$transaction(
+          async (tx) => {
+            for (const item of chunk) {
+              const { studyPrices, serviceId, ...studyData } = item;
+
+              // Upsert de Study: Mantiene consistencia por código
+              await tx.study.upsert({
+                where: { code: item.code },
+                update: {
+                  ...studyData,
+                  service: { connect: { id: serviceId } },
+                  priceSheets: {
+                    // Borramos y recreamos para asegurar que solo queden los estados definidos
+                    deleteMany: {},
+                    create: studyPrices.map((p) => ({
+                      price: new Prisma.Decimal(p.price),
+                      priceSheetId: p.priceSheetId,
+                      showPrice: p.showPrice,
+                    })),
+                  },
                 },
-              },
-              create: {
-                ...studyData,
-                service: { connect: { id: serviceId } },
-                priceSheets: {
-                  create: studyPrices.map((p) => ({
-                    price: new Prisma.Decimal(p.price),
-                    priceSheetId: p.priceSheetId,
-                    showPrice: p.showPrice,
-                  })),
+                create: {
+                  ...studyData,
+                  service: { connect: { id: serviceId } },
+                  priceSheets: {
+                    create: studyPrices.map((p) => ({
+                      price: new Prisma.Decimal(p.price),
+                      priceSheetId: p.priceSheetId,
+                      showPrice: p.showPrice,
+                    })),
+                  },
                 },
-              },
-            });
+              });
 
-            processed++;
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            importErrors.push({ code: item.code, error: message });
-            // Opcional: lanzar error para hacer rollback total o continuar
-            throw error;
-          }
-        }
-      },
-      { timeout: 30000 },
-    ); // 30s suele ser suficiente para lotes medianos
+              processed++;
+            }
+          },
+          { timeout: 60000 }, // Timeout de 60s por lote (ajustado para manejo masivo)
+        );
+      } catch (error) {
+        // En caso de error en un lote, registramos los códigos fallidos y continuamos con el siguiente lote
+        const message = error instanceof Error ? error.message : String(error);
+        chunk.forEach((item) => {
+          importErrors.push({
+            code: item.code,
+            error: `Error en lote: ${message}`,
+          });
+        });
+        // Opcional: Podrías relanzar si prefieres fallo total, pero para "masivo" es mejor Best Effort
+      }
+    }
 
     return {
       totalRows: rows.length,
