@@ -11,23 +11,30 @@ export async function seedRolesAndPermissions(prisma: PrismaClient) {
     });
   }
 
-  // 2. Create roles and assign their permissions
-  for (const role of ROLES) {
-    const existing = await prisma.role.findFirst({ where: { name: role.name } });
-    const { id: roleId } =
-      existing ??
-      (await prisma.role.create({
-        data: { name: role.name, description: role.description },
-      }));
+  // 2. Create or update roles and assign their permissions via implicit M:M
+  for (const roleData of ROLES) {
+    const permissionsToConnect = await prisma.permission.findMany({
+      where: { action: { in: roleData.permissions } },
+      select: { id: true },
+    });
 
-    for (const action of role.permissions) {
-      const permission = await prisma.permission.findUnique({ where: { action } });
-      if (!permission) continue;
+    const existing = await prisma.role.findFirst({ where: { name: roleData.name } });
 
-      await prisma.rolesOnPermissions.upsert({
-        where: { roleId_permissionId: { roleId, permissionId: permission.id } },
-        update: {},
-        create: { roleId, permissionId: permission.id },
+    if (existing) {
+      await prisma.role.update({
+        where: { id: existing.id },
+        data: {
+          description: roleData.description,
+          permissions: { set: permissionsToConnect },
+        },
+      });
+    } else {
+      await prisma.role.create({
+        data: {
+          name: roleData.name,
+          description: roleData.description,
+          permissions: { connect: permissionsToConnect },
+        },
       });
     }
   }
