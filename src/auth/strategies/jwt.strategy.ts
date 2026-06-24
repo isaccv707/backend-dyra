@@ -30,10 +30,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           select: {
             id: true,
             name: true,
-            rolesOnPermissions: {
-              select: {
-                permission: { select: { action: true } },
-              },
+            permissions: {
+              select: { action: true },
             },
           },
         },
@@ -44,13 +42,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found or inactive');
     }
 
-    const { rolesOnPermissions, ...role } = user.role;
+    const { permissions, ...role } = user.role;
 
     return {
       ...user,
       role: {
         ...role,
-        permissions: rolesOnPermissions.map((r) => r.permission.action),
+        permissions: permissions.map((p) => p.action),
       },
     };
   }

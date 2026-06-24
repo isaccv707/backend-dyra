@@ -20,28 +20,18 @@ model User {
 }
 
 model Role {
-  id                 String               @id @default(uuid())
-  name               String
-  description        String?
-  users              User[]
-  rolesOnPermissions RolesOnPermissions[]
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  users       User[]
+  permissions Permission[]
 }
 
 model Permission {
   id          String  @id @default(uuid())
   action      String  @unique
   description String?
-
-  roles RolesOnPermissions[]
-}
-
-model RolesOnPermissions {
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permissionId String
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
+  roles       Role[]
 }
 
 model State {
