@@ -267,3 +267,14 @@ enum BlockType {
   QUOTE
   IMAGE
 }
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_tokens")
+}
