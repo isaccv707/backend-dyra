@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseEnumPipe, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseEnumPipe, ParseUUIDPipe, Query } from '@nestjs/common';
 import { BannersService } from './banners.service';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
@@ -12,8 +12,9 @@ export class BannersController {
   findActiveBanners(
     @Param('placement', new ParseEnumPipe(BannerPlacement))
     placement: BannerPlacement,
+    @Query('branchId') branchId?: string,
   ) {
-    return this.bannersService.findActiveBanners(placement);
+    return this.bannersService.findActiveBanners(placement, branchId);
   }
 
   @Get(':id')
@@ -22,8 +23,8 @@ export class BannersController {
   }
 
   @Get()
-  findAll() {
-    return this.bannersService.findAll();
+  findAll(@Query('branchId') branchId?: string) {
+    return this.bannersService.findAll(branchId);
   }
 
   @Post()

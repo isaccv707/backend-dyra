@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { BannerPlacement } from '@prisma/client';
+import { BannerPlacement, Prisma } from '@prisma/client';
+import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
 
 @Injectable()
 export class BannersService {
@@ -12,7 +13,8 @@ export class BannersService {
 
   async findOne(id: string) {
     const banner = await this.prisma.banner.findUnique({
-      where: { id }
+      where: { id },
+      include: { branches: true },
     });
 
     if (!banner) throw new NotFoundException(`Banner with id ${id} not found`);
@@ -20,13 +22,15 @@ export class BannersService {
     return banner;
   }
 
-  findAll() {
+  findAll(branchId?: string) {
     return this.prisma.banner.findMany({
-      orderBy: { order: 'asc' }
+      where: branchScopeWhere(branchId) as Prisma.BannerWhereInput,
+      include: { branches: true },
+      orderBy: { order: 'asc' },
     });
   }
 
-  async findActiveBanners(placement: BannerPlacement) {
+  async findActiveBanners(placement: BannerPlacement, branchId?: string) {
     const now = new Date();
 
     return this.prisma.banner.findMany({
@@ -46,6 +50,7 @@ export class BannersService {
               { endAt: { gte: now } },
             ],
           },
+          branchScopeWhere(branchId),
         ],
       },
       orderBy: {
@@ -55,11 +60,12 @@ export class BannersService {
   }
 
   async create(dto: CreateBannerDto) {
-    const placement = dto.placement ?? BannerPlacement.HOME;
-    const order = dto.order ?? 0;
-    const isActive = dto.isActive ?? true;
-    const startAt = dto.startAt ? new Date(dto.startAt) : null;
-    const endAt = dto.endAt ? new Date(dto.endAt) : null;
+    const { branchIds, ...rest } = dto;
+    const placement = rest.placement ?? BannerPlacement.HOME;
+    const order = rest.order ?? 0;
+    const isActive = rest.isActive ?? true;
+    const startAt = rest.startAt ? new Date(rest.startAt) : null;
+    const endAt = rest.endAt ? new Date(rest.endAt) : null;
 
     if (startAt && Number.isNaN(startAt.getTime())) {
       throw new BadRequestException('Invalid startAt date');
@@ -73,8 +79,8 @@ export class BannersService {
       throw new BadRequestException('startAt must be before endAt');
     }
 
-    const imageUrl = dto.imageUrl.trim();
-    const mobileImageUrl = dto.mobileImageUrl?.trim();
+    const imageUrl = rest.imageUrl.trim();
+    const mobileImageUrl = rest.mobileImageUrl?.trim();
 
     // Logical duplication check
     const existingBanner = await this.prisma.banner.findFirst({
@@ -105,14 +111,18 @@ export class BannersService {
           isActive,
           startAt,
           endAt,
+          ...(branchIds?.length && {
+            branches: { connect: branchIds.map((id) => ({ id })) },
+          }),
         },
+        include: { branches: true },
       });
     });
   }
 
   async update(id: string, dto: UpdateBannerDto) {
     const currentBanner = await this.findOne(id);
-    const { order: newOrder, placement: newPlacement, ...rest } = dto;
+    const { order: newOrder, placement: newPlacement, branchIds, ...rest } = dto;
 
     const oldOrder = currentBanner.order;
     const oldPlacement = currentBanner.placement;
@@ -176,7 +186,11 @@ export class BannersService {
           ...rest,
           ...(newOrder !== undefined && { order: newOrder }),
           ...(newPlacement !== undefined && { placement: newPlacement }),
+          ...(branchIds !== undefined && {
+            branches: { set: branchIds.map((id) => ({ id })) },
+          }),
         },
+        include: { branches: true },
       });
     });
   }

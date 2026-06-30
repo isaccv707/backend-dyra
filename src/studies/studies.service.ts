@@ -17,10 +17,14 @@ import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
+import { BranchesService } from 'src/branches/branches.service';
 
 @Injectable()
 export class StudiesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly branchesService: BranchesService,
+  ) {}
 
   async create(createStudyDto: CreateStudyDto) {
     const { name, studyPrices, serviceId, ...studyData } = createStudyDto;
@@ -56,7 +60,13 @@ export class StudiesService {
     }
   }
 
-  async findAll({ limit = 10, page = 1, search, priceSheetId }: PaginationDto) {
+  async findAll({
+    limit = 10,
+    page = 1,
+    search,
+    priceSheetId,
+    branchId,
+  }: PaginationDto) {
     const skip = (page - 1) * limit;
     const term = search?.trim().replace(/\s+/g, ' ');
     const MIN_SEARCH_LEN = 2;
@@ -81,7 +91,9 @@ export class StudiesService {
         }
       : undefined;
 
-    const selectedPriceSheetId = priceSheetId || 'jalisco-sheet-id';
+    const selectedPriceSheetId = branchId
+      ? ((await this.branchesService.resolveBranchPriceSheetId(branchId)) ?? undefined)
+      : priceSheetId;
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.study.findMany({
@@ -90,8 +102,10 @@ export class StudiesService {
         where,
         orderBy: { name: 'asc' },
         include: {
+          // Sin branchId/priceSheetId no hay sucursal seleccionada: usamos un
+          // valor que no puede coincidir para que no se muestre ningún precio.
           priceSheets: {
-            where: { priceSheetId: selectedPriceSheetId },
+            where: { priceSheetId: selectedPriceSheetId ?? '' },
           },
         },
       }),
