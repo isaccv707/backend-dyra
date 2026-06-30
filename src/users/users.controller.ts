@@ -1,7 +1,17 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  HttpCode,
+} from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { PaginatedQueryDto } from '../common/dto/paginated-query.dto';
 
 @Controller('users')
 export class UsersController {
@@ -10,6 +20,12 @@ export class UsersController {
   @Post()
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create(createUserDto);
+  }
+
+  @Post('query')
+  @HttpCode(200)
+  findAllPaginated(@Body() dto: PaginatedQueryDto) {
+    return this.usersService.findAllPaginated(dto);
   }
 
   @Get()
