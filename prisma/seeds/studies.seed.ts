@@ -47,6 +47,11 @@ export async function seedStudies(prisma: PrismaClient) {
       effectiveServiceId = defaultService.id;
     }
 
+    const priceSheetEntries = [
+      { price, priceSheetId: jaliscoSheet.id, showPrice: true },
+      { price: 0, priceSheetId: colimaSheet.id, showPrice: false },
+    ];
+
     await prisma.study.upsert({
       where: { code: study.code },
       update: {
@@ -57,24 +62,15 @@ export async function seedStudies(prisma: PrismaClient) {
         preparation: studyData.preparation,
         isActive: studyData.isActive,
         serviceId: effectiveServiceId,
+        priceSheets: {
+          deleteMany: {},
+          create: priceSheetEntries,
+        },
       },
       create: {
         ...studyData,
         serviceId: effectiveServiceId,
-        priceSheets: {
-          create: [
-            {
-              price: price,
-              priceSheetId: jaliscoSheet.id,
-              showPrice: true,
-            },
-            {
-              price: 0,
-              priceSheetId: colimaSheet.id,
-              showPrice: false, // Oculto en Colima
-            },
-          ],
-        },
+        priceSheets: { create: priceSheetEntries },
       },
     });
   }
