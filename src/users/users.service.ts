@@ -1,10 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from '../common/handle-db-errors';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { PaginatedQueryDto } from '../common/dto/paginated-query.dto';
+import { buildPaginatedQuery, paginatedResponse } from '../common/utils/paginate.util';
 
 const USER_SELECT = {
   id: true,
@@ -21,6 +23,8 @@ const USER_SELECT = {
     },
   },
 } satisfies Prisma.UserSelect;
+
+const USER_ALLOWED_FIELDS = ['name', 'email', 'isActive', 'createdAt', 'updatedAt', 'role.name'];
 
 @Injectable()
 export class UsersService {
@@ -61,6 +65,21 @@ export class UsersService {
     });
   }
 
+  async findAllPaginated(dto: PaginatedQueryDto) {
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['name', 'email'],
+      defaultSort: { createdAt: 'desc' },
+      allowedFields: USER_ALLOWED_FIELDS,
+    });
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({ skip, take, where: where as Prisma.UserWhereInput, orderBy, select: USER_SELECT }),
+      this.prisma.user.count({ where: where as Prisma.UserWhereInput }),
+    ]);
+
+    return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
+  }
+
   async findOne(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
@@ -75,9 +94,13 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
 
     const { password, roleId, ...userData } = updateUserDto;
+
+    if (user.email === process.env.ADMIN_EMAIL && userData.email) {
+      throw new ForbiddenException('El email del usuario raíz del sistema no puede ser modificado');
+    }
 
     if (roleId) {
       const role = await this.prisma.role.findUnique({ where: { id: roleId } });
@@ -106,7 +129,11 @@ export class UsersService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
+
+    if (user.email === process.env.ADMIN_EMAIL) {
+      throw new ForbiddenException('El usuario raíz del sistema no puede ser eliminado');
+    }
 
     return this.prisma.user.delete({
       where: { id },
