@@ -16,26 +16,32 @@ import { StudiesService } from './studies.service';
 import { CreateStudyDto } from './dto/create-study.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PaginationDto } from './dto/pagination-study.dto';
+import { Public } from 'src/auth/decorators/public.decorator';
+import { Permissions } from 'src/auth/decorators/permissions.decorator';
 
 @Controller('studies')
 export class StudiesController {
   constructor(private readonly studiesService: StudiesService) {}
 
+  @Permissions('studies:create')
   @Post()
   create(@Body() createStudyDto: CreateStudyDto) {
     return this.studiesService.create(createStudyDto);
   }
 
+  @Public()
   @Get()
   findAll(@Query() pagination: PaginationDto) {
     return this.studiesService.findAll(pagination);
   }
 
+  @Public()
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.studiesService.findOne(id);
   }
 
+  @Permissions('studies:create')
   @Post('import-excel')
   @UseInterceptors(FileInterceptor('file'))
   async importExcel(@UploadedFile() file: Express.Multer.File) {

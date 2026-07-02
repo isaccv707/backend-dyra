@@ -66,9 +66,23 @@ export const PERMISSIONS = [
   { action: 'users:read',   description: 'Leer usuarios' },
   { action: 'users:update', description: 'Actualizar usuarios' },
   { action: 'users:delete', description: 'Eliminar usuarios' },
+
+  // Roles
+  { action: 'roles:create', description: 'Crear roles' },
+  { action: 'roles:read',   description: 'Leer roles' },
+  { action: 'roles:update', description: 'Actualizar roles' },
+  { action: 'roles:delete', description: 'Eliminar roles' },
+
+  // Permissions
+  { action: 'permissions:create', description: 'Crear permisos' },
+  { action: 'permissions:read',   description: 'Leer permisos' },
+  { action: 'permissions:update', description: 'Actualizar permisos' },
+  { action: 'permissions:delete', description: 'Eliminar permisos' },
 ];
 
 // ─── Roles ─────────────────────────────────────────────────────────────────────
+
+const USUARIO_EXCLUDED_MODULES = ['users', 'roles', 'permissions'];
 
 export const ROLES = [
   {
@@ -78,7 +92,12 @@ export const ROLES = [
   },
   {
     name: 'Usuario',
-    description: 'Acceso de solo lectura en todos los módulos',
-    permissions: PERMISSIONS.filter((p) => p.action.endsWith(':read')).map((p) => p.action),
+    description:
+      'Acceso de solo lectura en todos los módulos, excepto usuarios, roles y permisos',
+    permissions: PERMISSIONS.filter(
+      (p) =>
+        p.action.endsWith(':read') &&
+        !USUARIO_EXCLUDED_MODULES.some((module) => p.action.startsWith(`${module}:`)),
+    ).map((p) => p.action),
   },
 ];
