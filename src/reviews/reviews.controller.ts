@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, Query } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
+import { FindReviewsDto } from './dto/find-reviews.dto';
 
 @Controller('reviews')
 export class ReviewsController {
@@ -13,13 +14,13 @@ export class ReviewsController {
   }
 
   @Get()
-  findAll() {
-    return this.reviewsService.findAll();
+  findAll(@Query() dto: FindReviewsDto) {
+    return this.reviewsService.findAll(dto);
   }
 
   @Get('approved')
-  findAllApproved() {
-    return this.reviewsService.findAllApproved();
+  findAllApproved(@Query() dto: FindReviewsDto) {
+    return this.reviewsService.findAllApproved(dto);
   }
 
   @Patch(':id')

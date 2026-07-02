@@ -120,4 +120,17 @@ export class BranchesService {
       where: { id },
     });
   }
+
+  async resolveBranchPriceSheetId(branchId: string): Promise<string | null> {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: branchId },
+      select: { priceSheetId: true },
+    });
+
+    if (!branch) {
+      throw new NotFoundException(`Branch with ID '${branchId}' not found`);
+    }
+
+    return branch.priceSheetId;
+  }
 }

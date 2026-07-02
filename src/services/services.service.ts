@@ -3,10 +3,14 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { BranchesService } from 'src/branches/branches.service';
 
 @Injectable()
 export class ServicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly branchesService: BranchesService,
+  ) {}
 
   async create(createServiceDto: CreateServiceDto) {
     const { benefits, details, ...serviceData } = createServiceDto;
@@ -26,7 +30,11 @@ export class ServicesService {
     });
   }
 
-  async findAll() {
+  async findAll(branchId?: string) {
+    if (branchId) {
+      return this.findAllByBranch(branchId);
+    }
+
     return await this.prisma.service.findMany({
       where: {
         isActive: true,
@@ -44,25 +52,16 @@ export class ServicesService {
     });
   }
 
-  // src/services/services.service.ts
+  private async findAllByBranch(branchId: string) {
+    const activePriceSheetId =
+      await this.branchesService.resolveBranchPriceSheetId(branchId);
 
-  async findAllByBranch(branchId: string) {
-    const branch = await this.prisma.branch.findUnique({
-      where: { id: branchId },
-      select: { priceSheetId: true },
-    });
-
-    // Error 1 Fix: Usamos un Type Guard más estricto
-    if (!branch || branch.priceSheetId === null) {
+    if (activePriceSheetId === null) {
       throw new NotFoundException(
         `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
       );
     }
 
-    // Guardamos el ID en una constante que TS ya sabe que es string (no null)
-    const activePriceSheetId: string = branch.priceSheetId;
-
-    // Error 2 Fix: Agregamos el include y dejamos que Prisma infiera el tipo
     const services = await this.prisma.service.findMany({
       where: { isActive: true },
       include: {

@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -30,4 +31,8 @@ export class PaginationDto {
   @IsOptional()
   @IsString()
   priceSheetId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
 }

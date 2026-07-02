@@ -7,6 +7,7 @@ import { seedServices } from './seeds/services.seed';
 import { seedStates } from './seeds/states.seed';
 import { seedRolesAndPermissions } from './seeds/roles-permissions.seed';
 import { seedAdminUser } from './seeds/admin-user.seed';
+import { seedBranches } from './seeds/branches.seed';
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -34,11 +35,14 @@ async function main() {
   await seedStudies(prisma);
   console.log('✅ Studies (with prices) seeded.');
 
-  // 4. Roles y permisos (independientes)
+  // 4. Sucursales (dependen de States y PriceSheets)
+  await seedBranches(prisma);
+
+  // 5. Roles y permisos (independientes)
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
-  // 5. Usuario administrador (depende del rol Administrador)
+  // 6. Usuario administrador (depende del rol Administrador)
   await seedAdminUser(prisma);
 
   console.log('All seeds completed successfully!');

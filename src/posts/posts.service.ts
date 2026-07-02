@@ -6,13 +6,14 @@ import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
 
 @Injectable()
 export class PostsService {
   constructor(private readonly prisma: PrismaService) { }
 
   async create(createPostDto: CreatePostDto) {
-    const { contentBlocks, title, ...postData } = createPostDto;
+    const { contentBlocks, title, branchIds, ...postData } = createPostDto;
     try {
       return await this.prisma.post.create({
         data: {
@@ -22,6 +23,9 @@ export class PostsService {
           contentBlocks: {
             create: contentBlocks,
           },
+          ...(branchIds?.length && {
+            branches: { connect: branchIds.map((id) => ({ id })) },
+          }),
         },
         include: {
           contentBlocks: {
@@ -38,19 +42,24 @@ export class PostsService {
   }
 
   async findAll(PaginationPostDto: PaginationPostDto) {
-    const { page = 1, limit = 10, search, status, category, tag } = PaginationPostDto;
+    const { page = 1, limit = 10, search, status, category, tag, branchId } = PaginationPostDto;
     const skip = (page - 1) * limit;
+
+    const searchOr: Prisma.PostWhereInput | undefined = search
+      ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : undefined;
+    const branchOr = branchScopeWhere(branchId) as Prisma.PostWhereInput;
 
     const whereClause: Prisma.PostWhereInput = {
       ...(status && { status }),
       ...(category && { category }),
       ...(tag && { tags: { has: tag } }),
-      ...(search && {
-        OR: [
-          { title: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-        ],
-      }),
+      ...(searchOr || branchId ? { AND: [searchOr ?? {}, branchOr] } : {}),
     };
     const [posts, total] = await Promise.all([
       this.prisma.post.findMany({
@@ -103,7 +112,7 @@ export class PostsService {
   }
 
   async update(id: string, updatePostDto: UpdatePostDto) {
-    const { contentBlocks, title, ...postData } = updatePostDto;
+    const { contentBlocks, title, branchIds, ...postData } = updatePostDto;
 
     const dataToUpdate: any = { ...postData };
     if (title) {
@@ -116,6 +125,10 @@ export class PostsService {
         deleteMany: {},
         create: contentBlocks,
       }
+    }
+
+    if (branchIds !== undefined) {
+      dataToUpdate.branches = { set: branchIds.map((id) => ({ id })) };
     }
 
     try {

@@ -1,5 +1,5 @@
 import { BannerPlacement } from "@prisma/client";
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, Min } from "class-validator";
+import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUrl, IsUUID, Min } from "class-validator";
 
 
 
@@ -31,4 +31,9 @@ export class CreateBannerDto {
     @IsString()
     @IsOptional()
     endAt?: Date;
+
+    @IsOptional()
+    @IsArray()
+    @IsUUID('4', { each: true })
+    branchIds?: string[];
 }

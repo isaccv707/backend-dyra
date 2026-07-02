@@ -1,6 +1,6 @@
 import { PostStatus } from "@prisma/client";
 import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsOptional, IsPositive, IsString, Min } from "class-validator";
+import { IsEnum, IsInt, IsOptional, IsPositive, IsString, IsUUID, Min } from "class-validator";
 
 
 export class PaginationPostDto {
@@ -31,4 +31,8 @@ export class PaginationPostDto {
     @IsOptional()
     @IsString()
     tag?: string;
+
+    @IsOptional()
+    @IsUUID()
+    branchId?: string;
 }

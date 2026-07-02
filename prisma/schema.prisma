@@ -74,6 +74,10 @@ model Branch {
   priceSheetId String?      @map("price_sheet_id")
   priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
 
+  banners Banner[]
+  posts   Post[]
+  reviews Review[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -89,6 +93,8 @@ model Banner {
   isActive       Boolean?        @default(true)
   startAt        DateTime?
   endAt          DateTime?
+
+  branches Branch[]
 
   @@index([placement, isActive, order])
   @@map("banners")
@@ -218,6 +224,8 @@ model Post {
 
   author Author? @relation(fields: [authorId], references: [id])
 
+  branches Branch[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -248,6 +256,10 @@ model Review {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  branchId String?
+  branch   Branch?  @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
   @@map("reviews")
 }
 
