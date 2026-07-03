@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { CreateStudyDto, StudyPriceDto } from './dto/create-study.dto';
+import { UpdateStudyDto } from './dto/update-study.dto';
 import { plainToInstance } from 'class-transformer';
 import {
   toOptionalBool,
@@ -160,6 +161,70 @@ export class StudiesService {
     return study;
   }
 
+  async update(id: string, updateStudyDto: UpdateStudyDto) {
+    const { name, studyPrices, serviceId, ...studyData } = updateStudyDto;
+
+    const existingStudy = await this.prisma.study.findUnique({
+      where: { id },
+    });
+    if (!existingStudy) {
+      throw new NotFoundException(`Study with id ${id} not found`);
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Reemplazamos el arreglo completo de precios solo si se envió explícitamente.
+        if (studyPrices) {
+          await tx.studyOnPriceSheet.deleteMany({ where: { studyId: id } });
+        }
+
+        return tx.study.update({
+          where: { id },
+          data: {
+            ...studyData,
+            ...(name && { name, slug: generateSlug(name) }),
+            ...(serviceId && { service: { connect: { id: serviceId } } }),
+            ...(studyPrices && {
+              priceSheets: {
+                create: studyPrices.map((p) => ({
+                  price: new Prisma.Decimal(p.price),
+                  showPrice: p.showPrice ?? true,
+                  priceSheetId: p.priceSheetId,
+                })),
+              },
+            }),
+          },
+          include: {
+            service: {
+              select: { name: true, slug: true },
+            },
+            priceSheets: true,
+          },
+        });
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Study');
+    }
+  }
+
+  async remove(id: string) {
+    const existingStudy = await this.prisma.study.findUnique({
+      where: { id },
+    });
+    if (!existingStudy) {
+      throw new NotFoundException(`Study with id ${id} not found`);
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.studyOnPriceSheet.deleteMany({ where: { studyId: id } });
+        return tx.study.delete({ where: { id } });
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Study');
+    }
+  }
+
   async importFromExcel(buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -175,6 +240,18 @@ export class StudiesService {
 
     if (!rows.length)
       throw new BadRequestException('El Excel no contiene filas de datos');
+
+    // Los tarifarios activos definen dinámicamente las columnas de precio
+    // esperadas (price_<slug-del-tarifario> / show_price_<slug-del-tarifario>),
+    // en vez de asumir un par fijo de tarifarios (ej. "jalisco"/"colima").
+    const priceSheets = await this.prisma.priceSheets.findMany({
+      where: { isActive: true },
+    });
+    const priceSheetColumns = priceSheets.map((ps) => ({
+      id: ps.id,
+      priceKey: `price_${generateSlug(ps.name)}`,
+      showKey: `show_price_${generateSlug(ps.name)}`,
+    }));
 
     const valid: (CreateStudyDto & { slug: string })[] = [];
     const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
@@ -219,25 +296,18 @@ export class StudiesService {
       // 3. PREVENCIÓN DE FILAS FANTASMA
       if (!name && !code) continue;
 
-      // 1. ROBUSTEZ EN PRECIOS (Filtrado de valores no positivos para DTO)
+      // 1. ROBUSTEZ EN PRECIOS: se incluye un precio por cada tarifario activo
+      // que tenga un valor > 0 en su columna correspondiente del Excel.
       const studyPrices: StudyPriceDto[] = [];
-
-      // Jalisco (Principal) - Soporta columna específica o general
-      const jaliscoRaw = row.price_jalisco ?? row.price;
-      studyPrices.push({
-        priceSheetId: '1a33374b-41bd-4074-a9b3-4bab047b3486',
-        price: toRequiredNumber(getPriceValue(jaliscoRaw)),
-        showPrice: true,
-      });
-
-      // Colima (Secundaria) - Solo se agrega si el precio es > 0 para cumplir @IsPositive()
-      const colimaPrice = getPriceValue(row.price_colima);
-      if (colimaPrice > 0) {
-        studyPrices.push({
-          priceSheetId: 'eff8ccbb-1db3-445f-803a-201df806971f',
-          price: toRequiredNumber(colimaPrice),
-          showPrice: toOptionalBool(row.show_price_colima) ?? false,
-        });
+      for (const { id, priceKey, showKey } of priceSheetColumns) {
+        const priceValue = getPriceValue(row[priceKey]);
+        if (priceValue > 0) {
+          studyPrices.push({
+            priceSheetId: id,
+            price: toRequiredNumber(priceValue),
+            showPrice: toOptionalBool(row[showKey]) ?? true,
+          });
+        }
       }
 
       // Normalización de datos con lógica de negocio
@@ -256,15 +326,23 @@ export class StudiesService {
       const dto = plainToInstance(CreateStudyDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
 
-      if (errors.length || !normalizedData.serviceId) {
+      const missingFieldErrors: string[] = [];
+      if (!normalizedData.serviceId) {
+        missingFieldErrors.push('El serviceId es obligatorio');
+      }
+      if (studyPrices.length === 0) {
+        missingFieldErrors.push(
+          'Debe especificar al menos un precio válido en alguna columna price_<tarifario>',
+        );
+      }
+
+      if (errors.length || missingFieldErrors.length) {
         invalid.push({
           row: initialRow,
           code: normalizedData.code,
           errors: [
             ...extractErrors(errors), // 2. EXTRACCIÓN RECURSIVA
-            ...(!normalizedData.serviceId
-              ? ['El serviceId es obligatorio']
-              : []),
+            ...missingFieldErrors,
           ],
         });
       } else {
@@ -339,5 +417,78 @@ export class StudiesService {
       invalid,
       importErrors: importErrors.length > 0 ? importErrors : undefined,
     };
+  }
+
+  async generateImportTemplate(): Promise<Buffer> {
+    const [priceSheets, services] = await Promise.all([
+      this.prisma.priceSheets.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.service.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    const headers = [
+      'name',
+      'code',
+      'description',
+      'sampleType',
+      'preparation',
+      'serviceId',
+      'deliveryTime',
+      'isActive',
+      ...priceSheets.flatMap((ps) => {
+        const key = generateSlug(ps.name);
+        return [`price_${key}`, `show_price_${key}`];
+      }),
+    ];
+
+    const exampleRow: Record<string, string | number> = {
+      name: 'Biometría Hemática',
+      code: 'BH001',
+      description: 'Conteo completo de células sanguíneas',
+      sampleType: 'Sangre venosa',
+      preparation: 'Ayuno de 8 horas',
+      serviceId: services[0]?.id ?? 'PEGAR-AQUI-EL-ID-DEL-SERVICIO',
+      deliveryTime: 1,
+      isActive: 'true',
+    };
+    for (const ps of priceSheets) {
+      const key = generateSlug(ps.name);
+      exampleRow[`price_${key}`] = 150;
+      exampleRow[`show_price_${key}`] = 'true';
+    }
+
+    const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], { header: headers });
+
+    const servicesSheet = XLSX.utils.json_to_sheet(
+      services.map((s) => ({ id: s.id, name: s.name })),
+    );
+
+    const priceSheetsSheet = XLSX.utils.json_to_sheet(
+      priceSheets.map((ps) => ({
+        id: ps.id,
+        name: ps.name,
+        columna_precio: `price_${generateSlug(ps.name)}`,
+      })),
+    );
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, studiesSheet, 'Estudios');
+    XLSX.utils.book_append_sheet(
+      workbook,
+      servicesSheet,
+      'Servicios (referencia)',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      priceSheetsSheet,
+      'Tarifarios (referencia)',
+    );
+
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   }
 }

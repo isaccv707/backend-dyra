@@ -35,10 +35,11 @@ export class BranchesController {
     return this.branchesService.findOne(id);
   }
 
-  // @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateBranchDto: UpdateBranchDto) {
-  //   return this.branchesService.update(id, updateBranchDto);
-  // }
+  @Permissions('branches:update')
+  @Patch(':id')
+  update(@Param('id') id: string, @Body() updateBranchDto: UpdateBranchDto) {
+    return this.branchesService.update(id, updateBranchDto);
+  }
 
   @Permissions('branches:delete')
   @Delete(':id')

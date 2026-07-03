@@ -72,46 +72,51 @@ export class BranchesService {
     return branch;
   }
 
-  // async update(id: string, updateBranchDto: UpdateBranchDto) {
-  //   const { address, stateId, ...branchData } = updateBranchDto;
+  async update(id: string, updateBranchDto: UpdateBranchDto) {
+    const { address, stateId, priceSheetId, ...branchData } = updateBranchDto;
 
-  //   // Ensure branch exists
-  //   await this.findOne(id);
+    // Ensure branch exists
+    await this.findOne(id);
 
-  //   // Check if new name is already taken by another branch
-  //   if (branchData.name) {
-  //     const existingBranch = await this.prisma.branch.findUnique({
-  //       where: { name: branchData.name },
-  //     });
+    // Check if new name is already taken by another branch
+    if (branchData.name) {
+      const existingBranch = await this.prisma.branch.findUnique({
+        where: { name: branchData.name },
+      });
 
-  //     if (existingBranch && existingBranch.id !== id) {
-  //       throw new ConflictException(
-  //         `Branch with name '${branchData.name}' already exists`,
-  //       );
-  //     }
-  //   }
+      if (existingBranch && existingBranch.id !== id) {
+        throw new ConflictException(
+          `Branch with name '${branchData.name}' already exists`,
+        );
+      }
+    }
 
-  //   return this.prisma.branch.update({
-  //     where: { id },
-  //     data: {
-  //       ...branchData,
-  //       ...(stateId && {
-  //         state: {
-  //           connect: { id: stateId },
-  //         },
-  //       }),
-  //       ...(address && {
-  //         address: {
-  //           update: address,
-  //         },
-  //       }),
-  //     },
-  //     include: {
-  //       address: true,
-  //       state: true,
-  //     },
-  //   });
-  // }
+    return this.prisma.branch.update({
+      where: { id },
+      data: {
+        ...branchData,
+        ...(stateId && {
+          state: {
+            connect: { id: stateId },
+          },
+        }),
+        ...(priceSheetId && {
+          priceSheet: {
+            connect: { id: priceSheetId },
+          },
+        }),
+        ...(address && {
+          address: {
+            update: address,
+          },
+        }),
+      },
+      include: {
+        address: true,
+        state: true,
+      },
+    });
+  }
 
   async remove(id: string) {
     await this.findOne(id);
