@@ -43,8 +43,18 @@ export class AuthorsService {
   async findAllAuthors({ limit = 10, page = 1, search }: PaginationAuthorDto) {
     const skip = (page - 1) * limit;
 
+    const where: Prisma.AuthorWhereInput | undefined = search
+      ? {
+          OR: [
+            { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
+            { nameKey: { contains: search, mode: Prisma.QueryMode.insensitive } },
+          ],
+        }
+      : undefined;
+
     const [authors, total] = await Promise.all([
       this.prisma.author.findMany({
+        where,
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
@@ -57,7 +67,7 @@ export class AuthorsService {
           updatedAt: true,
         },
       }),
-      this.prisma.author.count(),
+      this.prisma.author.count({ where }),
     ]);
 
     return {
@@ -65,7 +75,8 @@ export class AuthorsService {
       meta: {
         total,
         page,
-        lastPage: Math.ceil(total / limit),
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
     };
   }

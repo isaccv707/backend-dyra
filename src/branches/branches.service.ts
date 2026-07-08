@@ -6,13 +6,16 @@ import {
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class BranchesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createBranchDto: CreateBranchDto) {
-    const { address, stateId, priceSheetId, ...branchData } = createBranchDto;
+    const { address, stateId, priceSheetId, schedules, ...branchData } =
+      createBranchDto;
 
     const existingBranch = await this.prisma.branch.findUnique({
       where: { name: branchData.name },
@@ -38,10 +41,18 @@ export class BranchesService {
             connect: { id: priceSheetId },
           },
         }),
+        ...(schedules?.length && {
+          schedules: {
+            create: schedules,
+          },
+        }),
       },
       include: {
         address: true,
         state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
       },
     });
   }
@@ -62,6 +73,9 @@ export class BranchesService {
       include: {
         address: true,
         state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
       },
     });
 
@@ -69,49 +83,79 @@ export class BranchesService {
       throw new NotFoundException(`Branch with ID #${id} not found`);
     }
 
-    return branch;
+    const services = await this.prisma.service.findMany({
+      where: {
+        isActive: true,
+        ...branchScopeWhere(id),
+      } as Prisma.ServiceWhereInput,
+      include: {
+        benefits: true,
+        details: true,
+        _count: {
+          select: { studies: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return { ...branch, services };
   }
 
-  // async update(id: string, updateBranchDto: UpdateBranchDto) {
-  //   const { address, stateId, ...branchData } = updateBranchDto;
+  async update(id: string, updateBranchDto: UpdateBranchDto) {
+    const { address, stateId, priceSheetId, schedules, ...branchData } =
+      updateBranchDto;
 
-  //   // Ensure branch exists
-  //   await this.findOne(id);
+    // Ensure branch exists
+    await this.findOne(id);
 
-  //   // Check if new name is already taken by another branch
-  //   if (branchData.name) {
-  //     const existingBranch = await this.prisma.branch.findUnique({
-  //       where: { name: branchData.name },
-  //     });
+    // Check if new name is already taken by another branch
+    if (branchData.name) {
+      const existingBranch = await this.prisma.branch.findUnique({
+        where: { name: branchData.name },
+      });
 
-  //     if (existingBranch && existingBranch.id !== id) {
-  //       throw new ConflictException(
-  //         `Branch with name '${branchData.name}' already exists`,
-  //       );
-  //     }
-  //   }
+      if (existingBranch && existingBranch.id !== id) {
+        throw new ConflictException(
+          `Branch with name '${branchData.name}' already exists`,
+        );
+      }
+    }
 
-  //   return this.prisma.branch.update({
-  //     where: { id },
-  //     data: {
-  //       ...branchData,
-  //       ...(stateId && {
-  //         state: {
-  //           connect: { id: stateId },
-  //         },
-  //       }),
-  //       ...(address && {
-  //         address: {
-  //           update: address,
-  //         },
-  //       }),
-  //     },
-  //     include: {
-  //       address: true,
-  //       state: true,
-  //     },
-  //   });
-  // }
+    return this.prisma.branch.update({
+      where: { id },
+      data: {
+        ...branchData,
+        ...(stateId && {
+          state: {
+            connect: { id: stateId },
+          },
+        }),
+        ...(priceSheetId && {
+          priceSheet: {
+            connect: { id: priceSheetId },
+          },
+        }),
+        ...(address && {
+          address: {
+            update: address,
+          },
+        }),
+        ...(schedules !== undefined && {
+          schedules: {
+            deleteMany: {},
+            create: schedules,
+          },
+        }),
+      },
+      include: {
+        address: true,
+        state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
+      },
+    });
+  }
 
   async remove(id: string) {
     await this.findOne(id);

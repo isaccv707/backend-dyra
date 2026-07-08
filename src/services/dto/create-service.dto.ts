@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
   ValidateNested,
 } from 'class-validator';
@@ -78,4 +79,9 @@ export class CreateServiceDto {
   @Type(() => ServiceDetailDto)
   @IsOptional()
   details?: ServiceDetailDto[];
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  branchIds?: string[];
 }

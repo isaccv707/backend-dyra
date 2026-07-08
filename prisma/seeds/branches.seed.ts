@@ -1,5 +1,24 @@
-import { PrismaClient } from '@prisma/client';
+import { DayOfWeek, PrismaClient } from '@prisma/client';
 import { PRICE_SHEETS } from '../constants/price-sheets';
+
+const WEEKDAYS_SCHEDULE = [
+  { dayOfWeek: DayOfWeek.MONDAY, openTime: '08:00', closeTime: '18:00' },
+  { dayOfWeek: DayOfWeek.TUESDAY, openTime: '08:00', closeTime: '18:00' },
+  { dayOfWeek: DayOfWeek.WEDNESDAY, openTime: '08:00', closeTime: '18:00' },
+  { dayOfWeek: DayOfWeek.THURSDAY, openTime: '08:00', closeTime: '18:00' },
+  { dayOfWeek: DayOfWeek.FRIDAY, openTime: '08:00', closeTime: '18:00' },
+  {
+    dayOfWeek: DayOfWeek.SATURDAY,
+    openTime: '09:00',
+    closeTime: '13:00',
+  },
+  {
+    dayOfWeek: DayOfWeek.SUNDAY,
+    openTime: null,
+    closeTime: null,
+    isClosed: true,
+  },
+];
 
 const BRANCHES = [
   {
@@ -17,6 +36,7 @@ const BRANCHES = [
       city: 'Guadalajara',
       neighborhood: 'Americana',
     },
+    schedules: WEEKDAYS_SCHEDULE,
   },
   {
     id: 'a1b2c3d4-0002-4000-8000-000000000002',
@@ -33,12 +53,14 @@ const BRANCHES = [
       city: 'Colima',
       neighborhood: 'Centro',
     },
+    schedules: WEEKDAYS_SCHEDULE,
   },
 ];
 
 export async function seedBranches(prisma: PrismaClient) {
   for (const branch of BRANCHES) {
-    const { id, stateName, address, priceSheetId, ...branchData } = branch;
+    const { id, stateName, address, priceSheetId, schedules, ...branchData } =
+      branch;
 
     const state = await prisma.state.findUnique({ where: { name: stateName } });
     if (!state) {
@@ -73,6 +95,16 @@ export async function seedBranches(prisma: PrismaClient) {
           priceSheetId,
           addressId: createdAddress.id,
         },
+      });
+    }
+
+    for (const schedule of schedules) {
+      await prisma.branchSchedule.upsert({
+        where: {
+          branchId_dayOfWeek: { branchId: id, dayOfWeek: schedule.dayOfWeek },
+        },
+        update: schedule,
+        create: { ...schedule, branchId: id },
       });
     }
   }
