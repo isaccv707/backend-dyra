@@ -6,13 +6,16 @@ import {
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class BranchesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createBranchDto: CreateBranchDto) {
-    const { address, stateId, priceSheetId, ...branchData } = createBranchDto;
+    const { address, stateId, priceSheetId, schedules, ...branchData } =
+      createBranchDto;
 
     const existingBranch = await this.prisma.branch.findUnique({
       where: { name: branchData.name },
@@ -38,10 +41,18 @@ export class BranchesService {
             connect: { id: priceSheetId },
           },
         }),
+        ...(schedules?.length && {
+          schedules: {
+            create: schedules,
+          },
+        }),
       },
       include: {
         address: true,
         state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
       },
     });
   }
@@ -62,6 +73,9 @@ export class BranchesService {
       include: {
         address: true,
         state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
       },
     });
 
@@ -69,11 +83,27 @@ export class BranchesService {
       throw new NotFoundException(`Branch with ID #${id} not found`);
     }
 
-    return branch;
+    const services = await this.prisma.service.findMany({
+      where: {
+        isActive: true,
+        ...branchScopeWhere(id),
+      } as Prisma.ServiceWhereInput,
+      include: {
+        benefits: true,
+        details: true,
+        _count: {
+          select: { studies: true },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    return { ...branch, services };
   }
 
   async update(id: string, updateBranchDto: UpdateBranchDto) {
-    const { address, stateId, priceSheetId, ...branchData } = updateBranchDto;
+    const { address, stateId, priceSheetId, schedules, ...branchData } =
+      updateBranchDto;
 
     // Ensure branch exists
     await this.findOne(id);
@@ -110,10 +140,19 @@ export class BranchesService {
             update: address,
           },
         }),
+        ...(schedules !== undefined && {
+          schedules: {
+            deleteMany: {},
+            create: schedules,
+          },
+        }),
       },
       include: {
         address: true,
         state: true,
+        schedules: {
+          orderBy: { dayOfWeek: 'asc' },
+        },
       },
     });
   }

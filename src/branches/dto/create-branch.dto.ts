@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsEmail,
   IsInt,
   IsNotEmpty,
@@ -10,6 +11,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { CreateAddressDto } from './create-address.dto';
+import { CreateBranchScheduleDto } from './create-branch-schedule.dto';
 
 export class CreateBranchDto {
   @IsString()
@@ -39,4 +41,10 @@ export class CreateBranchDto {
 
   @IsString()
   priceSheetId!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateBranchScheduleDto)
+  schedules?: CreateBranchScheduleDto[];
 }

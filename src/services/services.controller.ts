@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, Query
 import { ServicesService } from './services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
+import { FindServicesDto } from './dto/find-services.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 
@@ -17,14 +18,14 @@ export class ServicesController {
 
   @Public()
   @Get()
-  findAll(@Query('branchId') branchId?: string) {
+  findAll(@Query() { branchId }: FindServicesDto) {
     return this.servicesService.findAll(branchId);
   }
 
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.servicesService.findOne(id);
+  findOne(@Param('id') id: string, @Query() { branchId }: FindServicesDto) {
+    return this.servicesService.findOne(id, branchId);
   }
 
   @Permissions('services:update')

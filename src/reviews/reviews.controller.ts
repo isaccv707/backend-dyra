@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  ParseIntPipe,
+  Query,
+} from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
@@ -8,7 +18,7 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 
 @Controller('reviews')
 export class ReviewsController {
-  constructor(private readonly reviewsService: ReviewsService) { }
+  constructor(private readonly reviewsService: ReviewsService) {}
 
   @Public()
   @Post()
@@ -32,7 +42,7 @@ export class ReviewsController {
   @Patch(':id')
   approveReview(
     @Param('id', ParseIntPipe) id: number,
-    @Body() updateReviewDto: UpdateReviewDto
+    @Body() updateReviewDto: UpdateReviewDto,
   ) {
     return this.reviewsService.approveReview(id, updateReviewDto);
   }
@@ -40,7 +50,6 @@ export class ReviewsController {
   @Permissions('reviews:delete')
   @Delete(':id')
   remove(@Param('id', ParseIntPipe) id: number) {
-    return this.reviewsService.remove(id)
+    return this.reviewsService.remove(id);
   }
-
 }

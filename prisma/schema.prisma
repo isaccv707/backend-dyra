@@ -74,14 +74,30 @@ model Branch {
   priceSheetId String?      @map("price_sheet_id")
   priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
 
-  banners Banner[]
-  posts   Post[]
-  reviews Review[]
+  banners   Banner[]
+  posts     Post[]
+  reviews   Review[]
+  services  Service[]
+  schedules BranchSchedule[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("branches")
+}
+
+model BranchSchedule {
+  id        String    @id @default(uuid())
+  dayOfWeek DayOfWeek @map("day_of_week")
+  openTime  String?   @map("open_time")
+  closeTime String?   @map("close_time")
+  isClosed  Boolean   @default(false) @map("is_closed")
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, dayOfWeek])
+  @@map("branch_schedules")
 }
 
 model Banner {
@@ -114,6 +130,8 @@ model Service {
 
   benefits Benefit[]
   details  ServiceDetail[]
+
+  branches Branch[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -168,6 +186,7 @@ model StudyOnPriceSheet {
   priceSheet   PriceSheets @relation(fields: [priceSheetId], references: [id])
 
   @@unique([studyId, priceSheetId])
+  @@index([priceSheetId])
   @@map("study_on_price_list")
 }
 
@@ -265,6 +284,16 @@ model Review {
 
 enum BannerPlacement {
   HOME
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
 }
 
 enum PostStatus {
