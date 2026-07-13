@@ -38,6 +38,9 @@ export class AuthService {
             description: true,
           },
         },
+        branches: {
+          select: { id: true, name: true },
+        },
       },
     });
 

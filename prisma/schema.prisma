@@ -17,6 +17,8 @@ model User {
 
   roleId String
   role   Role   @relation(fields: [roleId], references: [id])
+
+  branches Branch[]
 }
 
 model Role {
@@ -79,6 +81,7 @@ model Branch {
   reviews   Review[]
   services  Service[]
   schedules BranchSchedule[]
+  users     User[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -276,7 +279,7 @@ model Review {
   updatedAt  DateTime @updatedAt
 
   branchId String?
-  branch   Branch?  @relation(fields: [branchId], references: [id])
+  branch   Branch? @relation(fields: [branchId], references: [id])
 
   @@index([branchId])
   @@map("reviews")

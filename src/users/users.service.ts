@@ -22,6 +22,9 @@ const USER_SELECT = {
       description: true,
     },
   },
+  branches: {
+    select: { id: true, name: true },
+  },
 } satisfies Prisma.UserSelect;
 
 const USER_ALLOWED_FIELDS = ['name', 'email', 'isActive', 'createdAt', 'updatedAt', 'role.name'];
@@ -31,7 +34,7 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createUserDto: CreateUserDto) {
-    const { password, roleId, ...userData } = createUserDto;
+    const { password, roleId, branchIds, ...userData } = createUserDto;
 
     const existingUser = await this.prisma.user.findUnique({ where: { email: userData.email } });
     if (existingUser) {
@@ -51,6 +54,9 @@ export class UsersService {
           ...userData,
           password: hashedPassword,
           role: { connect: { id: roleId } },
+          ...(branchIds?.length && {
+            branches: { connect: branchIds.map((id) => ({ id })) },
+          }),
         },
         select: USER_SELECT,
       });
@@ -96,7 +102,7 @@ export class UsersService {
   async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.findOne(id);
 
-    const { password, roleId, ...userData } = updateUserDto;
+    const { password, roleId, branchIds, ...userData } = updateUserDto;
 
     if (user.email === process.env.ADMIN_EMAIL && userData.email) {
       throw new ForbiddenException('El email del usuario raíz del sistema no puede ser modificado');
@@ -120,6 +126,9 @@ export class UsersService {
           ...userData,
           ...(hashedPassword && { password: hashedPassword }),
           ...(roleId && { role: { connect: { id: roleId } } }),
+          ...(branchIds !== undefined && {
+            branches: { set: branchIds.map((id) => ({ id })) },
+          }),
         },
         select: USER_SELECT,
       });

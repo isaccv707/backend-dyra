@@ -15,6 +15,8 @@ import { UpdateReviewDto } from './dto/update-review.dto';
 import { FindReviewsDto } from './dto/find-reviews.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 
 @Controller('reviews')
 export class ReviewsController {
@@ -28,8 +30,8 @@ export class ReviewsController {
 
   @Permissions('reviews:read')
   @Get()
-  findAll(@Query() dto: FindReviewsDto) {
-    return this.reviewsService.findAll(dto);
+  findAll(@Query() dto: FindReviewsDto, @CurrentUser() user: BranchScopedUser) {
+    return this.reviewsService.findAll(dto, user);
   }
 
   @Public()
@@ -43,13 +45,14 @@ export class ReviewsController {
   approveReview(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateReviewDto: UpdateReviewDto,
+    @CurrentUser() user: BranchScopedUser,
   ) {
-    return this.reviewsService.approveReview(id, updateReviewDto);
+    return this.reviewsService.approveReview(id, updateReviewDto, user);
   }
 
   @Permissions('reviews:delete')
   @Delete(':id')
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.reviewsService.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: BranchScopedUser) {
+    return this.reviewsService.remove(id, user);
   }
 }
