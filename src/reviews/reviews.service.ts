@@ -6,6 +6,7 @@ import { PrismaService } from 'prisma/prisma/prisma.service';
 import { Prisma, Review } from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
 
 const REVIEW_ALLOWED_FIELDS = ['fullName', 'rating', 'isApproved', 'createdAt'];
 
@@ -26,14 +27,14 @@ export class ReviewsService {
     })
   }
 
-  async findAll(dto: FindReviewsDto) {
+  async findAll(dto: FindReviewsDto, user: BranchScopedUser) {
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
       searchFields: ['fullName'],
       defaultSort: { createdAt: 'desc' },
       allowedFields: REVIEW_ALLOWED_FIELDS,
     });
 
-    const finalWhere = { ...where, ...(dto.branchId && { branchId: dto.branchId }) } as Prisma.ReviewWhereInput;
+    const finalWhere = { ...where, ...userBranchFilter(user, dto.branchId) } as Prisma.ReviewWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.review.findMany({ skip, take, where: finalWhere, orderBy }),
@@ -64,7 +65,13 @@ export class ReviewsService {
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async approveReview(id: number, updateReviewDto: UpdateReviewDto) {
+  async approveReview(id: number, updateReviewDto: UpdateReviewDto, user: BranchScopedUser) {
+    const review = await this.prisma.review.findUnique({ where: { id } });
+    if (!review) {
+      throw new NotFoundException(`Review with ID #${id} not found`);
+    }
+    assertBranchAccess(user, review.branchId);
+
     try {
       return await this.prisma.review.update({
         where: { id },
@@ -75,7 +82,13 @@ export class ReviewsService {
     }
   }
 
-  async remove(id: number) {
+  async remove(id: number, user: BranchScopedUser) {
+    const review = await this.prisma.review.findUnique({ where: { id } });
+    if (!review) {
+      throw new NotFoundException(`Review with ID #${id} not found`);
+    }
+    assertBranchAccess(user, review.branchId);
+
     try {
       return await this.prisma.review.delete({
         where: { id },

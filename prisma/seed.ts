@@ -3,12 +3,15 @@ import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { seedStudies } from './seeds/studies.seed';
-import { seedServices } from './seeds/services.seed';
+import { seedServices, linkServiceBranches } from './seeds/services.seed';
 import { seedStates } from './seeds/states.seed';
 import { seedRolesAndPermissions } from './seeds/roles-permissions.seed';
 import { seedAdminUser } from './seeds/admin-user.seed';
 import { seedBranches } from './seeds/branches.seed';
 import { seedBanners } from './seeds/banners.seed';
+import { seedAuthors } from './seeds/authors.seed';
+import { seedPosts } from './seeds/posts.seed';
+import { seedReviews } from './seeds/reviews.seed';
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -39,14 +42,26 @@ async function main() {
   // 4. Sucursales (dependen de States y PriceSheets)
   await seedBranches(prisma);
 
-  // 5. Banners (dependen de las sucursales)
+  // 5. Vincula servicios exclusivos a sus sucursales (depende de Branches y Services)
+  await linkServiceBranches(prisma);
+
+  // 6. Banners (dependen de las sucursales)
   await seedBanners(prisma);
 
-  // 6. Roles y permisos (independientes)
+  // 7. Autores (independientes)
+  await seedAuthors(prisma);
+
+  // 8. Posts (dependen de Authors y Branches)
+  await seedPosts(prisma);
+
+  // 9. Reseñas (dependen de Branches)
+  await seedReviews(prisma);
+
+  // 10. Roles y permisos (independientes)
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
-  // 7. Usuario administrador (depende del rol Administrador)
+  // 11. Usuario administrador (depende del rol Administrador)
   await seedAdminUser(prisma);
 
   console.log('All seeds completed successfully!');

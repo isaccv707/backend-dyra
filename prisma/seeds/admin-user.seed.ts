@@ -22,6 +22,7 @@ export async function seedAdminUser(prisma: PrismaClient) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
+  const branches = await prisma.branch.findMany({ select: { id: true } });
 
   await prisma.user.upsert({
     where: { email },
@@ -30,6 +31,7 @@ export async function seedAdminUser(prisma: PrismaClient) {
       password: hashedPassword,
       isActive: true,
       role: { connect: { id: adminRole.id } },
+      branches: { set: branches.map((b) => ({ id: b.id })) },
     },
     create: {
       email,
@@ -37,8 +39,11 @@ export async function seedAdminUser(prisma: PrismaClient) {
       password: hashedPassword,
       isActive: true,
       role: { connect: { id: adminRole.id } },
+      branches: { connect: branches.map((b) => ({ id: b.id })) },
     },
   });
 
-  console.log(`✅ Usuario administrador (${email}) creado/actualizado.`);
+  console.log(
+    `✅ Usuario administrador (${email}) creado/actualizado con ${branches.length} sucursal(es) asignada(s).`,
+  );
 }
