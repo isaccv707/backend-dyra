@@ -1,13 +1,26 @@
 // quotations.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Prisma, Quotation, QuotationItem } from '@prisma/client';
+import { PrismaService } from 'prisma/prisma/prisma.service';
+import { handleDatabaseErrors } from 'src/common/handle-db-errors';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
+import {
+  assertBranchAccess,
+  BranchScopedUser,
+  userBranchFilter,
+} from 'src/common/utils/branch-access.util';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
+import { FindQuotationsDto } from './dto/find-quotations.dto';
 import {
   CompanyInfo,
   QuotationMeta,
   QuotationPdfData,
-  StudyItem,
   Totals,
 } from './interfaces/quotations-interfaces';
 import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
@@ -20,43 +33,150 @@ const COMPANY_INFO: CompanyInfo = {
   email: 'luis.ramirez@dyranalitica.com',
 };
 
+const QUOTATION_ALLOWED_FIELDS = [
+  'folio',
+  'name',
+  'lastName',
+  'phoneNumber',
+  'total',
+  'createdAt',
+];
+
+type QuotationWithItems = Quotation & { items: QuotationItem[] };
+
 @Injectable()
 export class QuotationsService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly pdfRenderer: QuotationPdfRenderer,
   ) {}
 
+  async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
+    if (dto.branchId) {
+      const branch = await this.prisma.branch.findUnique({
+        where: { id: dto.branchId },
+      });
+      if (!branch) {
+        throw new NotFoundException(
+          `Branch with ID '${dto.branchId}' not found`,
+        );
+      }
+    }
+
+    const totals = this.calculateTotals(dto.studies);
+
+    return this.prisma.quotation.create({
+      data: {
+        folio: this.generateFolio(),
+        clientType: dto.clientType,
+        name: dto.name,
+        lastName: dto.lastName,
+        phoneNumber: dto.phoneNumber,
+        email: dto.email,
+        subtotal: totals.subtotal,
+        tax: totals.tax,
+        total: totals.total,
+        branchId: dto.branchId,
+        items: {
+          create: dto.studies.map((study) => ({
+            name: study.name,
+            price: study.price,
+            quantity: study.quantity,
+            studyId: study.id || null,
+          })),
+        },
+      },
+      include: { items: true },
+    });
+  }
+
+  async findAll(dto: FindQuotationsDto, user: BranchScopedUser) {
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['folio', 'name', 'lastName', 'phoneNumber', 'email'],
+      defaultSort: { createdAt: 'desc' },
+      allowedFields: QUOTATION_ALLOWED_FIELDS,
+    });
+
+    const finalWhere = {
+      ...where,
+      ...userBranchFilter(user, dto.branchId),
+    } as Prisma.QuotationWhereInput;
+
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.quotation.findMany({
+        skip,
+        take,
+        where: finalWhere,
+        orderBy,
+        include: { items: true, branch: { select: { id: true, name: true } } },
+      }),
+      this.prisma.quotation.count({ where: finalWhere }),
+    ]);
+
+    return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
+  }
+
+  async findOne(
+    id: string,
+    user: BranchScopedUser,
+  ): Promise<QuotationWithItems> {
+    const quotation = await this.prisma.quotation.findUnique({
+      where: { id },
+      include: { items: true, branch: { select: { id: true, name: true } } },
+    });
+    if (!quotation) {
+      throw new NotFoundException(`Quotation with ID '${id}' not found`);
+    }
+    assertBranchAccess(user, quotation.branchId);
+
+    return quotation;
+  }
+
+  async remove(id: string, user: BranchScopedUser) {
+    await this.findOne(id, user);
+
+    try {
+      return await this.prisma.quotation.delete({ where: { id } });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Quotation');
+    }
+  }
+
   buildQuotationPdf(
     doc: PDFKit.PDFDocument,
-    dto: CreateQuotationDto,
+    quotation: QuotationWithItems,
   ): void {
-    const data = this.buildPdfData(dto);
+    const data = this.buildPdfData(quotation);
     this.pdfRenderer.render(doc, data);
   }
-  
-  private buildPdfData(dto: CreateQuotationDto): QuotationPdfData {
-    const { clientType, name, lastName, phoneNumber, email, studies } = dto;
 
-    const totals = this.calculateTotals(studies);
-    const metaBase = this.buildMeta(clientType);
-    const logoPath = this.resolveLogoPath();
-
+  private buildPdfData(quotation: QuotationWithItems): QuotationPdfData {
     const meta: QuotationMeta = {
-      ...metaBase,
-      logoPath,
+      formattedDate: quotation.createdAt.toLocaleDateString('es-MX'),
+      folio: quotation.folio,
+      formattedClientType: this.formatClientType(quotation.clientType),
+      logoPath: this.resolveLogoPath(),
     };
 
     return {
       meta,
-      totals,
+      totals: {
+        subtotal: Number(quotation.subtotal),
+        tax: Number(quotation.tax),
+        total: Number(quotation.total),
+      },
       client: {
-        name,
-        lastName,
-        phoneNumber,
-        email,
+        name: quotation.name,
+        lastName: quotation.lastName ?? undefined,
+        phoneNumber: quotation.phoneNumber,
+        email: quotation.email ?? '',
         clientType: meta.formattedClientType,
       },
-      studies,
+      studies: quotation.items.map((item) => ({
+        name: item.name,
+        price: Number(item.price),
+        quantity: item.quantity,
+      })),
       company: COMPANY_INFO,
     };
   }
@@ -64,7 +184,9 @@ export class QuotationsService {
   // ===========================
   // CÁLCULOS Y METADATOS
   // ===========================
-  private calculateTotals(studies: StudyItem[]): Totals {
+  private calculateTotals(
+    studies: { price: number; quantity: number }[],
+  ): Totals {
     const total = studies.reduce(
       (acc, study) => acc + study.price * study.quantity,
       0,
@@ -76,34 +198,27 @@ export class QuotationsService {
     return { subtotal, tax, total };
   }
 
-  private buildMeta(clientType: string): Omit<QuotationMeta, 'logoPath'> {
+  private generateFolio(): string {
     const now = new Date();
-
-    const formattedDate = now.toLocaleDateString('es-MX');
-    const folio = `DYRA-${now.getFullYear()}${(now.getMonth() + 1)
+    const datePart = `${now.getFullYear()}${(now.getMonth() + 1)
       .toString()
-      .padStart(2, '0')}${now
-        .getDate()
-        .toString()
-        .padStart(2, '0')}-${now.getTime().toString().slice(-4)}`;
+      .padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}`;
 
-    const formattedClientType =
-      clientType.charAt(0).toUpperCase() +
-      clientType.slice(1).toLowerCase();
+    return `DYRA-${datePart}-${randomInt(100000, 999999)}`;
+  }
 
-    return {
-      formattedDate,
-      folio,
-      formattedClientType,
-    };
+  private formatClientType(clientType: string): string {
+    return (
+      clientType.charAt(0).toUpperCase() + clientType.slice(1).toLowerCase()
+    );
   }
 
   private resolveLogoPath(): string | null {
     const rootDir = process.cwd();
 
     const candidatePaths = [
-      path.join(rootDir, 'dist', 'assets', 'logo.png'), 
-      path.join(rootDir, 'src', 'assets', 'logo.png'),  
+      path.join(rootDir, 'dist', 'assets', 'logo.png'),
+      path.join(rootDir, 'src', 'assets', 'logo.png'),
     ];
 
     for (const p of candidatePaths) {
