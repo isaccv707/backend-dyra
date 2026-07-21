@@ -19,6 +19,9 @@ import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { BranchesService } from 'src/branches/branches.service';
+import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+
+const STUDY_ALLOWED_FIELDS = ['name', 'code', 'isActive', 'deliveryTime', 'createdAt'];
 
 @Injectable()
 export class StudiesService {
@@ -61,36 +64,14 @@ export class StudiesService {
     }
   }
 
-  async findAll({
-    limit = 10,
-    page = 1,
-    search,
-    priceSheetId,
-    branchId,
-  }: PaginationDto) {
-    const skip = (page - 1) * limit;
-    const term = search?.trim().replace(/\s+/g, ' ');
-    const MIN_SEARCH_LEN = 2;
-    const effectiveTerm =
-      term && term.length >= MIN_SEARCH_LEN ? term : undefined;
-    const where: Prisma.StudyWhereInput | undefined = term
-      ? {
-          OR: [
-            {
-              name: {
-                contains: effectiveTerm,
-                mode: Prisma.QueryMode.insensitive,
-              },
-            },
-            {
-              code: {
-                contains: effectiveTerm,
-                mode: Prisma.QueryMode.insensitive,
-              },
-            },
-          ],
-        }
-      : undefined;
+  async findAll(dto: PaginationDto) {
+    const { priceSheetId, branchId } = dto;
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['name', 'code'],
+      defaultSort: { name: 'asc' },
+      allowedFields: STUDY_ALLOWED_FIELDS,
+      minSearchLength: 2,
+    });
 
     const selectedPriceSheetId = branchId
       ? ((await this.branchesService.resolveBranchPriceSheetId(branchId)) ?? undefined)
@@ -99,9 +80,9 @@ export class StudiesService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.study.findMany({
         skip,
-        take: limit,
-        where,
-        orderBy: { name: 'asc' },
+        take,
+        where: where as Prisma.StudyWhereInput,
+        orderBy,
         include: {
           // Sin branchId/priceSheetId no hay sucursal seleccionada: usamos un
           // valor que no puede coincidir para que no se muestre ningún precio.
@@ -110,35 +91,29 @@ export class StudiesService {
           },
         },
       }),
-      this.prisma.study.count({ where }),
+      this.prisma.study.count({ where: where as Prisma.StudyWhereInput }),
     ]);
 
-    return {
-      items: items.map((study) => {
-        const regionalPrice = study.priceSheets[0]; // El precio filtrado por selectedPriceSheetId
+    const data = items.map((study) => {
+      const regionalPrice = study.priceSheets[0]; // El precio filtrado por selectedPriceSheetId
 
-        return {
-          ...study,
-          priceInfo: {
-            showPrice: regionalPrice?.showPrice ?? false,
-            price: regionalPrice?.showPrice ? regionalPrice.price : null,
-            message: regionalPrice?.showPrice
-              ? null
-              : 'Para mayor información consulte en sucursal',
-            // Agregamos esto para debug o por si el estado no tiene precio cargado
-            hasConfiguredPrice: !!regionalPrice,
-          },
-          // Quitamos el arreglo original para limpiar la respuesta
-          priceSheets: undefined,
-        };
-      }),
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      return {
+        ...study,
+        priceInfo: {
+          showPrice: regionalPrice?.showPrice ?? false,
+          price: regionalPrice?.showPrice ? regionalPrice.price : null,
+          message: regionalPrice?.showPrice
+            ? null
+            : 'Para mayor información consulte en sucursal',
+          // Agregamos esto para debug o por si el estado no tiene precio cargado
+          hasConfiguredPrice: !!regionalPrice,
+        },
+        // Quitamos el arreglo original para limpiar la respuesta
+        priceSheets: undefined,
+      };
+    });
+
+    return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
   async findOne(id: string) {

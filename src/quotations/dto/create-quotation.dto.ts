@@ -1,11 +1,11 @@
 import { Type } from "class-transformer";
-import { IsArray, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, ValidateNested } from "class-validator";
+import { IsArray, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, ValidateNested } from "class-validator";
 
 
 export class SelectedStudyDto {
     @IsOptional()
-    @IsString()
-    id: string;
+    @IsUUID()
+    id?: string;
     @IsString()
     @IsNotEmpty()
     name: string;
@@ -48,4 +48,8 @@ export class CreateQuotationDto {
     @ValidateNested({ each: true })
     @Type(() => SelectedStudyDto)
     studies: SelectedStudyDto[];
+
+    @IsOptional()
+    @IsUUID()
+    branchId?: string;
 }

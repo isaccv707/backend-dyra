@@ -7,6 +7,9 @@ import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
+import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+
+const POST_ALLOWED_FIELDS = ['title', 'category', 'status', 'createdAt'];
 
 @Injectable()
 export class PostsService {
@@ -41,32 +44,26 @@ export class PostsService {
     }
   }
 
-  async findAll(PaginationPostDto: PaginationPostDto) {
-    const { page = 1, limit = 10, search, status, category, tag, branchId } = PaginationPostDto;
-    const skip = (page - 1) * limit;
-
-    const searchOr: Prisma.PostWhereInput | undefined = search
-      ? {
-          OR: [
-            { title: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : undefined;
-    const branchOr = branchScopeWhere(branchId) as Prisma.PostWhereInput;
+  async findAll(dto: PaginationPostDto) {
+    const { status, category, tag, branchId } = dto;
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['title', 'description'],
+      allowedFields: POST_ALLOWED_FIELDS,
+    });
 
     const whereClause: Prisma.PostWhereInput = {
+      AND: [where, branchScopeWhere(branchId)],
       ...(status && { status }),
       ...(category && { category }),
       ...(tag && { tags: { has: tag } }),
-      ...(searchOr || branchId ? { AND: [searchOr ?? {}, branchOr] } : {}),
     };
-    const [posts, total] = await Promise.all([
+
+    const [posts, total] = await this.prisma.$transaction([
       this.prisma.post.findMany({
         where: whereClause,
         skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+        take,
+        orderBy,
         include: {
           author: {
             select: { id: true, name: true, avatar: true },
@@ -76,16 +73,7 @@ export class PostsService {
       this.prisma.post.count({ where: whereClause }),
     ]);
 
-    return {
-      data: posts,
-      meta: {
-        total,
-        page,
-        lastPage: Math.ceil(total / limit),
-        limit,
-        totalPages: Math.ceil(total / limit)
-      },
-    };
+    return paginatedResponse(posts, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
   async findOne(id: string) {

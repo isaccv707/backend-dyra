@@ -6,6 +6,9 @@ import { Prisma } from '@prisma/client';
 import { PaginationAuthorDto } from './dto/pagination-author.dto';
 import { UpdateAuthorDto } from './dto/update-author.dto';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
+import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+
+const AUTHOR_ALLOWED_FIELDS = ['name', 'nameKey', 'createdAt'];
 
 @Injectable()
 export class AuthorsService {
@@ -40,24 +43,18 @@ export class AuthorsService {
     }
   }
 
-  async findAllAuthors({ limit = 10, page = 1, search }: PaginationAuthorDto) {
-    const skip = (page - 1) * limit;
+  async findAllAuthors(dto: PaginationAuthorDto) {
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['name', 'nameKey'],
+      allowedFields: AUTHOR_ALLOWED_FIELDS,
+    });
 
-    const where: Prisma.AuthorWhereInput | undefined = search
-      ? {
-          OR: [
-            { name: { contains: search, mode: Prisma.QueryMode.insensitive } },
-            { nameKey: { contains: search, mode: Prisma.QueryMode.insensitive } },
-          ],
-        }
-      : undefined;
-
-    const [authors, total] = await Promise.all([
+    const [authors, total] = await this.prisma.$transaction([
       this.prisma.author.findMany({
-        where,
+        where: where as Prisma.AuthorWhereInput,
         skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+        take,
+        orderBy,
         select: {
           id: true,
           name: true,
@@ -67,18 +64,10 @@ export class AuthorsService {
           updatedAt: true,
         },
       }),
-      this.prisma.author.count({ where }),
+      this.prisma.author.count({ where: where as Prisma.AuthorWhereInput }),
     ]);
 
-    return {
-      data: authors,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+    return paginatedResponse(authors, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
   async findOneAuthor(id: string) {
