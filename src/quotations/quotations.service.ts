@@ -1,5 +1,9 @@
 // quotations.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomInt } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -15,7 +19,8 @@ import {
   BranchScopedUser,
   userBranchFilter,
 } from 'src/common/utils/branch-access.util';
-import { CreateQuotationDto } from './dto/create-quotation.dto';
+import { BranchesService } from 'src/branches/branches.service';
+import { CreateQuotationDto, SelectedStudyDto } from './dto/create-quotation.dto';
 import { FindQuotationsDto } from './dto/find-quotations.dto';
 import {
   CompanyInfo,
@@ -43,12 +48,19 @@ const QUOTATION_ALLOWED_FIELDS = [
 ];
 
 type QuotationWithItems = Quotation & { items: QuotationItem[] };
+type ResolvedQuotationItem = {
+  name: string;
+  price: number;
+  quantity: number;
+  studyId: string | null;
+};
 
 @Injectable()
 export class QuotationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfRenderer: QuotationPdfRenderer,
+    private readonly branchesService: BranchesService,
   ) {}
 
   async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
@@ -63,7 +75,8 @@ export class QuotationsService {
       }
     }
 
-    const totals = this.calculateTotals(dto.studies);
+    const items = await this.resolveQuotationItems(dto);
+    const totals = this.calculateTotals(items);
 
     return this.prisma.quotation.create({
       data: {
@@ -77,16 +90,79 @@ export class QuotationsService {
         tax: totals.tax,
         total: totals.total,
         branchId: dto.branchId,
-        items: {
-          create: dto.studies.map((study) => ({
-            name: study.name,
-            price: study.price,
-            quantity: study.quantity,
-            studyId: study.id || null,
-          })),
-        },
+        items: { create: items },
       },
       include: { items: true },
+    });
+  }
+
+  // ===========================
+  // RESOLUCIÓN DE PRECIOS
+  // ===========================
+  // Los estudios de catálogo (con `id`) nunca confían en el precio/nombre
+  // enviado por el cliente: se resuelven contra el StudyOnPriceSheet de la
+  // sucursal para evitar que la cotización se manipule desde el frontend.
+  // Solo las líneas ad-hoc (sin `id`, fuera de catálogo) usan lo enviado.
+  private async resolveQuotationItems(
+    dto: CreateQuotationDto,
+  ): Promise<ResolvedQuotationItem[]> {
+    const catalogStudyIds = [
+      ...new Set(
+        dto.studies
+          .filter((study): study is SelectedStudyDto & { id: string } =>
+            Boolean(study.id),
+          )
+          .map((study) => study.id),
+      ),
+    ];
+
+    let priceByStudyId = new Map<string, { name: string; price: Prisma.Decimal }>();
+
+    if (catalogStudyIds.length > 0) {
+      if (!dto.branchId) {
+        throw new BadRequestException(
+          'Se requiere branchId para cotizar estudios del catálogo.',
+        );
+      }
+
+      const priceSheetId = await this.branchesService.resolveBranchPriceSheetId(
+        dto.branchId,
+      );
+      if (!priceSheetId) {
+        throw new BadRequestException(
+          'La sucursal seleccionada no tiene una lista de precios configurada.',
+        );
+      }
+
+      const entries = await this.prisma.studyOnPriceSheet.findMany({
+        where: { studyId: { in: catalogStudyIds }, priceSheetId },
+        include: { study: { select: { name: true } } },
+      });
+
+      priceByStudyId = new Map(
+        entries.map((entry) => [
+          entry.studyId,
+          { name: entry.study.name, price: entry.price },
+        ]),
+      );
+
+      const missing = catalogStudyIds.filter((id) => !priceByStudyId.has(id));
+      if (missing.length > 0) {
+        throw new NotFoundException(
+          `Los siguientes estudios no tienen precio configurado en la sucursal seleccionada: ${missing.join(', ')}`,
+        );
+      }
+    }
+
+    return dto.studies.map((study) => {
+      const resolved = study.id ? priceByStudyId.get(study.id) : undefined;
+
+      return {
+        name: resolved?.name ?? study.name,
+        price: resolved ? Number(resolved.price) : study.price,
+        quantity: study.quantity,
+        studyId: study.id ?? null,
+      };
     });
   }
 

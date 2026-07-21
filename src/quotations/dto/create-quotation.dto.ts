@@ -4,8 +4,8 @@ import { IsArray, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsStrin
 
 export class SelectedStudyDto {
     @IsOptional()
-    @IsString()
-    id: string;
+    @IsUUID()
+    id?: string;
     @IsString()
     @IsNotEmpty()
     name: string;

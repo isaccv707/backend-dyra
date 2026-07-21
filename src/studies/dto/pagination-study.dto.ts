@@ -1,33 +1,7 @@
-import { Transform, Type } from 'class-transformer';
-import {
-  IsInt,
-  IsNumber,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
-export class PaginationDto {
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @IsOptional()
-  page?: number = 1;
-
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  @IsOptional()
-  @Max(30)
-  limit?: number = 10;
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  search?: string;
-
+export class PaginationDto extends PaginatedQueryDto {
   @IsOptional()
   @IsString()
   priceSheetId?: string;

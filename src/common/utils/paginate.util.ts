@@ -1,17 +1,16 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PaginatedQueryDto, QueryFilterDto, QueryFiltersDto } from '../dto/paginated-query.dto';
+import {
+  PaginatedQueryDto,
+  QueryFilterDto,
+  QueryFiltersDto,
+} from '../dto/paginated-query.dto';
 
 export interface PaginatedQueryOptions {
-  /** Fields used for the `search` full-text OR. */
   searchFields: string[];
-  /** Fallback sort when `sort` is absent or invalid. */
-  defaultSort?: Record<string, 'asc' | 'desc'>;
-  /**
-   * If provided, filter/sort fields not in this list will throw 400.
-   * Omit to skip validation (trust the caller).
-   */
+  defaultSort?: Record<string, unknown>;
   allowedFields?: string[];
+  minSearchLength?: number;
 }
 
 export interface BuiltPaginatedQuery {
@@ -28,10 +27,6 @@ export interface PaginatedResponse<T> {
   limit: number;
   totalPages: number;
 }
-
-// ---------------------------------------------------------------------------
-// Public helpers
-// ---------------------------------------------------------------------------
 
 export function buildPaginatedQuery(
   dto: PaginatedQueryDto,
@@ -55,22 +50,22 @@ export function paginatedResponse<T>(
   return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 function buildWhere(
   search: string | undefined,
   filters: QueryFiltersDto | null,
-  { searchFields, allowedFields }: PaginatedQueryOptions,
+  { searchFields, allowedFields, minSearchLength = 1 }: PaginatedQueryOptions,
 ): Record<string, unknown> {
   const conditions: Record<string, unknown>[] = [];
 
-  if (search?.trim() && searchFields.length) {
+  const term = search?.trim();
+  if (term && term.length >= minSearchLength && searchFields.length) {
     conditions.push({
-      OR: searchFields.map((f) => ({
-        [f]: { contains: search.trim(), mode: Prisma.QueryMode.insensitive },
-      })),
+      OR: searchFields.map((f) =>
+        resolveNestedField(f, {
+          contains: term,
+          mode: Prisma.QueryMode.insensitive,
+        }),
+      ),
     });
   }
 
@@ -91,10 +86,14 @@ function buildFiltersWhere(
   const conditions: Record<string, unknown>[] = [];
 
   if (filters.or?.length) {
-    conditions.push({ OR: filters.or.map((f) => buildCondition(f, allowedFields)) });
+    conditions.push({
+      OR: filters.or.map((f) => buildCondition(f, allowedFields)),
+    });
   }
   if (filters.and?.length) {
-    conditions.push({ AND: filters.and.map((f) => buildCondition(f, allowedFields)) });
+    conditions.push({
+      AND: filters.and.map((f) => buildCondition(f, allowedFields)),
+    });
   }
 
   if (!conditions.length) return undefined;
@@ -116,9 +115,13 @@ function buildCondition(
         ? { in: Array.isArray(value) ? value : [value] }
         : operator === 'ne'
           ? { not: value }
-          : { [operator]: value, ...(isStringOp(operator) ? { mode: Prisma.QueryMode.insensitive } : {}) };
+          : {
+              [operator]: value,
+              ...(isStringOp(operator)
+                ? { mode: Prisma.QueryMode.insensitive }
+                : {}),
+            };
 
-  // Support dot-notation for relations: "role.name" → { role: { name: ... } }
   return resolveNestedField(field, prismaCondition);
 }
 
@@ -136,8 +139,10 @@ function buildOrderBy(
   return resolveNestedField(sort.field, sort.order);
 }
 
-/** Converts "role.name" + condition → { role: { name: condition } } */
-function resolveNestedField(field: string, condition: unknown): Record<string, unknown> {
+function resolveNestedField(
+  field: string,
+  condition: unknown,
+): Record<string, unknown> {
   const parts = field.split('.');
   return parts.reduceRight<Record<string, unknown>>(
     (acc, part) => ({ [part]: acc }),
