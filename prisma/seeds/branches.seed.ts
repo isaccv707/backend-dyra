@@ -27,7 +27,7 @@ const BRANCHES = [
     phone: '3312345678',
     email: 'guadalajara@dyranalitica.com',
     urlResults: 'https://resultados.dyranalitica.com',
-    priceSheetId: PRICE_SHEETS.JALISCO.id,
+    priceSheet: PRICE_SHEETS.JALISCO,
     stateName: 'Jalisco',
     address: {
       street: 'Av. Vallarta',
@@ -44,7 +44,7 @@ const BRANCHES = [
     phone: '3121234567',
     email: 'colima@dyranalitica.com',
     urlResults: 'https://resultados.dyranalitica.com',
-    priceSheetId: PRICE_SHEETS.COLIMA.id,
+    priceSheet: PRICE_SHEETS.COLIMA,
     stateName: 'Colima',
     address: {
       street: 'Blvd. Camino Real',
@@ -59,7 +59,7 @@ const BRANCHES = [
 
 export async function seedBranches(prisma: PrismaClient) {
   for (const branch of BRANCHES) {
-    const { id, stateName, address, priceSheetId, schedules, ...branchData } =
+    const { id, stateName, address, priceSheet, schedules, ...branchData } =
       branch;
 
     const state = await prisma.state.findUnique({ where: { name: stateName } });
@@ -69,21 +69,12 @@ export async function seedBranches(prisma: PrismaClient) {
       );
     }
 
-    const priceSheet = await prisma.priceSheets.findUnique({
-      where: { id: priceSheetId },
-    });
-    if (!priceSheet) {
-      throw new Error(
-        `PriceSheet '${priceSheetId}' no encontrado. Ejecuta seedStudies primero.`,
-      );
-    }
-
     const existing = await prisma.branch.findUnique({ where: { id } });
 
     if (existing) {
       await prisma.branch.update({
         where: { id },
-        data: { ...branchData, stateId: state.id, priceSheetId },
+        data: { ...branchData, stateId: state.id },
       });
     } else {
       const createdAddress = await prisma.address.create({ data: address });
@@ -92,11 +83,22 @@ export async function seedBranches(prisma: PrismaClient) {
           id,
           ...branchData,
           stateId: state.id,
-          priceSheetId,
           addressId: createdAddress.id,
         },
       });
     }
+
+    await prisma.priceSheets.upsert({
+      where: { id: priceSheet.id },
+      update: { branchId: id, isPublic: true },
+      create: {
+        id: priceSheet.id,
+        name: priceSheet.name,
+        description: priceSheet.description,
+        branchId: id,
+        isPublic: true,
+      },
+    });
 
     for (const schedule of schedules) {
       await prisma.branchSchedule.upsert({

@@ -35,9 +35,9 @@ export class ServicesService {
     });
   }
 
-  async findAll(branchId?: string) {
+  async findAll(branchId?: string, priceSheetId?: string) {
     if (branchId) {
-      return this.findAllByBranch(branchId);
+      return this.findAllByBranch(branchId, priceSheetId);
     }
 
     return await this.prisma.service.findMany({
@@ -58,13 +58,21 @@ export class ServicesService {
     });
   }
 
-  private async findAllByBranch(branchId: string) {
-    const activePriceSheetId =
-      await this.branchesService.resolveBranchPriceSheetId(branchId);
+  private async findAllByBranch(branchId: string, priceSheetId?: string) {
+    const activePriceSheetId = priceSheetId
+      ? (
+          await this.prisma.priceSheets.findFirst({
+            where: { id: priceSheetId, branchId, isActive: true },
+            select: { id: true },
+          })
+        )?.id
+      : await this.branchesService.resolveBranchPriceSheetId(branchId);
 
-    if (activePriceSheetId === null) {
+    if (!activePriceSheetId) {
       throw new NotFoundException(
-        `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
+        priceSheetId
+          ? `La hoja de precios ${priceSheetId} no pertenece a la sucursal ${branchId}.`
+          : `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
       );
     }
 

@@ -125,13 +125,28 @@ export class QuotationsService {
         );
       }
 
-      const priceSheetId = await this.branchesService.resolveBranchPriceSheetId(
-        dto.branchId,
-      );
-      if (!priceSheetId) {
-        throw new BadRequestException(
-          'La sucursal seleccionada no tiene una lista de precios configurada.',
+      let priceSheetId: string | null;
+
+      if (dto.priceSheetId) {
+        const priceSheet = await this.prisma.priceSheets.findFirst({
+          where: { id: dto.priceSheetId, branchId: dto.branchId, isActive: true },
+          select: { id: true },
+        });
+        if (!priceSheet) {
+          throw new BadRequestException(
+            'La hoja de precios indicada no pertenece a la sucursal seleccionada.',
+          );
+        }
+        priceSheetId = priceSheet.id;
+      } else {
+        priceSheetId = await this.branchesService.resolveBranchPriceSheetId(
+          dto.branchId,
         );
+        if (!priceSheetId) {
+          throw new BadRequestException(
+            'La sucursal seleccionada no tiene una lista de precios pública configurada.',
+          );
+        }
       }
 
       const entries = await this.prisma.studyOnPriceSheet.findMany({

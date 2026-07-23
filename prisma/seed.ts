@@ -35,12 +35,12 @@ async function main() {
   await seedServices(prisma);
   console.log('✅ Services seeded.');
 
-  // 3. Al final los Estudios (Dependen de States y Services)
+  // 3. Sucursales (dependen de States; crean también sus PriceSheets)
+  await seedBranches(prisma);
+
+  // 4. Estudios (dependen de Services y de las PriceSheets de las sucursales)
   await seedStudies(prisma);
   console.log('✅ Studies (with prices) seeded.');
-
-  // 4. Sucursales (dependen de States y PriceSheets)
-  await seedBranches(prisma);
 
   // 5. Vincula servicios exclusivos a sus sucursales (depende de Branches y Services)
   await linkServiceBranches(prisma);
