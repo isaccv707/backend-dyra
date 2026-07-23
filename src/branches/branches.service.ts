@@ -14,8 +14,7 @@ export class BranchesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createBranchDto: CreateBranchDto) {
-    const { address, stateId, priceSheetId, schedules, ...branchData } =
-      createBranchDto;
+    const { address, stateId, schedules, ...branchData } = createBranchDto;
 
     const existingBranch = await this.prisma.branch.findUnique({
       where: { name: branchData.name },
@@ -36,11 +35,6 @@ export class BranchesService {
         address: {
           create: address,
         },
-        ...(priceSheetId && {
-          priceSheet: {
-            connect: { id: priceSheetId },
-          },
-        }),
         ...(schedules?.length && {
           schedules: {
             create: schedules,
@@ -61,7 +55,7 @@ export class BranchesService {
     return this.prisma.branch.findMany({
       include: {
         address: true,
-        priceSheet: true,
+        priceSheets: true,
         state: true,
       },
     });
@@ -102,8 +96,7 @@ export class BranchesService {
   }
 
   async update(id: string, updateBranchDto: UpdateBranchDto) {
-    const { address, stateId, priceSheetId, schedules, ...branchData } =
-      updateBranchDto;
+    const { address, stateId, schedules, ...branchData } = updateBranchDto;
 
     // Ensure branch exists
     await this.findOne(id);
@@ -128,11 +121,6 @@ export class BranchesService {
         ...(stateId && {
           state: {
             connect: { id: stateId },
-          },
-        }),
-        ...(priceSheetId && {
-          priceSheet: {
-            connect: { id: priceSheetId },
           },
         }),
         ...(address && {
@@ -168,13 +156,18 @@ export class BranchesService {
   async resolveBranchPriceSheetId(branchId: string): Promise<string | null> {
     const branch = await this.prisma.branch.findUnique({
       where: { id: branchId },
-      select: { priceSheetId: true },
+      select: { id: true },
     });
 
     if (!branch) {
       throw new NotFoundException(`Branch with ID '${branchId}' not found`);
     }
 
-    return branch.priceSheetId;
+    const publicPriceSheet = await this.prisma.priceSheets.findFirst({
+      where: { branchId, isPublic: true, isActive: true },
+      select: { id: true },
+    });
+
+    return publicPriceSheet?.id ?? null;
   }
 }

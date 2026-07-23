@@ -14,27 +14,8 @@ export async function seedStudies(prisma: PrismaClient) {
     );
   }
 
-  // Create or get PriceSheets for Jalisco and Colima
-  const jaliscoSheet = await prisma.priceSheets.upsert({
-    where: { id: PRICE_SHEETS.JALISCO.id }, // Just a stable ID for seeding
-    update: {},
-    create: {
-      id: PRICE_SHEETS.JALISCO.id,
-      name: PRICE_SHEETS.JALISCO.name,
-      description: PRICE_SHEETS.JALISCO.description,
-    },
-  });
-
-  const colimaSheet = await prisma.priceSheets.upsert({
-    where: { id: PRICE_SHEETS.COLIMA.id },
-    update: {},
-    create: {
-      id: PRICE_SHEETS.COLIMA.id,
-      name: PRICE_SHEETS.COLIMA.name,
-      description: PRICE_SHEETS.COLIMA.description,
-    },
-  });
-
+  // Las PriceSheets de Jalisco y Colima ya fueron creadas por seedBranches
+  // (ahora cada hoja de precios pertenece a una sucursal).
   for (const study of STUDIES) {
     const { price, serviceId, ...studyData } = study;
 
@@ -48,8 +29,8 @@ export async function seedStudies(prisma: PrismaClient) {
     }
 
     const priceSheetEntries = [
-      { price, priceSheetId: jaliscoSheet.id, showPrice: true },
-      { price: 0, priceSheetId: colimaSheet.id, showPrice: false },
+      { price, priceSheetId: PRICE_SHEETS.JALISCO.id, showPrice: true },
+      { price: 0, priceSheetId: PRICE_SHEETS.COLIMA.id, showPrice: false },
     ];
 
     await prisma.study.upsert({

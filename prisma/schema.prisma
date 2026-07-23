@@ -73,8 +73,7 @@ model Branch {
   addressId Int     @unique @map("address_id")
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
 
-  priceSheetId String?      @map("price_sheet_id")
-  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
+  priceSheets PriceSheets[]
 
   banners    Banner[]
   posts      Post[]
@@ -173,9 +172,13 @@ model PriceSheets {
   name               String
   description        String
   isActive           Boolean             @default(true)
-  branches           Branch[]
+  isPublic           Boolean             @default(false) @map("is_public")
   studyOnPriceSheets StudyOnPriceSheet[]
 
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
   @@map("price_sheets")
 }
 

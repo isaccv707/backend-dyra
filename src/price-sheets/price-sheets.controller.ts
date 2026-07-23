@@ -4,8 +4,10 @@ import { PriceSheetsService } from './price-sheets.service';
 import { CreatePriceSheetDto } from './dto/create-price-sheet.dto';
 import { UpdatePriceSheetDto } from './dto/update-price-sheet.dto';
 import { PaginationPriceSheetDto } from './dto/pagination-price-sheet.dto';
-import { Public } from 'src/auth/decorators/public.decorator';
+import { FindPriceSheetsDto } from './dto/find-price-sheets.dto';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 
 @ApiTags('price-sheets')
 @Controller('price-sheets')
@@ -21,25 +23,31 @@ export class PriceSheetsController {
     return this.priceSheetsService.create(createPriceSheetDto);
   }
 
-  @ApiOperation({ summary: 'Listar tabuladores', description: 'Devuelve todos los tabuladores de precios.' })
-  @ApiResponse({ status: 200, description: 'Listado de tabuladores.' })
-  @Public()
+  @ApiOperation({ summary: 'Listar tabuladores', description: 'Devuelve, paginados, todos los tabuladores de precios (públicos y privados) de las sucursales a las que tiene acceso el usuario autenticado. Un usuario sin sucursales asignadas ve todas.' })
+  @ApiResponse({ status: 200, description: 'Listado paginado de tabuladores.' })
+  @ApiBearerAuth()
+  @Permissions('price-sheets:read')
   @Get()
-  findAll() {
-    return this.priceSheetsService.findAll();
+  findAll(
+    @Query() dto: FindPriceSheetsDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.priceSheetsService.findAll(dto, user);
   }
 
-  @ApiOperation({ summary: 'Obtener tabulador', description: 'Devuelve un tabulador de precios por su identificador, con sus estudios de forma paginada.' })
+  @ApiOperation({ summary: 'Obtener tabulador', description: 'Devuelve un tabulador de precios por su identificador, público o privado, con sus estudios de forma paginada.' })
   @ApiParam({ name: 'id', description: 'Identificador del tabulador.' })
   @ApiResponse({ status: 200, description: 'Tabulador encontrado.' })
   @ApiResponse({ status: 404, description: 'Tabulador no encontrado.' })
-  @Public()
+  @ApiBearerAuth()
+  @Permissions('price-sheets:read')
   @Get(':id')
   findOne(
     @Param('id') id: string,
     @Query() paginationPriceSheetDto: PaginationPriceSheetDto,
+    @CurrentUser() user: BranchScopedUser,
   ) {
-    return this.priceSheetsService.findOne(id, paginationPriceSheetDto);
+    return this.priceSheetsService.findOne(id, paginationPriceSheetDto, user);
   }
 
   @ApiOperation({ summary: 'Actualizar tabulador', description: 'Actualiza los datos de un tabulador de precios existente.' })

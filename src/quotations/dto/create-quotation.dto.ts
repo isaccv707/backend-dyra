@@ -52,4 +52,8 @@ export class CreateQuotationDto {
     @IsOptional()
     @IsUUID()
     branchId?: string;
+
+    @IsOptional()
+    @IsUUID()
+    priceSheetId?: string;
 }

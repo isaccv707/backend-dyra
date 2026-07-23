@@ -4,4 +4,8 @@ export class FindServicesDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  priceSheetId?: string;
 }

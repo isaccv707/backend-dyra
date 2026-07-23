@@ -39,9 +39,6 @@ export class CreateBranchDto {
   @IsNotEmpty()
   address!: CreateAddressDto;
 
-  @IsString()
-  priceSheetId!: string;
-
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
