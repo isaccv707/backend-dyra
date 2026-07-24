@@ -1,8 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 import { SERVICES } from '../constants/services';
 
+/** Debe ejecutarse después de seedBranches: cada servicio requiere un branchId. */
 export async function seedServices(prisma: PrismaClient) {
+  const branches = await prisma.branch.findMany({ select: { id: true, name: true } });
+  const branchIdByName = new Map(branches.map((b) => [b.name, b.id]));
+
   for (const service of SERVICES) {
+    const branchId = branchIdByName.get(service.branchName);
+    if (!branchId) {
+      throw new Error(
+        `No se encontró la sucursal '${service.branchName}' para el servicio '${service.name}'. Ejecuta seedBranches primero.`,
+      );
+    }
+
     await prisma.service.upsert({
       where: { slug: service.slug },
       update: {
@@ -10,6 +21,7 @@ export async function seedServices(prisma: PrismaClient) {
         description: service.description,
         imageUrl: service.imageUrl,
         mobileImageUrl: service.mobileImageUrl,
+        branchId,
       },
       create: {
         name: service.name,
@@ -18,6 +30,7 @@ export async function seedServices(prisma: PrismaClient) {
         imageUrl: service.imageUrl,
         mobileImageUrl: service.mobileImageUrl,
         isActive: true,
+        branchId,
         benefits: {
           create: service.benefits,
         },
@@ -30,33 +43,4 @@ export async function seedServices(prisma: PrismaClient) {
     });
   }
   console.log('✅ Seeding services finished.');
-}
-
-/**
- * Debe ejecutarse después de seedBranches: conecta los servicios que
- * declaran `branchNames` a esas sucursales (visibilidad exclusiva).
- * Los servicios sin `branchNames` quedan globales (visibles en todas).
- */
-export async function linkServiceBranches(prisma: PrismaClient) {
-  for (const service of SERVICES) {
-    if (!service.branchNames?.length) continue;
-
-    const branches = await prisma.branch.findMany({
-      where: { name: { in: service.branchNames } },
-      select: { id: true },
-    });
-
-    if (branches.length !== service.branchNames.length) {
-      throw new Error(
-        `No se encontraron todas las sucursales para el servicio '${service.name}'. Ejecuta seedBranches primero.`,
-      );
-    }
-
-    await prisma.service.update({
-      where: { slug: service.slug },
-      data: { branches: { set: branches.map((b) => ({ id: b.id })) } },
-    });
-  }
-
-  console.log('✅ Service-branch links seeded.');
 }

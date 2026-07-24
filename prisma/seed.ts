@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { seedStudies } from './seeds/studies.seed';
-import { seedServices, linkServiceBranches } from './seeds/services.seed';
+import { seedServices } from './seeds/services.seed';
 import { seedStates } from './seeds/states.seed';
 import { seedRolesAndPermissions } from './seeds/roles-permissions.seed';
 import { seedAdminUser } from './seeds/admin-user.seed';
@@ -31,37 +31,34 @@ async function main() {
   await seedStates(prisma);
   console.log('✅ States seeded.');
 
-  // 2. Luego los Servicios (Nivel base para los estudios)
+  // 2. Sucursales (dependen de States; crean también sus PriceSheets)
+  await seedBranches(prisma);
+
+  // 3. Servicios (cada servicio requiere un branchId de una sucursal existente)
   await seedServices(prisma);
   console.log('✅ Services seeded.');
-
-  // 3. Sucursales (dependen de States; crean también sus PriceSheets)
-  await seedBranches(prisma);
 
   // 4. Estudios (dependen de Services y de las PriceSheets de las sucursales)
   await seedStudies(prisma);
   console.log('✅ Studies (with prices) seeded.');
 
-  // 5. Vincula servicios exclusivos a sus sucursales (depende de Branches y Services)
-  await linkServiceBranches(prisma);
-
-  // 6. Banners (dependen de las sucursales)
+  // 5. Banners (dependen de las sucursales)
   await seedBanners(prisma);
 
-  // 7. Autores (independientes)
+  // 6. Autores (independientes)
   await seedAuthors(prisma);
 
-  // 8. Posts (dependen de Authors y Branches)
+  // 7. Posts (dependen de Authors y Branches)
   await seedPosts(prisma);
 
-  // 9. Reseñas (dependen de Branches)
+  // 8. Reseñas (dependen de Branches)
   await seedReviews(prisma);
 
-  // 10. Roles y permisos (independientes)
+  // 9. Roles y permisos (independientes)
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
-  // 11. Usuario administrador (depende del rol Administrador)
+  // 10. Usuario administrador (depende del rol Administrador)
   await seedAdminUser(prisma);
 
   console.log('All seeds completed successfully!');

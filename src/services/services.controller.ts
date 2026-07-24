@@ -25,8 +25,8 @@ export class ServicesController {
   @ApiResponse({ status: 200, description: 'Listado de servicios.' })
   @Public()
   @Get()
-  findAll(@Query() { branchId, priceSheetId }: FindServicesDto) {
-    return this.servicesService.findAll(branchId, priceSheetId);
+  findAll(@Query() dto: FindServicesDto) {
+    return this.servicesService.findAll(dto);
   }
 
   @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal.' })

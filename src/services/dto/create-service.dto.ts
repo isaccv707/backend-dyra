@@ -80,8 +80,7 @@ export class CreateServiceDto {
   @IsOptional()
   details?: ServiceDetailDto[];
 
-  @IsOptional()
-  @IsArray()
-  @IsUUID('4', { each: true })
-  branchIds?: string[];
+  @IsUUID()
+  @IsNotEmpty()
+  branchId!: string;
 }

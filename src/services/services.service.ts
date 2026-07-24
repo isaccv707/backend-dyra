@@ -1,11 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
+import { FindServicesDto } from './dto/find-services.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { BranchesService } from 'src/branches/branches.service';
-import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
 import { Prisma } from '@prisma/client';
+
+const SERVICE_ALLOWED_FIELDS = ['name', 'createdAt'];
 
 @Injectable()
 export class ServicesService {
@@ -15,7 +21,7 @@ export class ServicesService {
   ) {}
 
   async create(createServiceDto: CreateServiceDto) {
-    const { benefits, details, branchIds, ...serviceData } = createServiceDto;
+    const { benefits, details, branchId, ...serviceData } = createServiceDto;
     const slug = generateSlug(serviceData.name);
 
     return this.prisma.service.create({
@@ -24,9 +30,7 @@ export class ServicesService {
         slug,
         benefits: benefits ? { create: benefits } : undefined,
         details: details ? { create: details } : undefined,
-        ...(branchIds?.length && {
-          branches: { connect: branchIds.map((id) => ({ id })) },
-        }),
+        branch: { connect: { id: branchId } },
       },
       include: {
         benefits: true,
@@ -35,30 +39,44 @@ export class ServicesService {
     });
   }
 
-  async findAll(branchId?: string, priceSheetId?: string) {
-    if (branchId) {
-      return this.findAllByBranch(branchId, priceSheetId);
+  async findAll(dto: FindServicesDto) {
+    if (dto.branchId) {
+      return this.findAllByBranch(dto.branchId, dto);
     }
 
-    return await this.prisma.service.findMany({
-      where: {
-        isActive: true,
-        ...branchScopeWhere(branchId),
-      } as Prisma.ServiceWhereInput,
-      include: {
-        benefits: true,
-        details: true,
-        _count: {
-          select: { studies: true },
-        },
-      },
-      orderBy: {
-        name: 'asc',
-      },
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['name', 'description'],
+      allowedFields: SERVICE_ALLOWED_FIELDS,
+      defaultSort: { name: 'asc' },
     });
+
+    const whereClause: Prisma.ServiceWhereInput = {
+      AND: [where, { isActive: true }],
+    };
+
+    const [services, total] = await this.prisma.$transaction([
+      this.prisma.service.findMany({
+        where: whereClause,
+        skip,
+        take,
+        orderBy,
+        include: {
+          benefits: true,
+          details: true,
+          branch: true,
+          _count: {
+            select: { studies: true },
+          },
+        },
+      }),
+      this.prisma.service.count({ where: whereClause }),
+    ]);
+
+    return paginatedResponse(services, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  private async findAllByBranch(branchId: string, priceSheetId?: string) {
+  private async findAllByBranch(branchId: string, dto: FindServicesDto) {
+    const { priceSheetId } = dto;
     const activePriceSheetId = priceSheetId
       ? (
           await this.prisma.priceSheets.findFirst({
@@ -76,30 +94,43 @@ export class ServicesService {
       );
     }
 
-    const services = await this.prisma.service.findMany({
-      where: {
-        isActive: true,
-        ...branchScopeWhere(branchId),
-      } as Prisma.ServiceWhereInput,
-      include: {
-        benefits: true,
-        details: true,
-        _count: {
-          select: { studies: true },
-        },
-        studies: {
-          where: { isActive: true },
-          include: {
-            priceSheets: {
-              where: { priceSheetId: activePriceSheetId },
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['name', 'description'],
+      allowedFields: SERVICE_ALLOWED_FIELDS,
+      defaultSort: { name: 'asc' },
+    });
+
+    const whereClause: Prisma.ServiceWhereInput = {
+      AND: [where, { isActive: true, branchId }],
+    };
+
+    const [services, total] = await this.prisma.$transaction([
+      this.prisma.service.findMany({
+        where: whereClause,
+        skip,
+        take,
+        orderBy,
+        include: {
+          branch: true,
+          benefits: true,
+          details: true,
+          _count: {
+            select: { studies: true },
+          },
+          studies: {
+            where: { isActive: true },
+            include: {
+              priceSheets: {
+                where: { priceSheetId: activePriceSheetId },
+              },
             },
           },
         },
-      },
-      orderBy: { name: 'asc' },
-    });
+      }),
+      this.prisma.service.count({ where: whereClause }),
+    ]);
 
-    return services.map((service) => ({
+    const data = services.map((service) => ({
       ...service,
       studies: service.studies.map((study) => {
         const regionalPrice = study.priceSheets[0];
@@ -122,6 +153,8 @@ export class ServicesService {
         };
       }),
     }));
+
+    return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
   async findOne(id: string, branchId?: string) {
@@ -131,14 +164,13 @@ export class ServicesService {
 
     const service = await this.prisma.service.findFirst({
       where: {
-        AND: [
-          { OR: [{ id }, { slug: id }] },
-          branchScopeWhere(branchId) as Prisma.ServiceWhereInput,
-        ],
+        OR: [{ id }, { slug: id }],
+        ...(branchId && { branchId }),
       },
       include: {
         benefits: true,
         details: true,
+        branch: true,
         studies: {
           where: { isActive: true },
           select: {
@@ -165,7 +197,7 @@ export class ServicesService {
     // 1. Verificación de existencia del DTO
     if (!updateServiceDto) return;
 
-    const { benefits, details, branchIds, ...serviceData } = updateServiceDto;
+    const { benefits, details, branchId, ...serviceData } = updateServiceDto;
 
     const existingService = await this.prisma.service.findUnique({
       where: { id },
@@ -194,8 +226,8 @@ export class ServicesService {
             benefits && benefits.length > 0 ? { create: benefits } : undefined,
           details:
             details && details.length > 0 ? { create: details } : undefined,
-          ...(branchIds !== undefined && {
-            branches: { set: branchIds.map((id) => ({ id })) },
+          ...(branchId !== undefined && {
+            branch: { connect: { id: branchId } },
           }),
         },
         include: {
