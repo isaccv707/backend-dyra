@@ -134,11 +134,13 @@ model Service {
   benefits Benefit[]
   details  ServiceDetail[]
 
-  branches Branch[]
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([branchId])
   @@map("services")
 }
 

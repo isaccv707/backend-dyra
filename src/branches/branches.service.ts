@@ -6,8 +6,6 @@ import {
 import { CreateBranchDto } from './dto/create-branch.dto';
 import { UpdateBranchDto } from './dto/update-branch.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class BranchesService {
@@ -80,8 +78,8 @@ export class BranchesService {
     const services = await this.prisma.service.findMany({
       where: {
         isActive: true,
-        ...branchScopeWhere(id),
-      } as Prisma.ServiceWhereInput,
+        branchId: id,
+      },
       include: {
         benefits: true,
         details: true,

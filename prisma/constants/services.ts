@@ -7,8 +7,8 @@ interface RawService {
     mobileImageUrl: string;
     benefits: { title: string; description: string; icon: string }[];
     details: { title: string; description: string }[];
-    /** Sucursales a las que queda exclusivo este servicio. Si se omite, es global (visible en todas). */
-    branchNames?: string[];
+    /** Sucursal a la que pertenece este servicio. */
+    branchName: string;
 }
 
 const rawServices: RawService[] = [
@@ -28,7 +28,8 @@ const rawServices: RawService[] = [
             { title: 'Hematología', description: 'Conteo sanguíneo completo para detectar anemias e infecciones.' },
             { title: 'Inmunología', description: 'Detección de anticuerpos y respuesta del sistema inmune.' },
             { title: 'Uroanálisis', description: 'Examen general de orina para diagnóstico renal y metabólico.' }
-        ]
+        ],
+        branchName: 'Sucursal Guadalajara'
     },
     {
         name: 'Salud Empresarial',
@@ -46,7 +47,8 @@ const rawServices: RawService[] = [
             { title: 'Exámenes de Ingreso', description: 'Validación médica para nuevos colaboradores.' },
             { title: 'Detección de Drogas', description: 'Tamizaje toxicológico multienfoque.' },
             { title: 'Campañas de Vacunación', description: 'Gestión de jornadas preventivas en el centro de trabajo.' }
-        ]
+        ],
+        branchName: 'Sucursal Guadalajara'
     },
     {
         name: 'Tomas a Domicilio',
@@ -64,7 +66,8 @@ const rawServices: RawService[] = [
             { title: 'Mismo tiempo de entrega', description: 'El traslado no afecta la velocidad de tus resultados.' },
             { title: 'Pago al momento', description: 'Aceptamos tarjetas de crédito o efectivo en tu domicilio.' },
             { title: 'Cobertura Amplia', description: 'Servicio disponible en toda el área metropolitana.' }
-        ]
+        ],
+        branchName: 'Sucursal Guadalajara'
     },
     {
         name: 'Laboratorio Molecular y Genética',
@@ -83,7 +86,7 @@ const rawServices: RawService[] = [
             { title: 'Farmacogenética', description: 'Análisis de respuesta a medicamentos según perfil genético.' },
             { title: 'Predisposición Genética', description: 'Tamizaje de riesgo hereditario para enfermedades comunes.' }
         ],
-        branchNames: ['Sucursal Guadalajara']
+        branchName: 'Sucursal Guadalajara'
     },
     {
         name: 'Medicina del Viajero',
@@ -102,7 +105,7 @@ const rawServices: RawService[] = [
             { title: 'Botiquín Recomendado', description: 'Orientación sobre medicamentos esenciales de viaje.' },
             { title: 'Seguimiento Post-viaje', description: 'Revisión de síntomas al regreso de zonas de riesgo.' }
         ],
-        branchNames: ['Sucursal Colima']
+        branchName: 'Sucursal Colima'
     }
 ]
 

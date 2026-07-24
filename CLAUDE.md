@@ -50,11 +50,12 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 
 **Slugs:** Use `generateSlug()` from `src/common/utils/slugger.ts` when creating/updating `posts`, `services`, or `studies`.
 
-**Branch scoping:** Use `branchScopeWhere(branchId)` from `src/common/utils/branch-scope.util.ts` for resources optionally scoped to a branch via a `Branch[]` many-to-many relation (currently: `Banner`, `Post`, `Service`). A resource with no branches assigned is "global" (always shows); one with branches assigned only shows when `branchId` matches. Spread it unconditionally into the Prisma `where` — it no-ops (`{}`) when `branchId` is undefined.
+**Branch scoping:** Use `branchScopeWhere(branchId)` from `src/common/utils/branch-scope.util.ts` for resources optionally scoped to a branch via a `Branch[]` many-to-many relation (currently: `Banner`, `Post`). A resource with no branches assigned is "global" (always shows); one with branches assigned only shows when `branchId` matches. Spread it unconditionally into the Prisma `where` — it no-ops (`{}`) when `branchId` is undefined.
 
 Intentional exceptions — do not "unify" these into `branchScopeWhere`:
 - `Review`: strict `where.branchId` match, no "global" concept. A branch's review must never appear as belonging to all branches.
-- `Study`/pricing: resolved via `Branch.priceSheetId -> StudyOnPriceSheet`, independent of `Service.branches`. Variable pricing per branch, not visibility.
+- `Service`: strict `where.branchId` match via a required single `branchId` FK (not a `Branch[]` m2m). Every service belongs to exactly one branch — there is no "global" service. `CreateServiceDto`/`UpdateServiceDto` take a single `branchId`, not `branchIds`.
+- `Study`/pricing: resolved via `PriceSheets.branchId -> StudyOnPriceSheet`, independent of `Service.branchId`. Variable pricing per branch, not visibility.
 
 **DTOs:** Use `class-validator` decorators. Always use `@Type(() => ...)` from `class-transformer` for nested objects and numeric coercion (query params arrive as strings).
 
