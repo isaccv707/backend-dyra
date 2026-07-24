@@ -45,8 +45,6 @@ export class CreatePostDto {
     @Type(() => CreateContentBlockDto)
     contentBlocks: CreateContentBlockDto[];
 
-    @IsOptional()
-    @IsArray()
-    @IsUUID('4', { each: true })
-    branchIds?: string[];
+    @IsUUID()
+    branchId!: string;
 }

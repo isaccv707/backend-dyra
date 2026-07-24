@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
@@ -6,7 +6,6 @@ import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
-import { branchScopeWhere } from 'src/common/utils/branch-scope.util';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 
 const POST_ALLOWED_FIELDS = ['title', 'category', 'status', 'createdAt'];
@@ -15,20 +14,39 @@ const POST_ALLOWED_FIELDS = ['title', 'category', 'status', 'createdAt'];
 export class PostsService {
   constructor(private readonly prisma: PrismaService) { }
 
+  private async assertAuthorBelongsToBranch(authorId: string, branchId: string) {
+    const author = await this.prisma.author.findUnique({
+      where: { id: authorId },
+      select: { branchId: true },
+    });
+    if (!author) {
+      throw new NotFoundException(`Author with id ${authorId} not found`);
+    }
+    if (author.branchId !== branchId) {
+      throw new BadRequestException(
+        'El autor seleccionado pertenece a otra sucursal',
+      );
+    }
+  }
+
   async create(createPostDto: CreatePostDto) {
-    const { contentBlocks, title, branchIds, ...postData } = createPostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } = createPostDto;
+
+    if (authorId) {
+      await this.assertAuthorBelongsToBranch(authorId, branchId);
+    }
+
     try {
       return await this.prisma.post.create({
         data: {
           ...postData,
+          authorId,
+          branchId,
           title,
           slug: generateSlug(title),
           contentBlocks: {
             create: contentBlocks,
           },
-          ...(branchIds?.length && {
-            branches: { connect: branchIds.map((id) => ({ id })) },
-          }),
         },
         include: {
           contentBlocks: {
@@ -52,7 +70,8 @@ export class PostsService {
     });
 
     const whereClause: Prisma.PostWhereInput = {
-      AND: [where, branchScopeWhere(branchId)],
+      ...where,
+      ...(branchId && { branchId }),
       ...(status && { status }),
       ...(category && { category }),
       ...(tag && { tags: { has: tag } }),
@@ -76,13 +95,14 @@ export class PostsService {
     return paginatedResponse(posts, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, branchId?: string) {
     const post = await this.prisma.post.findFirst({
       where: {
         OR: [
           { id },
           { slug: id }
-        ]
+        ],
+        ...(branchId && { branchId }),
       },
       include: {
         author: {
@@ -100,7 +120,18 @@ export class PostsService {
   }
 
   async update(id: string, updatePostDto: UpdatePostDto) {
-    const { contentBlocks, title, branchIds, ...postData } = updatePostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } = updatePostDto;
+
+    const existingPost = await this.prisma.post.findUnique({ where: { id } });
+    if (!existingPost) {
+      throw new NotFoundException(`Post with id ${id} not found`);
+    }
+
+    const effectiveBranchId = branchId ?? existingPost.branchId;
+    const effectiveAuthorId = authorId !== undefined ? authorId : existingPost.authorId;
+    if (effectiveAuthorId) {
+      await this.assertAuthorBelongsToBranch(effectiveAuthorId, effectiveBranchId);
+    }
 
     const dataToUpdate: any = { ...postData };
     if (title) {
@@ -115,8 +146,12 @@ export class PostsService {
       }
     }
 
-    if (branchIds !== undefined) {
-      dataToUpdate.branches = { set: branchIds.map((id) => ({ id })) };
+    if (branchId) {
+      dataToUpdate.branchId = branchId;
+    }
+
+    if (authorId !== undefined) {
+      dataToUpdate.authorId = authorId;
     }
 
     try {
@@ -135,8 +170,6 @@ export class PostsService {
     } catch (error: any) {
       handleDatabaseErrors(error, 'Post');
     }
-
-    return `This action updates a #${id} post`;
   }
 
   async remove(id: string) {

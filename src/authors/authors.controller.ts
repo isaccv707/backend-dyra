@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Query, Param, Delete, Patch, ParseUUIDPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthorsService } from './authors.service';
 import { CreateAuthorDto } from './dto/create-author.dto';
 import { PaginationAuthorDto } from './dto/pagination-author.dto';
@@ -21,7 +21,8 @@ export class AuthorsController {
     return this.authorsService.createAuthor(createAuthorDto)
   }
 
-  @ApiOperation({ summary: 'Listar autores', description: 'Devuelve el listado paginado de autores.' })
+  @ApiOperation({ summary: 'Listar autores', description: 'Devuelve el listado paginado de autores de una sucursal.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar autores.' })
   @ApiResponse({ status: 200, description: 'Listado paginado de autores.' })
   @Public()
   @Get()

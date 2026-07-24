@@ -45,7 +45,7 @@ async function main() {
   // 5. Banners (dependen de las sucursales)
   await seedBanners(prisma);
 
-  // 6. Autores (independientes)
+  // 6. Autores (dependen de las sucursales)
   await seedAuthors(prisma);
 
   // 7. Posts (dependen de Authors y Branches)

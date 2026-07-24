@@ -7,39 +7,36 @@ const generateSlug = (text: string) =>
 
 export async function seedPosts(prisma: PrismaClient) {
   for (const post of POSTS) {
-    const { authorName, branchNames, contentBlocks, ...postData } = post;
+    const { authorName, branchName, contentBlocks, ...postData } = post;
     const slug = generateSlug(post.title);
 
-    const author = await prisma.author.findFirst({ where: { name: authorName } });
-    if (!author) {
+    const branch = await prisma.branch.findFirst({ where: { name: branchName } });
+    if (!branch) {
       throw new Error(
-        `Autor '${authorName}' no encontrado. Ejecuta seedAuthors primero.`,
+        `Sucursal '${branchName}' no encontrada. Ejecuta seedBranches primero.`,
       );
     }
 
-    let branches: { id: string }[] = [];
-    if (branchNames?.length) {
-      const found = await prisma.branch.findMany({
-        where: { name: { in: branchNames } },
-        select: { id: true },
-      });
-      if (found.length !== branchNames.length) {
-        throw new Error(
-          `No se encontraron todas las sucursales para el post '${post.title}'. Ejecuta seedBranches primero.`,
-        );
-      }
-      branches = found;
+    const author = await prisma.author.findFirst({
+      where: { name: authorName, branchId: branch.id },
+    });
+    if (!author) {
+      throw new Error(
+        `Autor '${authorName}' no encontrado en '${branchName}'. Ejecuta seedAuthors primero.`,
+      );
     }
 
-    const existing = await prisma.post.findUnique({ where: { slug } });
+    const existing = await prisma.post.findUnique({
+      where: { branchId_slug: { branchId: branch.id, slug } },
+    });
 
     if (existing) {
       await prisma.post.update({
-        where: { slug },
+        where: { branchId_slug: { branchId: branch.id, slug } },
         data: {
           ...postData,
           authorId: author.id,
-          branches: { set: branches.map((b) => ({ id: b.id })) },
+          branchId: branch.id,
           contentBlocks: {
             deleteMany: {},
             create: contentBlocks,
@@ -52,7 +49,7 @@ export async function seedPosts(prisma: PrismaClient) {
           ...postData,
           slug,
           authorId: author.id,
-          branches: branches.length ? { connect: branches.map((b) => ({ id: b.id })) } : undefined,
+          branchId: branch.id,
           contentBlocks: { create: contentBlocks },
         },
       });

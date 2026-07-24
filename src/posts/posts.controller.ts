@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -21,7 +21,8 @@ export class PostsController {
     return this.postsService.create(createPostDto);
   }
 
-  @ApiOperation({ summary: 'Listar publicaciones', description: 'Devuelve el listado paginado de publicaciones del blog.' })
+  @ApiOperation({ summary: 'Listar publicaciones', description: 'Devuelve el listado paginado de publicaciones del blog de una sucursal.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar publicaciones.' })
   @ApiResponse({ status: 200, description: 'Listado paginado de publicaciones.' })
   @Public()
   @Get()
@@ -29,14 +30,15 @@ export class PostsController {
     return this.postsService.findAll(PaginationPostDto);
   }
 
-  @ApiOperation({ summary: 'Obtener publicación', description: 'Devuelve una publicación por su identificador o slug.' })
+  @ApiOperation({ summary: 'Obtener publicación', description: 'Devuelve una publicación por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.' })
   @ApiParam({ name: 'id', description: 'Identificador o slug de la publicación.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal, recomendado al buscar por slug.' })
   @ApiResponse({ status: 200, description: 'Publicación encontrada.' })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada.' })
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.postsService.findOne(id);
+  findOne(@Param('id') id: string, @Query('branchId') branchId?: string) {
+    return this.postsService.findOne(id, branchId);
   }
 
   @ApiOperation({ summary: 'Actualizar publicación', description: 'Actualiza los datos de una publicación existente.' })

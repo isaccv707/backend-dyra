@@ -20,8 +20,8 @@ interface RawPost {
   category: string;
   authorName: string;
   contentBlocks: RawContentBlock[];
-  /** Sucursales a las que queda exclusivo este post. Si se omite, es global (visible en todas). */
-  branchNames?: string[];
+  /** Sucursal a la que pertenece este post — el contenido no se comparte entre sucursales. */
+  branchName: string;
 }
 
 export const POSTS: RawPost[] = [
@@ -40,6 +40,7 @@ export const POSTS: RawPost[] = [
     tags: ['prevención', 'salud general', 'chequeo anual'],
     category: 'Salud General',
     authorName: 'Fernanda López Ruiz',
+    branchName: 'Sucursal Guadalajara',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: '¿Por qué hacerte un chequeo anual?' },
       {
@@ -75,6 +76,7 @@ export const POSTS: RawPost[] = [
     tags: ['colesterol', 'bienestar', 'resultados'],
     category: 'Bienestar',
     authorName: 'Carlos Mendoza Vidal',
+    branchName: 'Sucursal Colima',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: 'Los cuatro valores clave' },
       {
@@ -105,7 +107,7 @@ export const POSTS: RawPost[] = [
     tags: ['guadalajara', 'sucursal', 'horarios'],
     category: 'Noticias',
     authorName: 'Roberto Silva Campos',
-    branchNames: ['Sucursal Guadalajara'],
+    branchName: 'Sucursal Guadalajara',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: 'Más horas para atenderte' },
       {
@@ -130,7 +132,7 @@ export const POSTS: RawPost[] = [
     tags: ['empresarial', 'guadalajara', 'alianzas'],
     category: 'Empresarial',
     authorName: 'Roberto Silva Campos',
-    branchNames: ['Sucursal Guadalajara'],
+    branchName: 'Sucursal Guadalajara',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: 'Salud ocupacional al alcance de más empresas' },
       {
@@ -155,7 +157,7 @@ export const POSTS: RawPost[] = [
     tags: ['colima', 'comunidad', 'prevención'],
     category: 'Noticias',
     authorName: 'Ana Torres Gómez',
-    branchNames: ['Sucursal Colima'],
+    branchName: 'Sucursal Colima',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: 'Salud preventiva para toda la comunidad' },
       {
@@ -180,7 +182,7 @@ export const POSTS: RawPost[] = [
     tags: ['colima', 'tomas a domicilio', 'servicio'],
     category: 'Servicios',
     authorName: 'Ana Torres Gómez',
-    branchNames: ['Sucursal Colima'],
+    branchName: 'Sucursal Colima',
     contentBlocks: [
       { type: BlockType.SUBTITLE, order: 1, content: 'Más colonias, la misma comodidad' },
       {

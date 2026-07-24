@@ -75,6 +75,7 @@ model Branch {
 
   priceSheets PriceSheets[]
 
+  authors    Author[]
   banners    Banner[]
   posts      Post[]
   reviews    Review[]
@@ -113,9 +114,10 @@ model Banner {
   startAt        DateTime?
   endAt          DateTime?
 
-  branches Branch[]
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
-  @@index([placement, isActive, order])
+  @@index([branchId, placement, isActive, order])
   @@map("banners")
 }
 
@@ -224,23 +226,29 @@ model Study {
 
 model Author {
   id      String  @id @default(uuid())
-  name    String  @unique
-  nameKey String  @unique
+  name    String
+  nameKey String
   avatar  String?
   bio     String?
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
   posts Post[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, name])
+  @@unique([branchId, nameKey])
+  @@index([branchId])
   @@map("authors")
 }
 
 model Post {
   id              String         @id @default(uuid())
   title           String
-  slug            String         @unique
+  slug            String
   description     String
   excerpt         String
   image           String?
@@ -254,11 +262,14 @@ model Post {
 
   author Author? @relation(fields: [authorId], references: [id])
 
-  branches Branch[]
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, slug])
+  @@index([branchId])
   @@map("posts")
 }
 

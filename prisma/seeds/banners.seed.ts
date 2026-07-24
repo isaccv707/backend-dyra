@@ -18,12 +18,12 @@ export async function seedBanners(prisma: PrismaClient) {
       where: { id },
       update: {
         ...bannerData,
-        branches: { set: [{ id: branch.id }] },
+        branchId: branch.id,
       },
       create: {
         id,
         ...bannerData,
-        branches: { connect: [{ id: branch.id }] },
+        branchId: branch.id,
       },
     });
   }
