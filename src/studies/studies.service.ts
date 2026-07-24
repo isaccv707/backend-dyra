@@ -80,21 +80,31 @@ export class StudiesService {
       ? ((await this.branchesService.resolveBranchPriceSheetId(branchId)) ?? undefined)
       : priceSheetId;
 
+    const whereClause: Prisma.StudyWhereInput = {
+      ...(where as Prisma.StudyWhereInput),
+      // Con un tarifario resuelto (branchId o priceSheetId), un estudio solo
+      // aparece si tiene un precio asignado ahí — StudyOnPriceSheet es la
+      // fuente de verdad de "este estudio se ofrece en esta sucursal".
+      // Sin tarifario resuelto (listado sin filtro, ej. panel admin), no se
+      // restringe y se muestra el catálogo completo.
+      ...(selectedPriceSheetId && {
+        priceSheets: { some: { priceSheetId: selectedPriceSheetId } },
+      }),
+    };
+
     const [items, total] = await this.prisma.$transaction([
       this.prisma.study.findMany({
         skip,
         take,
-        where: where as Prisma.StudyWhereInput,
+        where: whereClause,
         orderBy,
         include: {
-          // Sin branchId/priceSheetId no hay sucursal seleccionada: usamos un
-          // valor que no puede coincidir para que no se muestre ningún precio.
           priceSheets: {
             where: { priceSheetId: selectedPriceSheetId ?? '' },
           },
         },
       }),
-      this.prisma.study.count({ where: where as Prisma.StudyWhereInput }),
+      this.prisma.study.count({ where: whereClause }),
     ]);
 
     const data = items.map((study) => {
