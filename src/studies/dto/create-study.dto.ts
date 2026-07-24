@@ -55,11 +55,11 @@ export class CreateStudyDto {
   @IsOptional()
   description?: string;
 
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => StudyPriceDto)
-  @IsNotEmpty()
-  studyPrices!: StudyPriceDto[];
+  studyPrices?: StudyPriceDto[];
 
   @IsString()
   @IsOptional()

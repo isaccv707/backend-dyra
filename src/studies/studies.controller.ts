@@ -27,6 +27,7 @@ import {
 import { StudiesService } from './studies.service';
 import { CreateStudyDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
+import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
@@ -108,6 +109,35 @@ export class StudiesController {
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.studiesService.remove(id);
+  }
+
+  @ApiOperation({ summary: 'Asignar tarifario a un estudio', description: 'Crea o actualiza el precio de un estudio para un tarifario (price sheet) específico.' })
+  @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
+  @ApiResponse({ status: 200, description: 'Tarifario asignado/actualizado exitosamente.' })
+  @ApiResponse({ status: 404, description: 'Estudio o tarifario no encontrado.' })
+  @ApiBearerAuth()
+  @Permissions('studies:update')
+  @Post(':id/price-sheets')
+  assignPriceSheet(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() assignPriceSheetDto: AssignPriceSheetDto,
+  ) {
+    return this.studiesService.assignPriceSheet(id, assignPriceSheetDto);
+  }
+
+  @ApiOperation({ summary: 'Quitar tarifario de un estudio', description: 'Elimina la asignación de precio de un estudio para un tarifario específico.' })
+  @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
+  @ApiParam({ name: 'priceSheetId', description: 'Identificador (UUID) del tarifario.' })
+  @ApiResponse({ status: 200, description: 'Asignación eliminada exitosamente.' })
+  @ApiResponse({ status: 404, description: 'El estudio no tiene precio asignado para ese tarifario.' })
+  @ApiBearerAuth()
+  @Permissions('studies:update')
+  @Delete(':id/price-sheets/:priceSheetId')
+  removePriceSheet(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('priceSheetId', ParseUUIDPipe) priceSheetId: string,
+  ) {
+    return this.studiesService.removePriceSheet(id, priceSheetId);
   }
 
   @ApiOperation({ summary: 'Importar estudios desde Excel', description: 'Procesa un archivo .xlsx/.xls para crear o actualizar estudios de forma masiva, en lotes de 100 registros.' })
