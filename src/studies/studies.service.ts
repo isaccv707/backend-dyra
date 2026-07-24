@@ -31,9 +31,48 @@ export class StudiesService {
     private readonly branchesService: BranchesService,
   ) {}
 
+  private async assertServiceBelongsToBranch(serviceId: string, branchId: string) {
+    const service = await this.prisma.service.findUnique({
+      where: { id: serviceId },
+      select: { branchId: true },
+    });
+    if (!service) {
+      throw new NotFoundException(`Service with id ${serviceId} not found`);
+    }
+    if (service.branchId !== branchId) {
+      throw new BadRequestException(
+        'El servicio seleccionado pertenece a otra sucursal',
+      );
+    }
+  }
+
+  private async assertPriceSheetsBelongToBranch(priceSheetIds: string[], branchId: string) {
+    if (!priceSheetIds.length) return;
+
+    const priceSheets = await this.prisma.priceSheets.findMany({
+      where: { id: { in: priceSheetIds } },
+      select: { id: true, branchId: true },
+    });
+
+    const foreign = priceSheets.find((ps) => ps.branchId !== branchId);
+    if (foreign || priceSheets.length !== priceSheetIds.length) {
+      throw new BadRequestException(
+        'Todos los tarifarios asignados deben pertenecer a la misma sucursal del estudio',
+      );
+    }
+  }
+
   async create(createStudyDto: CreateStudyDto) {
-    const { name, studyPrices, serviceId, ...studyData } = createStudyDto;
+    const { name, studyPrices, serviceId, branchId, ...studyData } = createStudyDto;
     const slug = generateSlug(name);
+
+    await this.assertServiceBelongsToBranch(serviceId, branchId);
+    if (studyPrices?.length) {
+      await this.assertPriceSheetsBelongToBranch(
+        studyPrices.map((p) => p.priceSheetId),
+        branchId,
+      );
+    }
 
     try {
       return await this.prisma.study.create({
@@ -41,6 +80,9 @@ export class StudiesService {
           ...studyData,
           service: {
             connect: { id: serviceId },
+          },
+          branch: {
+            connect: { id: branchId },
           },
           name,
           slug,
@@ -82,14 +124,7 @@ export class StudiesService {
 
     const whereClause: Prisma.StudyWhereInput = {
       ...(where as Prisma.StudyWhereInput),
-      // Con un tarifario resuelto (branchId o priceSheetId), un estudio solo
-      // aparece si tiene un precio asignado ahí — StudyOnPriceSheet es la
-      // fuente de verdad de "este estudio se ofrece en esta sucursal".
-      // Sin tarifario resuelto (listado sin filtro, ej. panel admin), no se
-      // restringe y se muestra el catálogo completo.
-      ...(selectedPriceSheetId && {
-        priceSheets: { some: { priceSheetId: selectedPriceSheetId } },
-      }),
+      ...(branchId && { branchId }),
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -99,6 +134,8 @@ export class StudiesService {
         where: whereClause,
         orderBy,
         include: {
+          // Sin branchId/priceSheetId no hay tarifario seleccionado: usamos un
+          // valor que no puede coincidir para que no se muestre ningún precio.
           priceSheets: {
             where: { priceSheetId: selectedPriceSheetId ?? '' },
           },
@@ -129,10 +166,11 @@ export class StudiesService {
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, branchId?: string) {
     const study = await this.prisma.study.findFirst({
       where: {
         OR: [{ id }, { slug: id }],
+        ...(branchId && { branchId }),
       },
       include: {
         priceSheets: {
@@ -150,13 +188,19 @@ export class StudiesService {
   }
 
   async update(id: string, updateStudyDto: UpdateStudyDto) {
-    const { name, serviceId, ...studyData } = updateStudyDto;
+    const { name, serviceId, branchId, ...studyData } = updateStudyDto;
 
     const existingStudy = await this.prisma.study.findUnique({
       where: { id },
     });
     if (!existingStudy) {
       throw new NotFoundException(`Study with id ${id} not found`);
+    }
+
+    const effectiveBranchId = branchId ?? existingStudy.branchId;
+    const effectiveServiceId = serviceId ?? existingStudy.serviceId;
+    if (branchId || serviceId) {
+      await this.assertServiceBelongsToBranch(effectiveServiceId, effectiveBranchId);
     }
 
     try {
@@ -166,6 +210,7 @@ export class StudiesService {
           ...studyData,
           ...(name && { name, slug: generateSlug(name) }),
           ...(serviceId && { service: { connect: { id: serviceId } } }),
+          ...(branchId && { branch: { connect: { id: branchId } } }),
         },
         include: {
           service: {
@@ -193,6 +238,11 @@ export class StudiesService {
     if (!priceSheet) {
       throw new NotFoundException(
         `PriceSheet with id ${dto.priceSheetId} not found`,
+      );
+    }
+    if (priceSheet.branchId !== study.branchId) {
+      throw new BadRequestException(
+        'El tarifario pertenece a otra sucursal distinta a la del estudio',
       );
     }
 
@@ -282,9 +332,17 @@ export class StudiesService {
     });
     const priceSheetColumns = priceSheets.map((ps) => ({
       id: ps.id,
+      branchId: ps.branchId,
       priceKey: `price_${generateSlug(ps.name)}`,
       showKey: `show_price_${generateSlug(ps.name)}`,
     }));
+
+    // Para validar que serviceId pertenezca a la sucursal indicada en cada
+    // fila sin hacer una consulta por fila.
+    const services = await this.prisma.service.findMany({
+      select: { id: true, branchId: true },
+    });
+    const serviceBranchById = new Map(services.map((s) => [s.id, s.branchId]));
 
     const valid: (CreateStudyDto & { slug: string })[] = [];
     const invalid: Array<{ row: number; code?: string; errors: string[] }> = [];
@@ -329,18 +387,29 @@ export class StudiesService {
       // 3. PREVENCIÓN DE FILAS FANTASMA
       if (!name && !code) continue;
 
+      const branchId = row.branchId?.toString()?.trim();
+
       // 1. ROBUSTEZ EN PRECIOS: se incluye un precio por cada tarifario activo
-      // que tenga un valor > 0 en su columna correspondiente del Excel.
+      // que tenga un valor > 0 en su columna correspondiente del Excel, y que
+      // pertenezca a la misma sucursal indicada en la fila.
       const studyPrices: StudyPriceDto[] = [];
-      for (const { id, priceKey, showKey } of priceSheetColumns) {
+      const priceErrors: string[] = [];
+      for (const { id, branchId: priceSheetBranchId, priceKey, showKey } of priceSheetColumns) {
         const priceValue = getPriceValue(row[priceKey]);
-        if (priceValue > 0) {
-          studyPrices.push({
-            priceSheetId: id,
-            price: toRequiredNumber(priceValue),
-            showPrice: toOptionalBool(row[showKey]) ?? true,
-          });
+        if (priceValue <= 0) continue;
+
+        if (branchId && priceSheetBranchId !== branchId) {
+          priceErrors.push(
+            `La columna ${priceKey} pertenece a un tarifario de otra sucursal distinta a branchId`,
+          );
+          continue;
         }
+
+        studyPrices.push({
+          priceSheetId: id,
+          price: toRequiredNumber(priceValue),
+          showPrice: toOptionalBool(row[showKey]) ?? true,
+        });
       }
 
       // Normalización de datos con lógica de negocio
@@ -351,6 +420,7 @@ export class StudiesService {
         sampleType: row.sampleType?.toString()?.trim(),
         preparation: row.preparation?.toString()?.trim(),
         serviceId: row.serviceId?.toString()?.trim(),
+        branchId,
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,
         studyPrices,
@@ -359,13 +429,19 @@ export class StudiesService {
       const dto = plainToInstance(CreateStudyDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
 
-      const missingFieldErrors: string[] = [];
+      const missingFieldErrors: string[] = [...priceErrors];
       if (!normalizedData.serviceId) {
         missingFieldErrors.push('El serviceId es obligatorio');
+      } else if (
+        normalizedData.branchId &&
+        serviceBranchById.get(normalizedData.serviceId) !== undefined &&
+        serviceBranchById.get(normalizedData.serviceId) !== normalizedData.branchId
+      ) {
+        missingFieldErrors.push('El servicio pertenece a otra sucursal distinta a branchId');
       }
       if (studyPrices.length === 0) {
         missingFieldErrors.push(
-          'Debe especificar al menos un precio válido en alguna columna price_<tarifario>',
+          'Debe especificar al menos un precio válido en alguna columna price_<tarifario> de la misma sucursal',
         );
       }
 
@@ -395,14 +471,15 @@ export class StudiesService {
         await this.prisma.$transaction(
           async (tx) => {
             for (const item of chunk) {
-              const { studyPrices, serviceId, ...studyData } = item;
+              const { studyPrices, serviceId, branchId, ...studyData } = item;
 
-              // Upsert de Study: Mantiene consistencia por código
+              // Upsert de Study: Mantiene consistencia por (sucursal, código)
               await tx.study.upsert({
-                where: { code: item.code },
+                where: { branchId_code: { branchId, code: item.code } },
                 update: {
                   ...studyData,
                   service: { connect: { id: serviceId } },
+                  branch: { connect: { id: branchId } },
                   priceSheets: {
                     // Borramos y recreamos para asegurar que solo queden los estados definidos
                     deleteMany: {},
@@ -416,6 +493,7 @@ export class StudiesService {
                 create: {
                   ...studyData,
                   service: { connect: { id: serviceId } },
+                  branch: { connect: { id: branchId } },
                   priceSheets: {
                     create: (studyPrices ?? []).map((p) => ({
                       price: new Prisma.Decimal(p.price),
@@ -453,13 +531,16 @@ export class StudiesService {
   }
 
   async generateImportTemplate(): Promise<Buffer> {
-    const [priceSheets, services] = await Promise.all([
+    const [priceSheets, services, branches] = await Promise.all([
       this.prisma.priceSheets.findMany({
         where: { isActive: true },
         orderBy: { name: 'asc' },
       }),
       this.prisma.service.findMany({
         where: { isActive: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.branch.findMany({
         orderBy: { name: 'asc' },
       }),
     ]);
@@ -471,6 +552,7 @@ export class StudiesService {
       'sampleType',
       'preparation',
       'serviceId',
+      'branchId',
       'deliveryTime',
       'isActive',
       ...priceSheets.flatMap((ps) => {
@@ -486,6 +568,7 @@ export class StudiesService {
       sampleType: 'Sangre venosa',
       preparation: 'Ayuno de 8 horas',
       serviceId: services[0]?.id ?? 'PEGAR-AQUI-EL-ID-DEL-SERVICIO',
+      branchId: branches[0]?.id ?? 'PEGAR-AQUI-EL-ID-DE-LA-SUCURSAL',
       deliveryTime: 1,
       isActive: 'true',
     };
@@ -498,13 +581,18 @@ export class StudiesService {
     const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], { header: headers });
 
     const servicesSheet = XLSX.utils.json_to_sheet(
-      services.map((s) => ({ id: s.id, name: s.name })),
+      services.map((s) => ({ id: s.id, name: s.name, branchId: s.branchId })),
+    );
+
+    const branchesSheet = XLSX.utils.json_to_sheet(
+      branches.map((b) => ({ id: b.id, name: b.name })),
     );
 
     const priceSheetsSheet = XLSX.utils.json_to_sheet(
       priceSheets.map((ps) => ({
         id: ps.id,
         name: ps.name,
+        branchId: ps.branchId,
         columna_precio: `price_${generateSlug(ps.name)}`,
       })),
     );
@@ -515,6 +603,11 @@ export class StudiesService {
       workbook,
       servicesSheet,
       'Servicios (referencia)',
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      branchesSheet,
+      'Sucursales (referencia)',
     );
     XLSX.utils.book_append_sheet(
       workbook,

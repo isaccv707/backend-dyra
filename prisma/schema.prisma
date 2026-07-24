@@ -80,6 +80,7 @@ model Branch {
   posts      Post[]
   reviews    Review[]
   services   Service[]
+  studies    Study[]
   schedules  BranchSchedule[]
   users      User[]
   quotations Quotation[]
@@ -204,13 +205,16 @@ model StudyOnPriceSheet {
 model Study {
   id           String  @id @default(uuid())
   name         String
-  slug         String  @unique
-  code         String  @unique
+  slug         String
+  code         String
   description  String?
   sampleType   String?
   deliveryTime Int?
   preparation  String?
   isActive     Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
   priceSheets StudyOnPriceSheet[]
   serviceId   String
@@ -221,6 +225,9 @@ model Study {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, code])
+  @@unique([branchId, slug])
+  @@index([branchId])
   @@map("studies")
 }
 

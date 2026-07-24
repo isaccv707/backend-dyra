@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { STUDIES } from '../constants/studies';
-import { PRICE_SHEETS } from '../constants/price-sheets';
 
 export async function seedStudies(prisma: PrismaClient) {
   // Get a default service (Análisis Clínicos) to use if the hardcoded one fails
@@ -14,27 +13,34 @@ export async function seedStudies(prisma: PrismaClient) {
     );
   }
 
-  // Las PriceSheets de Jalisco y Colima ya fueron creadas por seedBranches
-  // (ahora cada hoja de precios pertenece a una sucursal).
+  // Un estudio pertenece a la misma sucursal que su Service — es ajeno al
+  // resto de sucursales, incluso si otra sucursal tiene un estudio con el
+  // mismo código.
   for (const study of STUDIES) {
     const { price, serviceId, ...studyData } = study;
 
-    // Check if the serviceId exists, if not use defaultService.id
-    let effectiveServiceId = serviceId;
     const existingService = await prisma.service.findUnique({
       where: { id: serviceId },
     });
-    if (!existingService) {
-      effectiveServiceId = defaultService.id;
+    const effectiveService = existingService ?? defaultService;
+
+    const branchPriceSheet = await prisma.priceSheets.findFirst({
+      where: { branchId: effectiveService.branchId, isPublic: true },
+    });
+    if (!branchPriceSheet) {
+      throw new Error(
+        `La sucursal del servicio '${effectiveService.name}' no tiene una hoja de precios pública. Ejecuta seedBranches primero.`,
+      );
     }
 
     const priceSheetEntries = [
-      { price, priceSheetId: PRICE_SHEETS.JALISCO.id, showPrice: true },
-      { price: 0, priceSheetId: PRICE_SHEETS.COLIMA.id, showPrice: false },
+      { price, priceSheetId: branchPriceSheet.id, showPrice: true },
     ];
 
     await prisma.study.upsert({
-      where: { code: study.code },
+      where: {
+        branchId_code: { branchId: effectiveService.branchId, code: study.code },
+      },
       update: {
         name: studyData.name,
         description: studyData.description,
@@ -42,7 +48,8 @@ export async function seedStudies(prisma: PrismaClient) {
         deliveryTime: studyData.deliveryTime,
         preparation: studyData.preparation,
         isActive: studyData.isActive,
-        serviceId: effectiveServiceId,
+        serviceId: effectiveService.id,
+        branchId: effectiveService.branchId,
         priceSheets: {
           deleteMany: {},
           create: priceSheetEntries,
@@ -50,7 +57,8 @@ export async function seedStudies(prisma: PrismaClient) {
       },
       create: {
         ...studyData,
-        serviceId: effectiveServiceId,
+        serviceId: effectiveService.id,
+        branchId: effectiveService.branchId,
         priceSheets: { create: priceSheetEntries },
       },
     });

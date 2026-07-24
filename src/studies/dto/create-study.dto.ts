@@ -86,6 +86,11 @@ export class CreateStudyDto {
   @IsUUID()
   serviceId!: string;
 
+  @IsNotEmpty()
+  @IsString()
+  @IsUUID()
+  branchId!: string;
+
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
