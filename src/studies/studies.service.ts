@@ -6,6 +6,7 @@ import {
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { CreateStudyDto, StudyPriceDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
+import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { plainToInstance } from 'class-transformer';
 import {
   toOptionalBool,
@@ -43,13 +44,15 @@ export class StudiesService {
           },
           name,
           slug,
-          priceSheets: {
-            create: studyPrices.map((p) => ({
-              price: new Prisma.Decimal(p.price),
-              showPrice: p.showPrice ?? true,
-              priceSheetId: p.priceSheetId,
-            })),
-          },
+          ...(studyPrices?.length && {
+            priceSheets: {
+              create: studyPrices.map((p) => ({
+                price: new Prisma.Decimal(p.price),
+                showPrice: p.showPrice ?? true,
+                priceSheetId: p.priceSheetId,
+              })),
+            },
+          }),
         },
         include: {
           service: {
@@ -137,7 +140,7 @@ export class StudiesService {
   }
 
   async update(id: string, updateStudyDto: UpdateStudyDto) {
-    const { name, studyPrices, serviceId, ...studyData } = updateStudyDto;
+    const { name, serviceId, ...studyData } = updateStudyDto;
 
     const existingStudy = await this.prisma.study.findUnique({
       where: { id },
@@ -147,35 +150,80 @@ export class StudiesService {
     }
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Reemplazamos el arreglo completo de precios solo si se envió explícitamente.
-        if (studyPrices) {
-          await tx.studyOnPriceSheet.deleteMany({ where: { studyId: id } });
-        }
+      return await this.prisma.study.update({
+        where: { id },
+        data: {
+          ...studyData,
+          ...(name && { name, slug: generateSlug(name) }),
+          ...(serviceId && { service: { connect: { id: serviceId } } }),
+        },
+        include: {
+          service: {
+            select: { name: true, slug: true },
+          },
+          priceSheets: true,
+        },
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Study');
+    }
+  }
 
-        return tx.study.update({
-          where: { id },
-          data: {
-            ...studyData,
-            ...(name && { name, slug: generateSlug(name) }),
-            ...(serviceId && { service: { connect: { id: serviceId } } }),
-            ...(studyPrices && {
-              priceSheets: {
-                create: studyPrices.map((p) => ({
-                  price: new Prisma.Decimal(p.price),
-                  showPrice: p.showPrice ?? true,
-                  priceSheetId: p.priceSheetId,
-                })),
-              },
-            }),
+  async assignPriceSheet(studyId: string, dto: AssignPriceSheetDto) {
+    const study = await this.prisma.study.findUnique({
+      where: { id: studyId },
+    });
+    if (!study) {
+      throw new NotFoundException(`Study with id ${studyId} not found`);
+    }
+
+    const priceSheet = await this.prisma.priceSheets.findUnique({
+      where: { id: dto.priceSheetId },
+    });
+    if (!priceSheet) {
+      throw new NotFoundException(
+        `PriceSheet with id ${dto.priceSheetId} not found`,
+      );
+    }
+
+    try {
+      return await this.prisma.studyOnPriceSheet.upsert({
+        where: {
+          studyId_priceSheetId: {
+            studyId,
+            priceSheetId: dto.priceSheetId,
           },
-          include: {
-            service: {
-              select: { name: true, slug: true },
-            },
-            priceSheets: true,
-          },
-        });
+        },
+        update: {
+          price: new Prisma.Decimal(dto.price),
+          showPrice: dto.showPrice ?? true,
+        },
+        create: {
+          studyId,
+          priceSheetId: dto.priceSheetId,
+          price: new Prisma.Decimal(dto.price),
+          showPrice: dto.showPrice ?? true,
+        },
+        include: { priceSheet: true },
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Study');
+    }
+  }
+
+  async removePriceSheet(studyId: string, priceSheetId: string) {
+    const assignment = await this.prisma.studyOnPriceSheet.findUnique({
+      where: { studyId_priceSheetId: { studyId, priceSheetId } },
+    });
+    if (!assignment) {
+      throw new NotFoundException(
+        `Study ${studyId} has no price assigned for PriceSheet ${priceSheetId}`,
+      );
+    }
+
+    try {
+      return await this.prisma.studyOnPriceSheet.delete({
+        where: { studyId_priceSheetId: { studyId, priceSheetId } },
       });
     } catch (error) {
       handleDatabaseErrors(error, 'Study');
@@ -348,7 +396,7 @@ export class StudiesService {
                   priceSheets: {
                     // Borramos y recreamos para asegurar que solo queden los estados definidos
                     deleteMany: {},
-                    create: studyPrices.map((p) => ({
+                    create: (studyPrices ?? []).map((p) => ({
                       price: new Prisma.Decimal(p.price),
                       priceSheetId: p.priceSheetId,
                       showPrice: p.showPrice,
@@ -359,7 +407,7 @@ export class StudiesService {
                   ...studyData,
                   service: { connect: { id: serviceId } },
                   priceSheets: {
-                    create: studyPrices.map((p) => ({
+                    create: (studyPrices ?? []).map((p) => ({
                       price: new Prisma.Decimal(p.price),
                       priceSheetId: p.priceSheetId,
                       showPrice: p.showPrice,
