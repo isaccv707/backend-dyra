@@ -9,8 +9,17 @@ export async function seedAuthors(prisma: PrismaClient) {
     const name = normalizeName(author.name);
     const nameKey = normalizeKey(author.name);
 
+    const branch = await prisma.branch.findFirst({
+      where: { name: author.branchName },
+    });
+    if (!branch) {
+      throw new Error(
+        `Sucursal '${author.branchName}' no encontrada. Ejecuta seedBranches primero.`,
+      );
+    }
+
     await prisma.author.upsert({
-      where: { nameKey },
+      where: { branchId_nameKey: { branchId: branch.id, nameKey } },
       update: {
         name,
         avatar: author.avatar,
@@ -21,6 +30,7 @@ export async function seedAuthors(prisma: PrismaClient) {
         nameKey,
         avatar: author.avatar,
         bio: author.bio,
+        branchId: branch.id,
       },
     });
   }

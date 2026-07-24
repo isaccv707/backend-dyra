@@ -50,12 +50,15 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 
 **Slugs:** Use `generateSlug()` from `src/common/utils/slugger.ts` when creating/updating `posts`, `services`, or `studies`.
 
-**Branch scoping:** Use `branchScopeWhere(branchId)` from `src/common/utils/branch-scope.util.ts` for resources optionally scoped to a branch via a `Branch[]` many-to-many relation (currently: `Banner`, `Post`). A resource with no branches assigned is "global" (always shows); one with branches assigned only shows when `branchId` matches. Spread it unconditionally into the Prisma `where` — it no-ops (`{}`) when `branchId` is undefined.
+**Branch scoping:** There is no "global" content concept in this app — every branch-owned resource belongs to exactly one branch via a required single `branchId` FK (never a `Branch[]` many-to-many). This applies to `Service`, `Author`, `Post`, `Banner`, and `PriceSheets`. `Create*Dto`/`Update*Dto` take a single `branchId`, not `branchIds`. List endpoints accept an optional `branchId` query param and filter with a plain `where.branchId` match.
+- `Post.authorId`, when set, must reference an `Author` in the same `branchId` — enforced in `posts.service.ts`, not at the DB level.
+- `Banner.order` is a per-`(branchId, placement)` queue — reordering logic in `banners.service.ts` scopes its shifts by both fields, not just `placement`.
+- `Author` and `Post` uniqueness (`name`/`nameKey`, `slug`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug can exist in two different branches.
 
-Intentional exceptions — do not "unify" these into `branchScopeWhere`:
-- `Review`: strict `where.branchId` match, no "global" concept. A branch's review must never appear as belonging to all branches.
-- `Service`: strict `where.branchId` match via a required single `branchId` FK (not a `Branch[]` m2m). Every service belongs to exactly one branch — there is no "global" service. `CreateServiceDto`/`UpdateServiceDto` take a single `branchId`, not `branchIds`.
+Intentional exceptions to the "single required `branchId`" rule:
+- `Review`: strict `where.branchId` match, no "global" concept, but `branchId` is nullable (a review not tied to any branch is allowed).
 - `Study`/pricing: resolved via `PriceSheets.branchId -> StudyOnPriceSheet`, independent of `Service.branchId`. Variable pricing per branch, not visibility.
+- `User`: assigned to branches via a genuine `Branch[]` many-to-many (staff can work across branches) — see `src/common/utils/branch-access.util.ts` for scoping admin queries/writes to a user's assigned branches (used by `reviews`, `price-sheets`, `quotations`).
 
 **DTOs:** Use `class-validator` decorators. Always use `@Type(() => ...)` from `class-transformer` for nested objects and numeric coercion (query params arrive as strings).
 

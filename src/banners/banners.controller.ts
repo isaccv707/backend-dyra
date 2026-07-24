@@ -23,16 +23,16 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 export class BannersController {
   constructor(private readonly bannersService: BannersService) {}
 
-  @ApiOperation({ summary: 'Listar banners activos', description: 'Devuelve los banners activos para un tipo de ubicación (placement), opcionalmente filtrados por sucursal.' })
+  @ApiOperation({ summary: 'Listar banners activos', description: 'Devuelve los banners activos de una sucursal para un tipo de ubicación (placement).' })
   @ApiParam({ name: 'placement', enum: BannerPlacement, description: 'Ubicación del banner dentro del sitio.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar banners globales y específicos.' })
+  @ApiQuery({ name: 'branchId', required: true, description: 'Identificador de sucursal cuyos banners se van a mostrar.' })
   @ApiResponse({ status: 200, description: 'Listado de banners activos.' })
   @Public()
   @Get('active/:placement')
   findActiveBanners(
     @Param('placement', new ParseEnumPipe(BannerPlacement))
     placement: BannerPlacement,
-    @Query('branchId') branchId?: string,
+    @Query('branchId') branchId: string,
   ) {
     return this.bannersService.findActiveBanners(placement, branchId);
   }
@@ -48,7 +48,7 @@ export class BannersController {
   }
 
   @ApiOperation({ summary: 'Listar banners', description: 'Devuelve todos los banners, opcionalmente filtrados por sucursal.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar banners globales y específicos.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar banners.' })
   @ApiResponse({ status: 200, description: 'Listado de banners.' })
   @Public()
   @Get()

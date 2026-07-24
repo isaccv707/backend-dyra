@@ -3,4 +3,5 @@ export class Author {
     name: string;
     avatar?: string;
     bio?: string;
+    branchId: string;
 }

@@ -14,7 +14,7 @@ const AUTHOR_ALLOWED_FIELDS = ['name', 'nameKey', 'createdAt'];
 export class AuthorsService {
   constructor(private readonly prisma: PrismaService) { }
 
-  async createAuthor({ avatar, name: nameAuthor, bio }: CreateAuthorDto) {
+  async createAuthor({ avatar, name: nameAuthor, bio, branchId }: CreateAuthorDto) {
     const name = normalizeName(nameAuthor);
     const nameKey = normalizeKey(nameAuthor)
 
@@ -25,21 +25,23 @@ export class AuthorsService {
           nameKey,
           avatar: avatar?.trim(),
           bio: bio?.trim(),
+          branch: { connect: { id: branchId } },
         },
         select: {
           id: true,
           name: true,
           avatar: true,
           bio: true,
+          branchId: true,
           createdAt: true,
           updatedAt: true,
         }
       })
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('There is already an author with that name')
+        throw new ConflictException('Ya existe un autor con ese nombre en esta sucursal')
       }
-      throw error;
+      handleDatabaseErrors(error, 'Author');
     }
   }
 
@@ -49,9 +51,14 @@ export class AuthorsService {
       allowedFields: AUTHOR_ALLOWED_FIELDS,
     });
 
+    const whereClause = {
+      ...where,
+      ...(dto.branchId && { branchId: dto.branchId }),
+    } as Prisma.AuthorWhereInput;
+
     const [authors, total] = await this.prisma.$transaction([
       this.prisma.author.findMany({
-        where: where as Prisma.AuthorWhereInput,
+        where: whereClause,
         skip,
         take,
         orderBy,
@@ -60,11 +67,12 @@ export class AuthorsService {
           name: true,
           avatar: true,
           bio: true,
+          branchId: true,
           createdAt: true,
           updatedAt: true,
         },
       }),
-      this.prisma.author.count({ where: where as Prisma.AuthorWhereInput }),
+      this.prisma.author.count({ where: whereClause }),
     ]);
 
     return paginatedResponse(authors, total, dto.page ?? 1, dto.limit ?? 10);
@@ -86,12 +94,17 @@ export class AuthorsService {
   }
 
   async updateAuthor(id: string, updateAuthorDto: UpdateAuthorDto) {
-    const dataToUpdate: any = { ...updateAuthorDto };
+    const { branchId, ...rest } = updateAuthorDto;
+    const dataToUpdate: any = { ...rest };
 
     // 2. Si viene el nombre, guardamos los valores normalizados en el nuevo objeto
     if (updateAuthorDto.name) {
       dataToUpdate.name = normalizeName(updateAuthorDto.name);
       dataToUpdate.nameKey = normalizeKey(updateAuthorDto.name);
+    }
+
+    if (branchId) {
+      dataToUpdate.branch = { connect: { id: branchId } };
     }
 
     try {
@@ -103,6 +116,7 @@ export class AuthorsService {
           name: true,
           avatar: true,
           bio: true,
+          branchId: true,
           createdAt: true,
           updatedAt: true,
         },
