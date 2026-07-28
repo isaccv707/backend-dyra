@@ -30,13 +30,19 @@ import {
 } from './interfaces/quotations-interfaces';
 import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
 
-const COMPANY_INFO: CompanyInfo = {
-  name: 'Diagnóstico y Referencia Analítica',
-  subtitle: 'Cotización de estudios de laboratorio',
+const COMPANY_NAME = 'Diagnóstico y Referencia Analítica';
+const COMPANY_SUBTITLE = 'Cotización de estudios de laboratorio';
+
+// Usados solo cuando la cotización no tiene branchId o a la sucursal le
+// faltan datos (phone/email/address son opcionales en el modelo Branch).
+const FALLBACK_COMPANY_INFO: CompanyInfo = {
+  name: COMPANY_NAME,
+  subtitle: COMPANY_SUBTITLE,
   address: 'Calle Ignacio Sandoval #1801, col. Girasoles, Colima, col.',
   phone: '33 2230 0412',
   email: 'luis.ramirez@dyranalitica.com',
 };
+
 
 const QUOTATION_ALLOWED_FIELDS = [
   'folio',
@@ -47,7 +53,32 @@ const QUOTATION_ALLOWED_FIELDS = [
   'createdAt',
 ];
 
-type QuotationWithItems = Quotation & { items: QuotationItem[] };
+const QUOTATION_BRANCH_SELECT = {
+  id: true,
+  name: true,
+  phone: true,
+  email: true,
+  address: {
+    select: {
+      street: true,
+      extNumber: true,
+      intNumber: true,
+      neighborhood: true,
+      city: true,
+      zipCode: true,
+    },
+  },
+} satisfies Prisma.BranchSelect;
+
+type QuotationBranch = Prisma.BranchGetPayload<{
+  select: typeof QUOTATION_BRANCH_SELECT;
+}>;
+
+type QuotationWithItems = Quotation & {
+  items: QuotationItem[];
+  branch?: QuotationBranch | null;
+};
+
 type ResolvedQuotationItem = {
   name: string;
   price: number;
@@ -64,9 +95,11 @@ export class QuotationsService {
   ) {}
 
   async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
+    let branch: QuotationBranch | null = null;
     if (dto.branchId) {
-      const branch = await this.prisma.branch.findUnique({
+      branch = await this.prisma.branch.findUnique({
         where: { id: dto.branchId },
+        select: QUOTATION_BRANCH_SELECT,
       });
       if (!branch) {
         throw new NotFoundException(
@@ -78,7 +111,7 @@ export class QuotationsService {
     const items = await this.resolveQuotationItems(dto);
     const totals = this.calculateTotals(items);
 
-    return this.prisma.quotation.create({
+    const quotation = await this.prisma.quotation.create({
       data: {
         folio: this.generateFolio(),
         clientType: dto.clientType,
@@ -94,6 +127,8 @@ export class QuotationsService {
       },
       include: { items: true },
     });
+
+    return { ...quotation, branch };
   }
 
   // ===========================
@@ -213,7 +248,7 @@ export class QuotationsService {
   ): Promise<QuotationWithItems> {
     const quotation = await this.prisma.quotation.findUnique({
       where: { id },
-      include: { items: true, branch: { select: { id: true, name: true } } },
+      include: { items: true, branch: { select: QUOTATION_BRANCH_SELECT } },
     });
     if (!quotation) {
       throw new NotFoundException(`Quotation with ID '${id}' not found`);
@@ -268,8 +303,32 @@ export class QuotationsService {
         price: Number(item.price),
         quantity: item.quantity,
       })),
-      company: COMPANY_INFO,
+      company: this.buildCompanyInfo(quotation.branch ?? null),
     };
+  }
+
+  private buildCompanyInfo(branch: QuotationBranch | null): CompanyInfo {
+    if (!branch) {
+      return FALLBACK_COMPANY_INFO;
+    }
+
+    return {
+      name: COMPANY_NAME,
+      subtitle: COMPANY_SUBTITLE,
+      address: this.formatBranchAddress(branch.address),
+      phone: branch.phone ?? FALLBACK_COMPANY_INFO.phone,
+      email: branch.email ?? FALLBACK_COMPANY_INFO.email,
+    };
+  }
+
+  private formatBranchAddress(address: QuotationBranch['address']): string {
+    const streetLine = address.intNumber
+      ? `${address.street} #${address.extNumber} Int. ${address.intNumber}`
+      : `${address.street} #${address.extNumber}`;
+
+    return [streetLine, address.neighborhood, address.city]
+      .filter((part): part is string => Boolean(part))
+      .join(', ');
   }
 
   // ===========================

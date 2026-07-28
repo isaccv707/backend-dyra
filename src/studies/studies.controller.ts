@@ -21,6 +21,7 @@ import {
   ApiOperation,
   ApiParam,
   ApiProduces,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -47,7 +48,8 @@ export class StudiesController {
     return this.studiesService.create(createStudyDto);
   }
 
-  @ApiOperation({ summary: 'Listar estudios', description: 'Devuelve el listado paginado de estudios de laboratorio.' })
+  @ApiOperation({ summary: 'Listar estudios', description: 'Devuelve el listado paginado de estudios de laboratorio. Cada estudio pertenece a una sola sucursal; usa branchId para filtrar los de esa sucursal.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar estudios.' })
   @ApiResponse({ status: 200, description: 'Listado paginado de estudios.' })
   @Public()
   @Get()
@@ -76,14 +78,15 @@ export class StudiesController {
     res.send(buffer);
   }
 
-  @ApiOperation({ summary: 'Obtener estudio', description: 'Devuelve un estudio por su identificador.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
+  @ApiOperation({ summary: 'Obtener estudio', description: 'Devuelve un estudio por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.' })
+  @ApiParam({ name: 'id', description: 'Identificador o slug del estudio.' })
+  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal, recomendado al buscar por slug.' })
   @ApiResponse({ status: 200, description: 'Estudio encontrado.' })
   @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.studiesService.findOne(id);
+  findOne(@Param('id') id: string, @Query('branchId') branchId?: string) {
+    return this.studiesService.findOne(id, branchId);
   }
 
   @ApiOperation({ summary: 'Actualizar estudio', description: 'Actualiza los datos de un estudio existente.' })
