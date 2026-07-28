@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   MinLength,
   ValidateNested,
@@ -35,6 +36,7 @@ export class ServiceDetailDto {
   description?: string;
 
   @IsOptional()
+  @IsUrl()
   @IsString()
   image?: string;
 }

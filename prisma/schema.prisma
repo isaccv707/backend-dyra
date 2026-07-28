@@ -151,7 +151,6 @@ model ServiceDetail {
   id          String  @id @default(uuid())
   title       String
   description String?
-  // content Content[]
   image       String?
 
   serviceId String
