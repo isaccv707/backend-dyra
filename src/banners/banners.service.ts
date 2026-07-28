@@ -12,7 +12,8 @@ export class BannersService {
 
   async findOne(id: string) {
     const banner = await this.prisma.banner.findUnique({
-      where: { id }
+      where: { id },
+      include: { branch: true },
     });
 
     if (!banner) throw new NotFoundException(`Banner with id ${id} not found`);
@@ -20,19 +21,26 @@ export class BannersService {
     return banner;
   }
 
-  findAll() {
+  findAll(branchId?: string) {
     return this.prisma.banner.findMany({
-      orderBy: { order: 'asc' }
+      where: { ...(branchId && { branchId }) },
+      include: { branch: true },
+      orderBy: { order: 'asc' },
     });
   }
 
-  async findActiveBanners(placement: BannerPlacement) {
+  async findActiveBanners(placement: BannerPlacement, branchId: string) {
+    if (!branchId) {
+      throw new BadRequestException('branchId is required');
+    }
+
     const now = new Date();
 
     return this.prisma.banner.findMany({
       where: {
         isActive: true,
         placement,
+        branchId,
         AND: [
           {
             OR: [
@@ -55,11 +63,12 @@ export class BannersService {
   }
 
   async create(dto: CreateBannerDto) {
-    const placement = dto.placement ?? BannerPlacement.HOME;
-    const order = dto.order ?? 0;
-    const isActive = dto.isActive ?? true;
-    const startAt = dto.startAt ? new Date(dto.startAt) : null;
-    const endAt = dto.endAt ? new Date(dto.endAt) : null;
+    const { branchId, ...rest } = dto;
+    const placement = rest.placement ?? BannerPlacement.HOME;
+    const order = rest.order ?? 0;
+    const isActive = rest.isActive ?? true;
+    const startAt = rest.startAt ? new Date(rest.startAt) : null;
+    const endAt = rest.endAt ? new Date(rest.endAt) : null;
 
     if (startAt && Number.isNaN(startAt.getTime())) {
       throw new BadRequestException('Invalid startAt date');
@@ -73,8 +82,8 @@ export class BannersService {
       throw new BadRequestException('startAt must be before endAt');
     }
 
-    const imageUrl = dto.imageUrl.trim();
-    const mobileImageUrl = dto.mobileImageUrl?.trim();
+    const imageUrl = rest.imageUrl.trim();
+    const mobileImageUrl = rest.mobileImageUrl?.trim();
 
     // Logical duplication check
     const existingBanner = await this.prisma.banner.findFirst({
@@ -82,6 +91,7 @@ export class BannersService {
         imageUrl,
         mobileImageUrl,
         placement,
+        branchId,
       },
     });
 
@@ -90,9 +100,9 @@ export class BannersService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Shift others to make room
+      // Shift others to make room, scoped to this branch's queue
       await tx.banner.updateMany({
-        where: { placement, order: { gte: order } },
+        where: { branchId, placement, order: { gte: order } },
         data: { order: { increment: 1 } },
       });
 
@@ -105,29 +115,35 @@ export class BannersService {
           isActive,
           startAt,
           endAt,
+          branch: { connect: { id: branchId } },
         },
+        include: { branch: true },
       });
     });
   }
 
   async update(id: string, dto: UpdateBannerDto) {
     const currentBanner = await this.findOne(id);
-    const { order: newOrder, placement: newPlacement, ...rest } = dto;
+    const { order: newOrder, placement: newPlacement, branchId: newBranchId, ...rest } = dto;
 
     const oldOrder = currentBanner.order;
     const oldPlacement = currentBanner.placement;
+    const oldBranchId = currentBanner.branchId;
     const targetPlacement = newPlacement ?? oldPlacement;
+    const targetBranchId = newBranchId ?? oldBranchId;
+    const movingQueue = targetBranchId !== oldBranchId || targetPlacement !== oldPlacement;
 
     return this.prisma.$transaction(async (tx) => {
       // Logic for reordering
-      if (newOrder !== undefined && (newOrder !== oldOrder || newPlacement !== oldPlacement)) {
+      if (newOrder !== undefined && (newOrder !== oldOrder || movingQueue)) {
         if (newOrder < 0) throw new BadRequestException('Order cannot be less than 0');
 
-        if (newPlacement === undefined || newPlacement === oldPlacement) {
-          // Reordering within same placement
+        if (!movingQueue) {
+          // Reordering within the same branch+placement queue
           if (newOrder > oldOrder) {
             await tx.banner.updateMany({
               where: {
+                branchId: oldBranchId,
                 placement: oldPlacement,
                 order: { gt: oldOrder, lte: newOrder },
               },
@@ -136,6 +152,7 @@ export class BannersService {
           } else if (newOrder < oldOrder) {
             await tx.banner.updateMany({
               where: {
+                branchId: oldBranchId,
                 placement: oldPlacement,
                 order: { gte: newOrder, lt: oldOrder },
               },
@@ -143,29 +160,28 @@ export class BannersService {
             });
           }
         } else {
-          // Moving between placements
-          // 1. Close gap in old placement
+          // Moving to a different branch and/or placement queue
+          // 1. Close gap in the old queue
           await tx.banner.updateMany({
-            where: { placement: oldPlacement, order: { gt: oldOrder } },
+            where: { branchId: oldBranchId, placement: oldPlacement, order: { gt: oldOrder } },
             data: { order: { decrement: 1 } },
           });
-          // 2. Open space in new placement
+          // 2. Open space in the new queue
           await tx.banner.updateMany({
-            where: { placement: targetPlacement, order: { gte: newOrder } },
+            where: { branchId: targetBranchId, placement: targetPlacement, order: { gte: newOrder } },
             data: { order: { increment: 1 } },
           });
         }
-      } else if (newPlacement !== undefined && newPlacement !== oldPlacement) {
-        // Placement changed but order not specified - move to end or keep same order?
-        // Let's assume we keep the order and just close the gap in the old one
+      } else if (movingQueue) {
+        // Queue changed but order not specified - keep the same order and just close the gap in the old one
         await tx.banner.updateMany({
-          where: { placement: oldPlacement, order: { gt: oldOrder } },
+          where: { branchId: oldBranchId, placement: oldPlacement, order: { gt: oldOrder } },
           data: { order: { decrement: 1 } },
         });
-        // We could shift in the new placement but since order is not provided, 
-        // it might conflict or create gaps. For safety, we shift in the new placement too.
+        // We could shift in the new queue but since order is not provided,
+        // it might conflict or create gaps. For safety, we shift in the new queue too.
         await tx.banner.updateMany({
-          where: { placement: targetPlacement, order: { gte: oldOrder } },
+          where: { branchId: targetBranchId, placement: targetPlacement, order: { gte: oldOrder } },
           data: { order: { increment: 1 } },
         });
       }
@@ -176,7 +192,9 @@ export class BannersService {
           ...rest,
           ...(newOrder !== undefined && { order: newOrder }),
           ...(newPlacement !== undefined && { placement: newPlacement }),
+          ...(newBranchId && { branch: { connect: { id: newBranchId } } }),
         },
+        include: { branch: true },
       });
     });
   }
@@ -187,9 +205,10 @@ export class BannersService {
     return this.prisma.$transaction(async (tx) => {
       await tx.banner.delete({ where: { id } });
 
-      // Close the gap
+      // Close the gap in this branch+placement queue
       await tx.banner.updateMany({
         where: {
+          branchId: banner.branchId,
           placement: banner.placement,
           order: { gt: banner.order },
         },

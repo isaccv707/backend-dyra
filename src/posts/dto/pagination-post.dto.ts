@@ -1,25 +1,8 @@
 import { PostStatus } from "@prisma/client";
-import { Type } from "class-transformer";
-import { IsEnum, IsInt, IsOptional, IsPositive, IsString, Min } from "class-validator";
+import { IsEnum, IsOptional, IsString, IsUUID } from "class-validator";
+import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
-
-export class PaginationPostDto {
-    @IsOptional()
-    @IsInt()
-    @Min(1)
-    @Type(() => Number)
-    page?: number = 1;
-
-    @IsOptional()
-    @IsInt()
-    @IsPositive()
-    @Type(() => Number)
-    limit?: number = 10;
-
-    @IsOptional()
-    @IsString()
-    search?: string;
-
+export class PaginationPostDto extends PaginatedQueryDto {
     @IsOptional()
     @IsEnum(PostStatus)
     status?: PostStatus;
@@ -31,4 +14,8 @@ export class PaginationPostDto {
     @IsOptional()
     @IsString()
     tag?: string;
+
+    @IsOptional()
+    @IsUUID()
+    branchId?: string;
 }

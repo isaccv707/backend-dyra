@@ -44,4 +44,7 @@ export class CreatePostDto {
     @ValidateNested({ each: true })
     @Type(() => CreateContentBlockDto)
     contentBlocks: CreateContentBlockDto[];
+
+    @IsUUID()
+    branchId!: string;
 }

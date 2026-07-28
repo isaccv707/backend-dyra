@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
@@ -6,17 +6,42 @@ import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+
+const POST_ALLOWED_FIELDS = ['title', 'category', 'status', 'createdAt'];
 
 @Injectable()
 export class PostsService {
   constructor(private readonly prisma: PrismaService) { }
 
+  private async assertAuthorBelongsToBranch(authorId: string, branchId: string) {
+    const author = await this.prisma.author.findUnique({
+      where: { id: authorId },
+      select: { branchId: true },
+    });
+    if (!author) {
+      throw new NotFoundException(`Author with id ${authorId} not found`);
+    }
+    if (author.branchId !== branchId) {
+      throw new BadRequestException(
+        'El autor seleccionado pertenece a otra sucursal',
+      );
+    }
+  }
+
   async create(createPostDto: CreatePostDto) {
-    const { contentBlocks, title, ...postData } = createPostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } = createPostDto;
+
+    if (authorId) {
+      await this.assertAuthorBelongsToBranch(authorId, branchId);
+    }
+
     try {
       return await this.prisma.post.create({
         data: {
           ...postData,
+          authorId,
+          branchId,
           title,
           slug: generateSlug(title),
           contentBlocks: {
@@ -37,27 +62,27 @@ export class PostsService {
     }
   }
 
-  async findAll(PaginationPostDto: PaginationPostDto) {
-    const { page = 1, limit = 10, search, status, category, tag } = PaginationPostDto;
-    const skip = (page - 1) * limit;
+  async findAll(dto: PaginationPostDto) {
+    const { status, category, tag, branchId } = dto;
+    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
+      searchFields: ['title', 'description'],
+      allowedFields: POST_ALLOWED_FIELDS,
+    });
 
     const whereClause: Prisma.PostWhereInput = {
+      ...where,
+      ...(branchId && { branchId }),
       ...(status && { status }),
       ...(category && { category }),
       ...(tag && { tags: { has: tag } }),
-      ...(search && {
-        OR: [
-          { title: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } },
-        ],
-      }),
     };
-    const [posts, total] = await Promise.all([
+
+    const [posts, total] = await this.prisma.$transaction([
       this.prisma.post.findMany({
         where: whereClause,
         skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
+        take,
+        orderBy,
         include: {
           author: {
             select: { id: true, name: true, avatar: true },
@@ -67,25 +92,17 @@ export class PostsService {
       this.prisma.post.count({ where: whereClause }),
     ]);
 
-    return {
-      data: posts,
-      meta: {
-        total,
-        page,
-        lastPage: Math.ceil(total / limit),
-        limit,
-        totalPages: Math.ceil(total / limit)
-      },
-    };
+    return paginatedResponse(posts, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, branchId?: string) {
     const post = await this.prisma.post.findFirst({
       where: {
         OR: [
           { id },
           { slug: id }
-        ]
+        ],
+        ...(branchId && { branchId }),
       },
       include: {
         author: {
@@ -103,7 +120,18 @@ export class PostsService {
   }
 
   async update(id: string, updatePostDto: UpdatePostDto) {
-    const { contentBlocks, title, ...postData } = updatePostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } = updatePostDto;
+
+    const existingPost = await this.prisma.post.findUnique({ where: { id } });
+    if (!existingPost) {
+      throw new NotFoundException(`Post with id ${id} not found`);
+    }
+
+    const effectiveBranchId = branchId ?? existingPost.branchId;
+    const effectiveAuthorId = authorId !== undefined ? authorId : existingPost.authorId;
+    if (effectiveAuthorId) {
+      await this.assertAuthorBelongsToBranch(effectiveAuthorId, effectiveBranchId);
+    }
 
     const dataToUpdate: any = { ...postData };
     if (title) {
@@ -116,6 +144,14 @@ export class PostsService {
         deleteMany: {},
         create: contentBlocks,
       }
+    }
+
+    if (branchId) {
+      dataToUpdate.branchId = branchId;
+    }
+
+    if (authorId !== undefined) {
+      dataToUpdate.authorId = authorId;
     }
 
     try {
@@ -134,8 +170,6 @@ export class PostsService {
     } catch (error: any) {
       handleDatabaseErrors(error, 'Post');
     }
-
-    return `This action updates a #${id} post`;
   }
 
   async remove(id: string) {

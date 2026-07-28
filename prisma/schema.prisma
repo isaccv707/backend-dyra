@@ -6,6 +6,36 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  branches Branch[]
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  users       User[]
+  permissions Permission[]
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  action      String  @unique
+  description String?
+  roles       Role[]
+}
+
 model State {
   id       Int      @id @default(autoincrement())
   name     String   @unique
@@ -43,13 +73,36 @@ model Branch {
   addressId Int     @unique @map("address_id")
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
 
-  priceSheetId String?      @map("price_sheet_id")
-  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
+  priceSheets PriceSheets[]
+
+  authors    Author[]
+  banners    Banner[]
+  posts      Post[]
+  reviews    Review[]
+  services   Service[]
+  studies    Study[]
+  schedules  BranchSchedule[]
+  users      User[]
+  quotations Quotation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("branches")
+}
+
+model BranchSchedule {
+  id        String    @id @default(uuid())
+  dayOfWeek DayOfWeek @map("day_of_week")
+  openTime  String?   @map("open_time")
+  closeTime String?   @map("close_time")
+  isClosed  Boolean   @default(false) @map("is_closed")
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, dayOfWeek])
+  @@map("branch_schedules")
 }
 
 model Banner {
@@ -62,7 +115,10 @@ model Banner {
   startAt        DateTime?
   endAt          DateTime?
 
-  @@index([placement, isActive, order])
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, placement, isActive, order])
   @@map("banners")
 }
 
@@ -81,9 +137,13 @@ model Service {
   benefits Benefit[]
   details  ServiceDetail[]
 
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([branchId])
   @@map("services")
 }
 
@@ -91,7 +151,6 @@ model ServiceDetail {
   id          String  @id @default(uuid())
   title       String
   description String?
-  // content Content[]
   image       String?
 
   serviceId String
@@ -117,9 +176,13 @@ model PriceSheets {
   name               String
   description        String
   isActive           Boolean             @default(true)
-  branches           Branch[]
+  isPublic           Boolean             @default(false) @map("is_public")
   studyOnPriceSheets StudyOnPriceSheet[]
 
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
   @@map("price_sheets")
 }
 
@@ -134,49 +197,64 @@ model StudyOnPriceSheet {
   priceSheet   PriceSheets @relation(fields: [priceSheetId], references: [id])
 
   @@unique([studyId, priceSheetId])
+  @@index([priceSheetId])
   @@map("study_on_price_list")
 }
 
 model Study {
   id           String  @id @default(uuid())
   name         String
-  slug         String  @unique
-  code         String  @unique
+  slug         String
+  code         String
   description  String?
   sampleType   String?
   deliveryTime Int?
   preparation  String?
   isActive     Boolean @default(true)
 
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
   priceSheets StudyOnPriceSheet[]
   serviceId   String
   service     Service             @relation(fields: [serviceId], references: [id])
 
+  quotationItems QuotationItem[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, code])
+  @@unique([branchId, slug])
+  @@index([branchId])
   @@map("studies")
 }
 
 model Author {
   id      String  @id @default(uuid())
-  name    String  @unique
-  nameKey String  @unique
+  name    String
+  nameKey String
   avatar  String?
   bio     String?
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
 
   posts Post[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, name])
+  @@unique([branchId, nameKey])
+  @@index([branchId])
   @@map("authors")
 }
 
 model Post {
   id              String         @id @default(uuid())
   title           String
-  slug            String         @unique
+  slug            String
   description     String
   excerpt         String
   image           String?
@@ -190,9 +268,14 @@ model Post {
 
   author Author? @relation(fields: [authorId], references: [id])
 
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, slug])
+  @@index([branchId])
   @@map("posts")
 }
 
@@ -220,11 +303,25 @@ model Review {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
   @@map("reviews")
 }
 
 enum BannerPlacement {
   HOME
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
 }
 
 enum PostStatus {
@@ -238,4 +335,55 @@ enum BlockType {
   SUBTITLE
   QUOTE
   IMAGE
+}
+
+model Quotation {
+  id          String  @id @default(uuid())
+  folio       String  @unique
+  clientType  String  @map("client_type")
+  name        String
+  lastName    String? @map("last_name")
+  phoneNumber String  @map("phone_number")
+  email       String?
+
+  subtotal Decimal @db.Decimal(10, 2)
+  tax      Decimal @db.Decimal(10, 2)
+  total    Decimal @db.Decimal(10, 2)
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id])
+
+  items QuotationItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id       String  @id @default(uuid())
+  name     String
+  price    Decimal @db.Decimal(10, 2)
+  quantity Int
+
+  studyId String?
+  study   Study?  @relation(fields: [studyId], references: [id], onDelete: SetNull)
+
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_items")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_tokens")
 }
