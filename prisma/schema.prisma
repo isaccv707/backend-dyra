@@ -259,6 +259,7 @@ model Post {
   description     String
   excerpt         String
   image           String?
+  imageMobile     String?
   readingTime     Int?
   metaDescription String?
   tags            String[]
