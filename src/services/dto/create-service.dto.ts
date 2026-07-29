@@ -39,6 +39,11 @@ export class ServiceDetailDto {
   @IsUrl()
   @IsString()
   image?: string;
+
+  @IsOptional()
+  @IsUrl()
+  @IsString()
+  imageMobile?: string;
 }
 
 export class CreateServiceDto {
