@@ -85,6 +85,14 @@ model Branch {
   users      User[]
   quotations Quotation[]
 
+  locations                   Location[]
+  employees                   Employee[]
+  deviceItems                 DeviceItem[]            @relation("DeviceCurrentBranch")
+  transferRequestsOrigin      TransferRequest[]       @relation("TransferOrigin")
+  transferRequestsDestination TransferRequest[]       @relation("TransferDestination")
+  movementHistoryOrigin       DeviceMovementHistory[] @relation("MovementOrigin")
+  movementHistoryDestination  DeviceMovementHistory[] @relation("MovementDestination")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -388,4 +396,196 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
 
   @@map("password_reset_tokens")
+}
+
+enum DeviceType {
+  COMPUTER
+  MONITOR
+  KEYBOARD
+  MOUSE
+  MOBILE
+}
+
+enum OwnershipType {
+  INTERNAL
+  PROVIDER
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_TRANSFER
+  MAINTENANCE
+  RETIRED_DISPOSED
+  LOST
+}
+
+enum DeviceCondition {
+  NEW
+  GOOD
+  FAIR
+  DAMAGED
+}
+
+enum TransferStatus {
+  PENDING
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum MovementType {
+  ENTRY_PURCHASE
+  TRANSFER_OUT
+  TRANSFER_IN
+  ASSIGNMENT
+  UNASSIGNMENT
+  MAINTENANCE
+  DISPOSAL
+}
+
+model Location {
+  id   String @id @default(uuid())
+  name String
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  devices DeviceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("locations")
+}
+
+model Employee {
+  id                      String  @id @default(uuid())
+  name                    String
+  department              String
+  hasSignedResponsibility Boolean @default(false) @map("has_signed_responsibility")
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  devices DeviceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@map("employees")
+}
+
+model DeviceCatalog {
+  id    String     @id @default(uuid())
+  name  String
+  type  DeviceType
+  brand String
+  model String
+
+  items DeviceItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("device_catalogs")
+}
+
+model DeviceItem {
+  id            String          @id @default(uuid())
+  internalCode  String          @unique @map("internal_code")
+  serialNumber  String?         @unique @map("serial_number")
+  ownershipType OwnershipType   @default(INTERNAL) @map("ownership_type")
+  providerFolio String?         @map("provider_folio")
+  status        DeviceStatus    @default(AVAILABLE)
+  condition     DeviceCondition @default(GOOD)
+  notes         String?         @db.Text
+
+  catalogId String        @map("catalog_id")
+  catalog   DeviceCatalog @relation(fields: [catalogId], references: [id])
+
+  currentBranchId String @map("current_branch_id")
+  currentBranch   Branch @relation("DeviceCurrentBranch", fields: [currentBranchId], references: [id])
+
+  employeeId String?   @map("employee_id")
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  locationId String?   @map("location_id")
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  transferItems   TransferItem[]
+  movementHistory DeviceMovementHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([catalogId])
+  @@index([currentBranchId])
+  @@index([employeeId])
+  @@index([locationId])
+  @@map("device_items")
+}
+
+model TransferRequest {
+  id     String         @id @default(uuid())
+  status TransferStatus @default(PENDING)
+  notes  String?        @db.Text
+
+  originBranchId String @map("origin_branch_id")
+  originBranch   Branch @relation("TransferOrigin", fields: [originBranchId], references: [id])
+
+  destinationBranchId String @map("destination_branch_id")
+  destinationBranch   Branch @relation("TransferDestination", fields: [destinationBranchId], references: [id])
+
+  items TransferItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([originBranchId])
+  @@index([destinationBranchId])
+  @@index([status])
+  @@map("transfer_requests")
+}
+
+model TransferItem {
+  id String @id @default(uuid())
+
+  transferRequestId String          @map("transfer_request_id")
+  transferRequest   TransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([transferRequestId, deviceId])
+  @@index([deviceId])
+  @@map("transfer_items")
+}
+
+model DeviceMovementHistory {
+  id      String       @id @default(uuid())
+  type    MovementType
+  details String       @db.Text
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  originBranchId String? @map("origin_branch_id")
+  originBranch   Branch? @relation("MovementOrigin", fields: [originBranchId], references: [id])
+
+  destinationBranchId String? @map("destination_branch_id")
+  destinationBranch   Branch? @relation("MovementDestination", fields: [destinationBranchId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([originBranchId])
+  @@index([destinationBranchId])
+  @@map("device_movement_history")
 }
