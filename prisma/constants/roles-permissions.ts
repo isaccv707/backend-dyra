@@ -19,6 +19,30 @@ export const PERMISSIONS = [
   { action: 'branches:update', description: 'Actualizar sucursales' },
   { action: 'branches:delete', description: 'Eliminar sucursales' },
 
+  // Device catalog
+  { action: 'device-catalog:create', description: 'Crear modelos de catálogo de equipos' },
+  { action: 'device-catalog:read',   description: 'Leer catálogo de equipos' },
+  { action: 'device-catalog:update', description: 'Actualizar catálogo de equipos' },
+  { action: 'device-catalog:delete', description: 'Eliminar catálogo de equipos' },
+
+  // Devices
+  { action: 'devices:create', description: 'Crear equipos (alta de inventario)' },
+  { action: 'devices:read',   description: 'Leer equipos de inventario' },
+  { action: 'devices:update', description: 'Actualizar equipos de inventario (incluye asignación y retiro)' },
+  { action: 'devices:delete', description: 'Eliminar equipos de inventario' },
+
+  // Employees
+  { action: 'employees:create', description: 'Crear empleados' },
+  { action: 'employees:read',   description: 'Leer empleados' },
+  { action: 'employees:update', description: 'Actualizar empleados' },
+  { action: 'employees:delete', description: 'Eliminar empleados' },
+
+  // Locations
+  { action: 'locations:create', description: 'Crear ubicaciones' },
+  { action: 'locations:read',   description: 'Leer ubicaciones' },
+  { action: 'locations:update', description: 'Actualizar ubicaciones' },
+  { action: 'locations:delete', description: 'Eliminar ubicaciones' },
+
   // Posts
   { action: 'posts:create', description: 'Crear publicaciones' },
   { action: 'posts:read',   description: 'Leer publicaciones' },
@@ -60,6 +84,11 @@ export const PERMISSIONS = [
   { action: 'studies:read',   description: 'Leer estudios' },
   { action: 'studies:update', description: 'Actualizar estudios' },
   { action: 'studies:delete', description: 'Eliminar estudios' },
+
+  // Transfers
+  { action: 'transfers:create', description: 'Crear solicitudes de transferencia de equipos' },
+  { action: 'transfers:read',   description: 'Leer transferencias de equipos' },
+  { action: 'transfers:update', description: 'Iniciar, recibir, cancelar o rechazar transferencias' },
 
   // Users
   { action: 'users:create', description: 'Crear usuarios' },
