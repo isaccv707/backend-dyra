@@ -18,7 +18,9 @@ export async function seedRolesAndPermissions(prisma: PrismaClient) {
       select: { id: true },
     });
 
-    const existing = await prisma.role.findFirst({ where: { name: roleData.name } });
+    const existing = await prisma.role.findFirst({
+      where: { name: roleData.name },
+    });
 
     if (existing) {
       await prisma.role.update({

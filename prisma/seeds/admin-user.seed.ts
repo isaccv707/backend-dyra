@@ -14,7 +14,9 @@ export async function seedAdminUser(prisma: PrismaClient) {
     throw new Error('La variable de entorno SEED_ADMIN_PASSWORD es requerida.');
   }
 
-  const adminRole = await prisma.role.findFirst({ where: { name: ADMIN_ROLE_NAME } });
+  const adminRole = await prisma.role.findFirst({
+    where: { name: ADMIN_ROLE_NAME },
+  });
   if (!adminRole) {
     throw new Error(
       `El rol '${ADMIN_ROLE_NAME}' no existe. Ejecuta primero el seed de roles y permisos.`,
