@@ -11,8 +11,8 @@ import { DeviceCondition, OwnershipType } from '@prisma/client';
 
 export class CreateDeviceItemDto {
   @IsString()
-  @Matches(/^DYRA0000\d{4}$/, {
-    message: 'internalCode debe tener el formato DYRA0000 seguido de 4 dígitos (ej. DYRA00000001)',
+  @Matches(/^DYRA\d{8}$/, {
+    message: 'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
   })
   internalCode!: string;
 

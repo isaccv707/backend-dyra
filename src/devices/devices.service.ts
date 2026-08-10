@@ -212,8 +212,8 @@ export class DevicesService {
             deviceId,
             type: 'ASSIGNMENT',
             details: dto.employeeId
-              ? `Asignado al empleado ${dto.employeeId}`
-              : `Asignado a la ubicación ${dto.locationId}`,
+              ? `Asignado al empleado ${updated.employee!.name}`
+              : `Asignado a la ubicación ${updated.location!.name}`,
           },
         });
 
