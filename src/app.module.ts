@@ -14,6 +14,9 @@ import { PriceSheetsModule } from './price-sheets/price-sheets.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { RolesPermissionsModule } from './roles-permissions/roles-permissions.module';
+import { EmployeesModule } from './employees/employees.module';
+import { LocationsModule } from './locations/locations.module';
+import { DevicesModule } from './devices/devices.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { RolesPermissionsModule } from './roles-permissions/roles-permissions.mo
     AuthModule,
     UsersModule,
     RolesPermissionsModule,
+    EmployeesModule,
+    LocationsModule,
+    DevicesModule,
   ],
   controllers: [],
   providers: [],

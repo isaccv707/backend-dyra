@@ -18,6 +18,10 @@ export class CreatePostDto {
     image?: string;
 
     @IsOptional()
+    @IsString()
+    imageMobile?: string;
+
+    @IsOptional()
     @IsInt()
     readingTime?: number;
 
