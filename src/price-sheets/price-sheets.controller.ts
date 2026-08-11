@@ -1,5 +1,29 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Express, Response } from 'express';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
+  Res,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { PriceSheetsService } from './price-sheets.service';
 import { CreatePriceSheetDto } from './dto/create-price-sheet.dto';
 import { UpdatePriceSheetDto } from './dto/update-price-sheet.dto';
@@ -70,5 +94,80 @@ export class PriceSheetsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.priceSheetsService.remove(id);
+  }
+
+  @ApiOperation({
+    summary: 'Descargar plantilla de importación de un tarifario',
+    description:
+      'Genera y descarga la plantilla Excel para cargar de forma masiva los estudios y precios de este tarifario específico.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del tabulador.' })
+  @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  @ApiResponse({ status: 200, description: 'Archivo Excel de plantilla.' })
+  @ApiResponse({ status: 404, description: 'Tabulador no encontrado.' })
+  @ApiBearerAuth()
+  @Permissions('studies:create')
+  @Get(':id/import-template')
+  async downloadImportTemplate(
+    @Param('id') id: string,
+    @CurrentUser() user: BranchScopedUser,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.priceSheetsService.generateImportTemplate(id, user);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="plantilla-tarifario.xlsx"',
+    );
+
+    res.send(buffer);
+  }
+
+  @ApiOperation({
+    summary: 'Importar estudios y precios a un tarifario',
+    description:
+      'Procesa un archivo .xlsx/.xls para crear o actualizar los estudios de este tarifario junto con su precio, sin afectar los precios que esos estudios tengan en otros tarifarios.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del tabulador.' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo Excel (.xlsx o .xls) con los estudios y precios de este tarifario.',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Resultado de la importación con el detalle de éxitos y errores por fila.' })
+  @ApiResponse({ status: 400, description: 'Archivo no proporcionado o de tipo inválido.' })
+  @ApiResponse({ status: 404, description: 'Tabulador no encontrado.' })
+  @ApiBearerAuth()
+  @Permissions('studies:create')
+  @Post(':id/import-excel')
+  @UseInterceptors(FileInterceptor('file'))
+  async importExcel(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    if (!file) throw new BadRequestException('File is required');
+
+    const allowed = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ];
+
+    if (!allowed.includes(file.mimetype)) {
+      throw new BadRequestException('Solo se permite archivo Excel (.xlsx)');
+    }
+    return this.priceSheetsService.importStudiesFromExcel(id, file.buffer, user);
   }
 }

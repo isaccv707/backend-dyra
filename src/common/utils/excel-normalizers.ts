@@ -6,7 +6,7 @@ export const toRequiredNumber = (v: any): number => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
 
   // 3. Si es un string, removemos TODO lo que no sea un número, un punto o un signo menos
-  // Esto elimina comas (,), signos de pesos ($), espacios normales y espacios invisibles (\u00a0)
+  // Esto elimina comas (,), signos de pesos ($), espacios normales y espacios invisibles ( )
   const cleanString = String(v)
     .replace(/[^\d.-]/g, '') // 🔥 Conserva solo dígitos, puntos y guiones. Adiós comas y espacios.
     .trim();
