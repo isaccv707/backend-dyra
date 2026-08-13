@@ -19,7 +19,6 @@ import {
   BranchScopedUser,
   userBranchFilter,
 } from 'src/common/utils/branch-access.util';
-import { BranchesService } from 'src/branches/branches.service';
 import { CreateQuotationDto, SelectedStudyDto } from './dto/create-quotation.dto';
 import { FindQuotationsDto } from './dto/find-quotations.dto';
 import {
@@ -33,8 +32,8 @@ import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica';
 const COMPANY_SUBTITLE = 'Cotización de estudios de laboratorio';
 
-// Usados solo cuando la cotización no tiene branchId o a la sucursal le
-// faltan datos (phone/email/address son opcionales en el modelo Branch).
+// Usados como respaldo si a la sucursal le faltan datos (phone/email son
+// opcionales en el modelo Branch); toda cotización tiene branchId.
 const FALLBACK_COMPANY_INFO: CompanyInfo = {
   name: COMPANY_NAME,
   subtitle: COMPANY_SUBTITLE,
@@ -51,6 +50,7 @@ const QUOTATION_ALLOWED_FIELDS = [
   'phoneNumber',
   'total',
   'createdAt',
+  'priceSheet.name',
 ];
 
 const QUOTATION_BRANCH_SELECT = {
@@ -77,6 +77,7 @@ type QuotationBranch = Prisma.BranchGetPayload<{
 type QuotationWithItems = Quotation & {
   items: QuotationItem[];
   branch?: QuotationBranch | null;
+  priceSheet?: { id: string; name: string } | null;
 };
 
 type ResolvedQuotationItem = {
@@ -91,21 +92,53 @@ export class QuotationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfRenderer: QuotationPdfRenderer,
-    private readonly branchesService: BranchesService,
   ) {}
 
+  // Flujo público (usuarios de la página web, sin login): solo puede
+  // cotizar contra la hoja de precios pública de la sucursal.
   async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
-    let branch: QuotationBranch | null = null;
-    if (dto.branchId) {
-      branch = await this.prisma.branch.findUnique({
-        where: { id: dto.branchId },
-        select: QUOTATION_BRANCH_SELECT,
-      });
-      if (!branch) {
-        throw new NotFoundException(
-          `Branch with ID '${dto.branchId}' not found`,
-        );
-      }
+    return this.createQuotation(dto, { requirePublicPriceSheet: true });
+  }
+
+  // Flujo admin (staff autenticado con `quotations:create`): puede cotizar
+  // contra cualquier hoja de precios activa de una sucursal a la que tenga acceso.
+  async createForAdmin(
+    dto: CreateQuotationDto,
+    user: BranchScopedUser,
+  ): Promise<QuotationWithItems> {
+    assertBranchAccess(user, dto.branchId);
+    return this.createQuotation(dto, { requirePublicPriceSheet: false });
+  }
+
+  private async createQuotation(
+    dto: CreateQuotationDto,
+    opts: { requirePublicPriceSheet: boolean },
+  ): Promise<QuotationWithItems> {
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: dto.branchId },
+      select: QUOTATION_BRANCH_SELECT,
+    });
+    if (!branch) {
+      throw new NotFoundException(
+        `Branch with ID '${dto.branchId}' not found`,
+      );
+    }
+
+    const priceSheet = await this.prisma.priceSheets.findFirst({
+      where: {
+        id: dto.priceSheetId,
+        branchId: dto.branchId,
+        isActive: true,
+        ...(opts.requirePublicPriceSheet && { isPublic: true }),
+      },
+      select: { id: true },
+    });
+    if (!priceSheet) {
+      throw new BadRequestException(
+        opts.requirePublicPriceSheet
+          ? 'La hoja de precios indicada no existe, no está activa, no pertenece a la sucursal seleccionada, o no es pública.'
+          : 'La hoja de precios indicada no existe, no está activa o no pertenece a la sucursal seleccionada.',
+      );
     }
 
     const items = await this.resolveQuotationItems(dto);
@@ -123,6 +156,7 @@ export class QuotationsService {
         tax: totals.tax,
         total: totals.total,
         branchId: dto.branchId,
+        priceSheetId: priceSheet.id,
         items: { create: items },
       },
       include: { items: true },
@@ -136,8 +170,9 @@ export class QuotationsService {
   // ===========================
   // Los estudios de catálogo (con `id`) nunca confían en el precio/nombre
   // enviado por el cliente: se resuelven contra el StudyOnPriceSheet de la
-  // sucursal para evitar que la cotización se manipule desde el frontend.
-  // Solo las líneas ad-hoc (sin `id`, fuera de catálogo) usan lo enviado.
+  // hoja de precios (ya validada en `createQuotation`) para evitar que la
+  // cotización se manipule desde el frontend. Solo las líneas ad-hoc (sin
+  // `id`, fuera de catálogo) usan lo enviado.
   private async resolveQuotationItems(
     dto: CreateQuotationDto,
   ): Promise<ResolvedQuotationItem[]> {
@@ -154,38 +189,8 @@ export class QuotationsService {
     let priceByStudyId = new Map<string, { name: string; price: Prisma.Decimal }>();
 
     if (catalogStudyIds.length > 0) {
-      if (!dto.branchId) {
-        throw new BadRequestException(
-          'Se requiere branchId para cotizar estudios del catálogo.',
-        );
-      }
-
-      let priceSheetId: string | null;
-
-      if (dto.priceSheetId) {
-        const priceSheet = await this.prisma.priceSheets.findFirst({
-          where: { id: dto.priceSheetId, branchId: dto.branchId, isActive: true },
-          select: { id: true },
-        });
-        if (!priceSheet) {
-          throw new BadRequestException(
-            'La hoja de precios indicada no pertenece a la sucursal seleccionada.',
-          );
-        }
-        priceSheetId = priceSheet.id;
-      } else {
-        priceSheetId = await this.branchesService.resolveBranchPriceSheetId(
-          dto.branchId,
-        );
-        if (!priceSheetId) {
-          throw new BadRequestException(
-            'La sucursal seleccionada no tiene una lista de precios pública configurada.',
-          );
-        }
-      }
-
       const entries = await this.prisma.studyOnPriceSheet.findMany({
-        where: { studyId: { in: catalogStudyIds }, priceSheetId },
+        where: { studyId: { in: catalogStudyIds }, priceSheetId: dto.priceSheetId },
         include: { study: { select: { name: true } } },
       });
 
@@ -234,7 +239,11 @@ export class QuotationsService {
         take,
         where: finalWhere,
         orderBy,
-        include: { items: true, branch: { select: { id: true, name: true } } },
+        include: {
+          items: true,
+          branch: { select: { id: true, name: true } },
+          priceSheet: { select: { id: true, name: true } },
+        },
       }),
       this.prisma.quotation.count({ where: finalWhere }),
     ]);
@@ -248,7 +257,11 @@ export class QuotationsService {
   ): Promise<QuotationWithItems> {
     const quotation = await this.prisma.quotation.findUnique({
       where: { id },
-      include: { items: true, branch: { select: QUOTATION_BRANCH_SELECT } },
+      include: {
+        items: true,
+        branch: { select: QUOTATION_BRANCH_SELECT },
+        priceSheet: { select: { id: true, name: true } },
+      },
     });
     if (!quotation) {
       throw new NotFoundException(`Quotation with ID '${id}' not found`);

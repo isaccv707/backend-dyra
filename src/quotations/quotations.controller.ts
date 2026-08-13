@@ -26,14 +26,34 @@ import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 export class QuotationsController {
   constructor(private readonly quotationsService: QuotationsService) {}
 
-  @ApiOperation({ summary: 'Generar cotización en PDF', description: 'Crea una cotización con los estudios seleccionados y devuelve el PDF generado.' })
+  @ApiOperation({
+    summary: 'Generar cotización en PDF',
+    description:
+      'Crea una cotización con los estudios seleccionados y devuelve el PDF generado. La hoja de precios (priceSheetId) debe pertenecer a la sucursal indicada y ser pública.',
+  })
   @ApiProduces('application/pdf')
   @ApiResponse({ status: 201, description: 'PDF de la cotización generado exitosamente.' })
+  @ApiResponse({ status: 400, description: 'La hoja de precios no pertenece a la sucursal indicada, no está activa o no es pública.' })
   @Public()
   @Post('pdf')
   async generatePdf(@Body() dto: CreateQuotationDto, @Res() res: Response) {
     const quotation = await this.quotationsService.create(dto);
     this.streamPdf(res, quotation);
+  }
+
+  @ApiOperation({
+    summary: 'Crear cotización',
+    description:
+      'Crea una cotización (sin generar PDF) usando cualquier hoja de precios activa de la sucursal, pública o privada. El PDF puede obtenerse después vía GET /quotations/:id/pdf.',
+  })
+  @ApiResponse({ status: 201, description: 'Cotización creada exitosamente.' })
+  @ApiResponse({ status: 400, description: 'La hoja de precios no pertenece a la sucursal indicada o no está activa.' })
+  @ApiResponse({ status: 403, description: 'El usuario no tiene acceso a la sucursal indicada.' })
+  @ApiBearerAuth()
+  @Permissions('quotations:create')
+  @Post()
+  create(@Body() dto: CreateQuotationDto, @CurrentUser() user: BranchScopedUser) {
+    return this.quotationsService.createForAdmin(dto, user);
   }
 
   @ApiOperation({ summary: 'Listar cotizaciones', description: 'Devuelve las cotizaciones con alcance según la sucursal del usuario autenticado.' })

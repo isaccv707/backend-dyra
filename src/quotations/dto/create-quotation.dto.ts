@@ -49,11 +49,9 @@ export class CreateQuotationDto {
     @Type(() => SelectedStudyDto)
     studies: SelectedStudyDto[];
 
-    @IsOptional()
     @IsUUID()
-    branchId?: string;
+    branchId: string;
 
-    @IsOptional()
     @IsUUID()
-    priceSheetId?: string;
+    priceSheetId: string;
 }

@@ -15,7 +15,7 @@ export async function seedServices(prisma: PrismaClient) {
     }
 
     await prisma.service.upsert({
-      where: { slug: service.slug },
+      where: { branchId_slug: { branchId, slug: service.slug } },
       update: {
         name: service.name,
         description: service.description,
