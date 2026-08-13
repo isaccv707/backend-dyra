@@ -54,7 +54,7 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 - `Post.authorId`, when set, must reference an `Author` in the same `branchId` — enforced in `posts.service.ts`, not at the DB level.
 - `Study.branchId` must match the `branchId` of its `Study.service` (`assertServiceBelongsToBranch` in `studies.service.ts`), and `StudyOnPriceSheet` can only link a study to a `PriceSheets` row from that same branch — a study is never priced by another branch's tarifario. Both are enforced in the service layer, not at the DB level.
 - `Banner.order` is a per-`(branchId, placement)` queue — reordering logic in `banners.service.ts` scopes its shifts by both fields, not just `placement`.
-- `Author`, `Post`, and `Study` uniqueness (`name`/`nameKey`, `slug`, `code`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug/code can exist in two different branches; they're unrelated records.
+- `Service`, `Author`, `Post`, and `Study` uniqueness (`name`/`nameKey`, `slug`, `code`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug/code can exist in two different branches; they're unrelated records (e.g. "Análisis Clínicos" can be a separate `Service` row in two branches).
 
 Intentional exceptions to the "single required `branchId`" rule:
 - `Review`: strict `where.branchId` match, no "global" concept, but `branchId` is nullable (a review not tied to any branch is allowed).

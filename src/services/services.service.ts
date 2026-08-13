@@ -5,6 +5,7 @@ import { FindServicesDto } from './dto/find-services.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { BranchesService } from 'src/branches/branches.service';
+import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import {
   buildPaginatedQuery,
   paginatedResponse,
@@ -24,19 +25,23 @@ export class ServicesService {
     const { benefits, details, branchId, ...serviceData } = createServiceDto;
     const slug = generateSlug(serviceData.name);
 
-    return this.prisma.service.create({
-      data: {
-        ...serviceData,
-        slug,
-        benefits: benefits ? { create: benefits } : undefined,
-        details: details ? { create: details } : undefined,
-        branch: { connect: { id: branchId } },
-      },
-      include: {
-        benefits: true,
-        details: true,
-      },
-    });
+    try {
+      return await this.prisma.service.create({
+        data: {
+          ...serviceData,
+          slug,
+          benefits: benefits ? { create: benefits } : undefined,
+          details: details ? { create: details } : undefined,
+          branch: { connect: { id: branchId } },
+        },
+        include: {
+          benefits: true,
+          details: true,
+        },
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Service');
+    }
   }
 
   async findAll(dto: FindServicesDto) {
@@ -208,34 +213,38 @@ export class ServicesService {
       serviceData['slug'] = generateSlug(serviceData.name);
     }
 
-    return await this.prisma.$transaction(async (tx) => {
-      // Solo borramos si el usuario envió explícitamente el arreglo (aunque sea vacío)
-      if (benefits !== undefined) {
-        await tx.benefit.deleteMany({ where: { serviceId: id } });
-      }
-      if (details !== undefined) {
-        await tx.serviceDetail.deleteMany({ where: { serviceId: id } });
-      }
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Solo borramos si el usuario envió explícitamente el arreglo (aunque sea vacío)
+        if (benefits !== undefined) {
+          await tx.benefit.deleteMany({ where: { serviceId: id } });
+        }
+        if (details !== undefined) {
+          await tx.serviceDetail.deleteMany({ where: { serviceId: id } });
+        }
 
-      return await tx.service.update({
-        where: { id },
-        data: {
-          ...serviceData,
-          // Solo creamos si el arreglo existe y tiene contenido
-          benefits:
-            benefits && benefits.length > 0 ? { create: benefits } : undefined,
-          details:
-            details && details.length > 0 ? { create: details } : undefined,
-          ...(branchId !== undefined && {
-            branch: { connect: { id: branchId } },
-          }),
-        },
-        include: {
-          benefits: true,
-          details: true,
-        },
+        return await tx.service.update({
+          where: { id },
+          data: {
+            ...serviceData,
+            // Solo creamos si el arreglo existe y tiene contenido
+            benefits:
+              benefits && benefits.length > 0 ? { create: benefits } : undefined,
+            details:
+              details && details.length > 0 ? { create: details } : undefined,
+            ...(branchId !== undefined && {
+              branch: { connect: { id: branchId } },
+            }),
+          },
+          include: {
+            benefits: true,
+            details: true,
+          },
+        });
       });
-    });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Service');
+    }
   }
 
   async remove(id: string) {

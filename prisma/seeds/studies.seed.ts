@@ -2,8 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import { STUDIES } from '../constants/studies';
 
 export async function seedStudies(prisma: PrismaClient) {
-  // Get a default service (Análisis Clínicos) to use if the hardcoded one fails
-  const defaultService = await prisma.service.findUnique({
+  // Get a default service (Análisis Clínicos) to use if the hardcoded one fails.
+  // `slug` is scoped per sucursal now, so several branches may have one —
+  // any of them works fine as a fallback.
+  const defaultService = await prisma.service.findFirst({
     where: { slug: 'analisis-clinicos' },
   });
 
