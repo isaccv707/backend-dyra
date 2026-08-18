@@ -220,7 +220,9 @@ export class ServicesService {
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string, branchId?: string) {
+  async findOne(id: string, dto: FindServicesDto = {}) {
+    const { branchId, page = 1, limit = 10 } = dto;
+
     if (branchId) {
       await this.branchesService.findOne(branchId);
     }
@@ -239,17 +241,6 @@ export class ServicesService {
         priceSheet: {
           select: { id: true, name: true, description: true },
         },
-        studies: {
-          where: { isActive: true },
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            slug: true,
-            // No traemos 'preparation' o 'description' aquí para que la
-            // respuesta no sea gigante si hay 500 estudios.
-          },
-        },
         _count: {
           select: { studies: true },
         },
@@ -258,13 +249,40 @@ export class ServicesService {
     if (!service)
       throw new NotFoundException(`The Service with id: ${id} not found`);
 
+    // Los estudios de un servicio se paginan aparte del propio servicio:
+    // un servicio puede tener cientos de estudios (import masivo por
+    // Excel), así que la página de detalle no trae todos de un jalón.
+    const skip = (page - 1) * limit;
+    const studiesWhere: Prisma.StudyWhereInput = {
+      serviceId: service.id,
+      isActive: true,
+    };
+
+    const [studies, studiesTotal] = await this.prisma.$transaction([
+      this.prisma.study.findMany({
+        where: studiesWhere,
+        skip,
+        take: limit,
+        orderBy: { name: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          slug: true,
+          // No traemos 'preparation' o 'description' aquí para que la
+          // respuesta no sea gigante si hay 500 estudios.
+        },
+      }),
+      this.prisma.study.count({ where: studiesWhere }),
+    ]);
+
     // El servicio renderiza los precios de SU hoja pública (si tiene una
-    // asignada) para cada uno de sus estudios activos.
+    // asignada) para cada uno de los estudios de esta página.
     const priceEntries = service.priceSheetId
       ? await this.prisma.studyOnPriceSheet.findMany({
           where: {
             priceSheetId: service.priceSheetId,
-            studyId: { in: service.studies.map((s) => s.id) },
+            studyId: { in: studies.map((s) => s.id) },
           },
         })
       : [];
@@ -273,19 +291,24 @@ export class ServicesService {
 
     return {
       ...service,
-      studies: service.studies.map((study) => {
-        const regionalPrice = priceByStudyId.get(study.id);
-        return {
-          ...study,
-          priceInfo: {
-            showPrice: regionalPrice?.showPrice ?? false,
-            price: regionalPrice?.showPrice ? regionalPrice.price : null,
-            message: regionalPrice?.showPrice
-              ? null
-              : 'Para mayor información consulte en sucursal',
-          },
-        };
-      }),
+      studies: paginatedResponse(
+        studies.map((study) => {
+          const regionalPrice = priceByStudyId.get(study.id);
+          return {
+            ...study,
+            priceInfo: {
+              showPrice: regionalPrice?.showPrice ?? false,
+              price: regionalPrice?.showPrice ? regionalPrice.price : null,
+              message: regionalPrice?.showPrice
+                ? null
+                : 'Para mayor información consulte en sucursal',
+            },
+          };
+        }),
+        studiesTotal,
+        page,
+        limit,
+      ),
     };
   }
 
