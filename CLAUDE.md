@@ -14,7 +14,7 @@ npm run test:cov        # Coverage report
 npx prisma generate     # Regenerate Prisma client after schema changes
 npx prisma studio       # Database GUI
 npx prisma db push      # Push schema to DB (used in prod deploy)
-npm run seed            # Run seed script (ts-node prisma/seed.ts)
+npx prisma db seed      # Run seed script (ts-node prisma/seed.ts)
 ```
 
 Run a single test file:

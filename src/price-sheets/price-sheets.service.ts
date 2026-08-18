@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -51,19 +50,6 @@ export class PriceSheetsService {
 
   async create(createPriceSheetDto: CreatePriceSheetDto) {
     const { branchId, isPublic, ...rest } = createPriceSheetDto;
-
-    if (isPublic) {
-      const existingPublic = await this.prisma.priceSheets.findFirst({
-        where: { branchId, isPublic: true },
-        select: { id: true, name: true },
-      });
-
-      if (existingPublic) {
-        throw new ConflictException(
-          `La sucursal ya tiene una hoja de precios pública ("${existingPublic.name}"). Actualízala para quitarle el estado público, o usa PATCH sobre esa hoja para reemplazarla, antes de crear una nueva como pública.`,
-        );
-      }
-    }
 
     try {
       return await this.prisma.priceSheets.create({
@@ -163,30 +149,13 @@ export class PriceSheetsService {
     const { branchId, isPublic, ...rest } = updatePriceSheetDto;
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        if (isPublic) {
-          const current = await tx.priceSheets.findUniqueOrThrow({
-            where: { id },
-          });
-
-          await tx.priceSheets.updateMany({
-            where: {
-              branchId: branchId ?? current.branchId,
-              isPublic: true,
-              id: { not: id },
-            },
-            data: { isPublic: false },
-          });
-        }
-
-        return tx.priceSheets.update({
-          where: { id },
-          data: {
-            ...rest,
-            ...(isPublic !== undefined && { isPublic }),
-            ...(branchId && { branch: { connect: { id: branchId } } }),
-          },
-        });
+      return await this.prisma.priceSheets.update({
+        where: { id },
+        data: {
+          ...rest,
+          ...(isPublic !== undefined && { isPublic }),
+          ...(branchId && { branch: { connect: { id: branchId } } }),
+        },
       });
     } catch (error) {
       handleDatabaseErrors(error, 'PriceSheet');

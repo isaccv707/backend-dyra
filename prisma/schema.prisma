@@ -148,6 +148,13 @@ model Service {
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
+  // Hoja de precios pública de este servicio (opcional). Relación 1 a 1:
+  // solo un servicio puede tener vinculada una hoja dada como su pública.
+  // La hoja referenciada debe tener isPublic = true y pertenecer a la
+  // misma branchId — validado en services.service.ts, no a nivel DB.
+  priceSheetId String?      @unique @map("price_sheet_id")
+  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -190,6 +197,7 @@ model PriceSheets {
   isPublic           Boolean             @default(false) @map("is_public")
   studyOnPriceSheets StudyOnPriceSheet[]
   quotations         Quotation[]
+  publicForService   Service?
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])

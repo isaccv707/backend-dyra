@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { FindServicesDto } from './dto/find-services.dto';
@@ -21,9 +21,35 @@ export class ServicesService {
     private readonly branchesService: BranchesService,
   ) {}
 
+  // Una hoja de precios solo puede vincularse como la pública de un servicio
+  // si es isPublic=true y pertenece a la misma sucursal que el servicio.
+  private async assertPriceSheetIsEligible(priceSheetId: string, branchId: string) {
+    const priceSheet = await this.prisma.priceSheets.findUnique({
+      where: { id: priceSheetId },
+      select: { branchId: true, isPublic: true },
+    });
+    if (!priceSheet) {
+      throw new NotFoundException(`PriceSheet with id ${priceSheetId} not found`);
+    }
+    if (priceSheet.branchId !== branchId) {
+      throw new BadRequestException(
+        'La hoja de precios pertenece a otra sucursal distinta a la del servicio',
+      );
+    }
+    if (!priceSheet.isPublic) {
+      throw new BadRequestException(
+        'Solo se puede asignar a un servicio una hoja de precios marcada como pública (isPublic=true)',
+      );
+    }
+  }
+
   async create(createServiceDto: CreateServiceDto) {
-    const { benefits, details, branchId, ...serviceData } = createServiceDto;
+    const { benefits, details, branchId, priceSheetId, ...serviceData } = createServiceDto;
     const slug = generateSlug(serviceData.name);
+
+    if (priceSheetId) {
+      await this.assertPriceSheetIsEligible(priceSheetId, branchId);
+    }
 
     try {
       return await this.prisma.service.create({
@@ -33,6 +59,7 @@ export class ServicesService {
           benefits: benefits ? { create: benefits } : undefined,
           details: details ? { create: details } : undefined,
           branch: { connect: { id: branchId } },
+          ...(priceSheetId && { priceSheet: { connect: { id: priceSheetId } } }),
         },
         include: {
           benefits: true,
@@ -82,21 +109,23 @@ export class ServicesService {
 
   private async findAllByBranch(branchId: string, dto: FindServicesDto) {
     const { priceSheetId } = dto;
-    const activePriceSheetId = priceSheetId
-      ? (
-          await this.prisma.priceSheets.findFirst({
-            where: { id: priceSheetId, branchId, isActive: true },
-            select: { id: true },
-          })
-        )?.id
-      : await this.branchesService.resolveBranchPriceSheetId(branchId);
 
-    if (!activePriceSheetId) {
-      throw new NotFoundException(
-        priceSheetId
-          ? `La hoja de precios ${priceSheetId} no pertenece a la sucursal ${branchId}.`
-          : `La sucursal con id ${branchId} no existe o no tiene una hoja de precios asignada.`,
-      );
+    // priceSheetId explícito = override admin: se usa esa hoja para TODOS
+    // los servicios de la sucursal (vista de "qué se ve con este tarifario").
+    // Sin override, cada servicio usa su propia hoja pública (priceSheetId
+    // en Service) — los que no tienen ninguna no muestran precio.
+    let overridePriceSheetId: string | undefined;
+    if (priceSheetId) {
+      const priceSheet = await this.prisma.priceSheets.findFirst({
+        where: { id: priceSheetId, branchId, isActive: true },
+        select: { id: true },
+      });
+      if (!priceSheet) {
+        throw new NotFoundException(
+          `La hoja de precios ${priceSheetId} no pertenece a la sucursal ${branchId}.`,
+        );
+      }
+      overridePriceSheetId = priceSheet.id;
     }
 
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
@@ -124,10 +153,15 @@ export class ServicesService {
           },
           studies: {
             where: { isActive: true },
-            include: {
-              priceSheets: {
-                where: { priceSheetId: activePriceSheetId },
-              },
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              code: true,
+              description: true,
+              sampleType: true,
+              deliveryTime: true,
+              preparation: true,
             },
           },
         },
@@ -135,29 +169,53 @@ export class ServicesService {
       this.prisma.service.count({ where: whereClause }),
     ]);
 
-    const data = services.map((service) => ({
-      ...service,
-      studies: service.studies.map((study) => {
-        const regionalPrice = study.priceSheets[0];
-        return {
-          id: study.id,
-          name: study.name,
-          slug: study.slug,
-          code: study.code,
-          description: study.description,
-          sampleType: study.sampleType,
-          deliveryTime: study.deliveryTime,
-          preparation: study.preparation,
-          priceInfo: {
-            showPrice: regionalPrice?.showPrice ?? false,
-            price: regionalPrice?.showPrice ? regionalPrice.price : null,
-            message: regionalPrice?.showPrice
-              ? null
-              : 'Para mayor información consulte en sucursal',
+    const priceSheetIdsToResolve = overridePriceSheetId
+      ? [overridePriceSheetId]
+      : [...new Set(services.map((s) => s.priceSheetId).filter((id): id is string => !!id))];
+
+    const priceEntries = priceSheetIdsToResolve.length
+      ? await this.prisma.studyOnPriceSheet.findMany({
+          where: {
+            priceSheetId: { in: priceSheetIdsToResolve },
+            studyId: { in: services.flatMap((s) => s.studies.map((st) => st.id)) },
           },
-        };
-      }),
-    }));
+        })
+      : [];
+
+    const priceByKey = new Map(
+      priceEntries.map((entry) => [`${entry.studyId}:${entry.priceSheetId}`, entry]),
+    );
+
+    const data = services.map((service) => {
+      const effectivePriceSheetId = overridePriceSheetId ?? service.priceSheetId ?? undefined;
+
+      return {
+        ...service,
+        studies: service.studies.map((study) => {
+          const regionalPrice = effectivePriceSheetId
+            ? priceByKey.get(`${study.id}:${effectivePriceSheetId}`)
+            : undefined;
+
+          return {
+            id: study.id,
+            name: study.name,
+            slug: study.slug,
+            code: study.code,
+            description: study.description,
+            sampleType: study.sampleType,
+            deliveryTime: study.deliveryTime,
+            preparation: study.preparation,
+            priceInfo: {
+              showPrice: regionalPrice?.showPrice ?? false,
+              price: regionalPrice?.showPrice ? regionalPrice.price : null,
+              message: regionalPrice?.showPrice
+                ? null
+                : 'Para mayor información consulte en sucursal',
+            },
+          };
+        }),
+      };
+    });
 
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
@@ -176,6 +234,11 @@ export class ServicesService {
         benefits: true,
         details: true,
         branch: true,
+        // Datos de la hoja de precios pública asignada (nombre/descripción)
+        // para renderizar el encabezado del tarifario en la página pública.
+        priceSheet: {
+          select: { id: true, name: true, description: true },
+        },
         studies: {
           where: { isActive: true },
           select: {
@@ -195,14 +258,42 @@ export class ServicesService {
     if (!service)
       throw new NotFoundException(`The Service with id: ${id} not found`);
 
-    return service;
+    // El servicio renderiza los precios de SU hoja pública (si tiene una
+    // asignada) para cada uno de sus estudios activos.
+    const priceEntries = service.priceSheetId
+      ? await this.prisma.studyOnPriceSheet.findMany({
+          where: {
+            priceSheetId: service.priceSheetId,
+            studyId: { in: service.studies.map((s) => s.id) },
+          },
+        })
+      : [];
+
+    const priceByStudyId = new Map(priceEntries.map((entry) => [entry.studyId, entry]));
+
+    return {
+      ...service,
+      studies: service.studies.map((study) => {
+        const regionalPrice = priceByStudyId.get(study.id);
+        return {
+          ...study,
+          priceInfo: {
+            showPrice: regionalPrice?.showPrice ?? false,
+            price: regionalPrice?.showPrice ? regionalPrice.price : null,
+            message: regionalPrice?.showPrice
+              ? null
+              : 'Para mayor información consulte en sucursal',
+          },
+        };
+      }),
+    };
   }
 
   async update(id: string, updateServiceDto: UpdateServiceDto) {
     // 1. Verificación de existencia del DTO
     if (!updateServiceDto) return;
 
-    const { benefits, details, branchId, ...serviceData } = updateServiceDto;
+    const { benefits, details, branchId, priceSheetId, ...serviceData } = updateServiceDto;
 
     const existingService = await this.prisma.service.findUnique({
       where: { id },
@@ -211,6 +302,10 @@ export class ServicesService {
 
     if (serviceData.name) {
       serviceData['slug'] = generateSlug(serviceData.name);
+    }
+
+    if (priceSheetId) {
+      await this.assertPriceSheetIsEligible(priceSheetId, branchId ?? existingService.branchId);
     }
 
     try {
@@ -234,6 +329,11 @@ export class ServicesService {
               details && details.length > 0 ? { create: details } : undefined,
             ...(branchId !== undefined && {
               branch: { connect: { id: branchId } },
+            }),
+            ...(priceSheetId !== undefined && {
+              priceSheet: priceSheetId
+                ? { connect: { id: priceSheetId } }
+                : { disconnect: true },
             }),
           },
           include: {
