@@ -4,7 +4,18 @@ import { PdfLayout, QuotationPdfData, StudyItem, Totals } from '../interfaces/qu
 
 const MAX_TABLE_Y = 720;
 const TABLE_START_Y = 60;
-const PRICE_COLUMN_WIDTH = 100;
+const PRICE_COLUMN_WIDTH = 80;
+const QUANTITY_COLUMN_WIDTH = 65;
+const STUDY_COLUMN_WIDTH = 175;
+const IVA_RATE = 0.16;
+
+interface TableColumns {
+    colStudyX: number;
+    colUnitPriceX: number;
+    colQuantityX: number;
+    colSubtotalX: number;
+    colTotalX: number;
+}
 
 @Injectable()
 export class QuotationPdfRenderer {
@@ -180,15 +191,8 @@ export class QuotationPdfRenderer {
         doc.moveDown(0.5);
 
         const tableTop = doc.y + 5;
-        const colStudyX = marginLeft + 10;
-
-        // Última columna (importe total)
-        const colTotalX = pageWidth - marginRight - PRICE_COLUMN_WIDTH;
-        // Columna cantidad (más angosta)
-        const quantityColumnWidth = 60;
-        const colQuantityX = colTotalX - quantityColumnWidth;
-        // Columna precio unitario
-        const colUnitPriceX = colQuantityX - PRICE_COLUMN_WIDTH;
+        const { colStudyX, colUnitPriceX, colQuantityX, colSubtotalX, colTotalX } =
+            this.computeTableColumns(layout);
 
         // Encabezados
         doc.font('Helvetica-Bold').fontSize(11);
@@ -198,10 +202,14 @@ export class QuotationPdfRenderer {
             align: 'right',
         });
         doc.text('Cantidad', colQuantityX, tableTop, {
-            width: quantityColumnWidth,
+            width: QUANTITY_COLUMN_WIDTH,
             align: 'right',
         });
-        doc.text('Importe', colTotalX, tableTop, {
+        doc.text('Subtotal', colSubtotalX, tableTop, {
+            width: PRICE_COLUMN_WIDTH,
+            align: 'right',
+        });
+        doc.text('Total', colTotalX, tableTop, {
             width: PRICE_COLUMN_WIDTH,
             align: 'right',
         });
@@ -225,11 +233,23 @@ export class QuotationPdfRenderer {
                 rowY = TABLE_START_Y;
             }
 
+            // El precio unitario ya incluye IVA; el total de línea es
+            // precio * cantidad, y el subtotal de línea se desglosa de ahí.
             const lineTotal = study.price * study.quantity;
+            const lineSubtotal = this.roundCurrency(lineTotal / (1 + IVA_RATE));
 
-            // Estudio
-            doc.text(`${index + 1}. ${study.name}`, colStudyX, rowY, {
-                width: colUnitPriceX - colStudyX - 10,
+            // Estudio: código a la izquierda del nombre, truncado a una sola
+            // línea (con "…" si no cabe) para que nunca invada la fila de
+            // abajo, sin importar qué tan largo sea el nombre del estudio.
+            // (pdfkit solo trunca automáticamente con `ellipsis` cuando se
+            // fija `height`; sin eso, `width` por sí solo sigue partiendo el
+            // texto en varias líneas, así que truncamos a mano.)
+            const codePrefix = study.code ? `${study.code} - ` : '';
+            const studyLabel = `${index + 1}. ${codePrefix}${study.name}`;
+            const studyColumnWidth = colUnitPriceX - colStudyX - 10;
+            doc.text(this.truncateToWidth(doc, studyLabel, studyColumnWidth), colStudyX, rowY, {
+                width: studyColumnWidth,
+                lineBreak: false,
             });
 
             // Precio unitario
@@ -249,12 +269,23 @@ export class QuotationPdfRenderer {
                 colQuantityX,
                 rowY,
                 {
-                    width: quantityColumnWidth,
+                    width: QUANTITY_COLUMN_WIDTH,
                     align: 'right',
                 },
             );
 
-            // Importe (precio * cantidad)
+            // Subtotal de línea (precio * cantidad, sin IVA)
+            doc.text(
+                `$${this.formatCurrency(lineSubtotal)} MXN`,
+                colSubtotalX,
+                rowY,
+                {
+                    width: PRICE_COLUMN_WIDTH,
+                    align: 'right',
+                },
+            );
+
+            // Total de línea (precio * cantidad, con IVA)
             doc.text(
                 `$${this.formatCurrency(lineTotal)} MXN`,
                 colTotalX,
@@ -287,10 +318,10 @@ export class QuotationPdfRenderer {
         tableBottomY: number,
         totals: Totals,
     ): void {
-        const { pageWidth, marginRight } = layout;
         const { subtotal, total } = totals;
 
-        const colPriceX = pageWidth - marginRight - PRICE_COLUMN_WIDTH;
+        // Alineado bajo la columna "Total" de la tabla de estudios.
+        const { colTotalX: colPriceX } = this.computeTableColumns(layout);
         const totalsY = tableBottomY + 20;
 
         doc
@@ -377,10 +408,48 @@ export class QuotationPdfRenderer {
                 },
             );
     }
+
+    // Columnas de la tabla de estudios ancladas a la izquierda (a partir del
+    // nombre del estudio) en vez de al margen derecho de la página, para no
+    // dejar un hueco enorme entre "Estudio" y las columnas de importes
+    // cuando los nombres de los estudios son cortos.
+    private computeTableColumns(layout: PdfLayout): TableColumns {
+        const { marginLeft } = layout;
+
+        const colStudyX = marginLeft + 10;
+        const colUnitPriceX = colStudyX + STUDY_COLUMN_WIDTH;
+        const colQuantityX = colUnitPriceX + PRICE_COLUMN_WIDTH;
+        const colSubtotalX = colQuantityX + QUANTITY_COLUMN_WIDTH;
+        const colTotalX = colSubtotalX + PRICE_COLUMN_WIDTH;
+
+        return { colStudyX, colUnitPriceX, colQuantityX, colSubtotalX, colTotalX };
+    }
+
+    // Recorta `text` carácter por carácter (según el ancho real de fuente
+    // activo en `doc`) hasta que quepa en `maxWidth`, agregando "…" al
+    // final si hubo que recortar.
+    private truncateToWidth(doc: PDFKit.PDFDocument, text: string, maxWidth: number): string {
+        if (doc.widthOfString(text) <= maxWidth) {
+            return text;
+        }
+
+        const ellipsis = '…';
+        let truncated = text;
+        while (truncated.length > 0 && doc.widthOfString(truncated + ellipsis) > maxWidth) {
+            truncated = truncated.slice(0, -1);
+        }
+
+        return truncated.length > 0 ? truncated + ellipsis : ellipsis;
+    }
+
     private formatCurrency(value: number): string {
         return value.toLocaleString('es-MX', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         });
+    }
+
+    private roundCurrency(value: number): number {
+        return Math.round(value * 100) / 100;
     }
 }

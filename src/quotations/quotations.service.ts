@@ -29,19 +29,9 @@ import {
 } from './interfaces/quotations-interfaces';
 import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
 
-const COMPANY_NAME = 'Diagnóstico y Referencia Analítica';
-const COMPANY_SUBTITLE = 'Cotización de estudios de laboratorio';
-
-// Usados como respaldo si a la sucursal le faltan datos (phone/email son
-// opcionales en el modelo Branch); toda cotización tiene branchId.
-const FALLBACK_COMPANY_INFO: CompanyInfo = {
-  name: COMPANY_NAME,
-  subtitle: COMPANY_SUBTITLE,
-  address: 'Calle Ignacio Sandoval #1801, col. Girasoles, Colima, col.',
-  phone: '33 2230 0412',
-  email: 'luis.ramirez@dyranalitica.com',
-};
-
+// Subtítulo del documento (no es dato de la sucursal, es la etiqueta fija
+// del tipo de documento).
+const QUOTATION_SUBTITLE = 'Cotización de estudios de laboratorio';
 
 const QUOTATION_ALLOWED_FIELDS = [
   'folio',
@@ -76,12 +66,13 @@ type QuotationBranch = Prisma.BranchGetPayload<{
 
 type QuotationWithItems = Quotation & {
   items: QuotationItem[];
-  branch?: QuotationBranch | null;
+  branch: QuotationBranch;
   priceSheet?: { id: string; name: string } | null;
 };
 
 type ResolvedQuotationItem = {
   name: string;
+  code: string | null;
   price: number;
   quantity: number;
   studyId: string | null;
@@ -186,18 +177,21 @@ export class QuotationsService {
       ),
     ];
 
-    let priceByStudyId = new Map<string, { name: string; price: Prisma.Decimal }>();
+    let priceByStudyId = new Map<
+      string,
+      { name: string; code: string; price: Prisma.Decimal }
+    >();
 
     if (catalogStudyIds.length > 0) {
       const entries = await this.prisma.studyOnPriceSheet.findMany({
         where: { studyId: { in: catalogStudyIds }, priceSheetId: dto.priceSheetId },
-        include: { study: { select: { name: true } } },
+        include: { study: { select: { name: true, code: true } } },
       });
 
       priceByStudyId = new Map(
         entries.map((entry) => [
           entry.studyId,
-          { name: entry.study.name, price: entry.price },
+          { name: entry.study.name, code: entry.study.code, price: entry.price },
         ]),
       );
 
@@ -214,6 +208,7 @@ export class QuotationsService {
 
       return {
         name: resolved?.name ?? study.name,
+        code: resolved?.code ?? null,
         price: resolved ? Number(resolved.price) : study.price,
         quantity: study.quantity,
         studyId: study.id ?? null,
@@ -313,24 +308,24 @@ export class QuotationsService {
       },
       studies: quotation.items.map((item) => ({
         name: item.name,
+        code: item.code,
         price: Number(item.price),
         quantity: item.quantity,
       })),
-      company: this.buildCompanyInfo(quotation.branch ?? null),
+      company: this.buildCompanyInfo(quotation.branch),
     };
   }
 
-  private buildCompanyInfo(branch: QuotationBranch | null): CompanyInfo {
-    if (!branch) {
-      return FALLBACK_COMPANY_INFO;
-    }
-
+  // La cotización pertenece a una sola sucursal (branchId requerido); la
+  // identidad mostrada en el PDF es siempre la de esa sucursal, no un dato
+  // de "empresa" global.
+  private buildCompanyInfo(branch: QuotationBranch): CompanyInfo {
     return {
-      name: COMPANY_NAME,
-      subtitle: COMPANY_SUBTITLE,
+      name: branch.name,
+      subtitle: QUOTATION_SUBTITLE,
       address: this.formatBranchAddress(branch.address),
-      phone: branch.phone ?? FALLBACK_COMPANY_INFO.phone,
-      email: branch.email ?? FALLBACK_COMPANY_INFO.email,
+      phone: branch.phone ?? '',
+      email: branch.email ?? '',
     };
   }
 
@@ -347,6 +342,9 @@ export class QuotationsService {
   // ===========================
   // CÁLCULOS Y METADATOS
   // ===========================
+  // Los precios cargados en las hojas de precios ya son el total con IVA
+  // incluido (16%), no el subtotal antes de impuesto. El subtotal e IVA se
+  // desglosan a partir de ese total: subtotal = total / 1.16.
   private calculateTotals(
     studies: { price: number; quantity: number }[],
   ): Totals {
@@ -355,8 +353,8 @@ export class QuotationsService {
       0,
     );
 
-    const tax = total * 0.16;
-    const subtotal = total - tax;
+    const subtotal = Math.round((total / 1.16) * 100) / 100;
+    const tax = Math.round((total - subtotal) * 100) / 100;
 
     return { subtotal, tax, total };
   }

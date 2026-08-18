@@ -1,6 +1,7 @@
 // quotations-interfaces.ts
 export interface StudyItem {
   name: string;
+  code: string | null;
   price: number;
   quantity: number;
 }
