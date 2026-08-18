@@ -390,6 +390,7 @@ model Quotation {
 model QuotationItem {
   id       String  @id @default(uuid())
   name     String
+  code     String?
   price    Decimal @db.Decimal(10, 2)
   quantity Int
 
