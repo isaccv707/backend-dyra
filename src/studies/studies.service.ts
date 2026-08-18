@@ -11,17 +11,13 @@ import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { BranchesService } from 'src/branches/branches.service';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 
 const STUDY_ALLOWED_FIELDS = ['name', 'code', 'isActive', 'deliveryTime', 'createdAt'];
 
 @Injectable()
 export class StudiesService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly branchesService: BranchesService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private async assertServiceBelongsToBranch(serviceId: string, branchId: string) {
     const service = await this.prisma.service.findUnique({
@@ -110,10 +106,6 @@ export class StudiesService {
       minSearchLength: 2,
     });
 
-    const selectedPriceSheetId = branchId
-      ? ((await this.branchesService.resolveBranchPriceSheetId(branchId)) ?? undefined)
-      : priceSheetId;
-
     const whereClause: Prisma.StudyWhereInput = {
       ...(where as Prisma.StudyWhereInput),
       ...(branchId && { branchId }),
@@ -126,21 +118,44 @@ export class StudiesService {
         where: whereClause,
         orderBy,
         include: {
-          // Sin branchId/priceSheetId no hay tarifario seleccionado: usamos un
-          // valor que no puede coincidir para que no se muestre ningún precio.
-          priceSheets: {
-            where: { priceSheetId: selectedPriceSheetId ?? '' },
-          },
+          // Con branchId cada estudio muestra el precio de la hoja pública de
+          // SU PROPIO servicio (Service.priceSheetId), no una hoja única
+          // compartida por toda la sucursal. Sin branchId se usa el
+          // priceSheetId explícito (vista admin de un tarifario puntual).
+          service: { select: { priceSheetId: true } },
         },
       }),
       this.prisma.study.count({ where: whereClause }),
     ]);
 
+    const priceSheetIdsToResolve = branchId
+      ? [...new Set(items.map((s) => s.service.priceSheetId).filter((id): id is string => !!id))]
+      : priceSheetId
+        ? [priceSheetId]
+        : [];
+
+    const priceEntries = priceSheetIdsToResolve.length
+      ? await this.prisma.studyOnPriceSheet.findMany({
+          where: {
+            priceSheetId: { in: priceSheetIdsToResolve },
+            studyId: { in: items.map((s) => s.id) },
+          },
+        })
+      : [];
+
+    const priceByKey = new Map(
+      priceEntries.map((entry) => [`${entry.studyId}:${entry.priceSheetId}`, entry]),
+    );
+
     const data = items.map((study) => {
-      const regionalPrice = study.priceSheets[0]; // El precio filtrado por selectedPriceSheetId
+      const { service, ...rest } = study;
+      const effectivePriceSheetId = branchId ? service.priceSheetId : priceSheetId;
+      const regionalPrice = effectivePriceSheetId
+        ? priceByKey.get(`${study.id}:${effectivePriceSheetId}`)
+        : undefined;
 
       return {
-        ...study,
+        ...rest,
         priceInfo: {
           showPrice: regionalPrice?.showPrice ?? false,
           price: regionalPrice?.showPrice ? regionalPrice.price : null,
@@ -150,8 +165,6 @@ export class StudiesService {
           // Agregamos esto para debug o por si el estado no tiene precio cargado
           hasConfiguredPrice: !!regionalPrice,
         },
-        // Quitamos el arreglo original para limpiar la respuesta
-        priceSheets: undefined,
       };
     });
 

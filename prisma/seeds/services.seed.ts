@@ -14,6 +14,13 @@ export async function seedServices(prisma: PrismaClient) {
       );
     }
 
+    // Vinculamos el servicio a la hoja pública de su sucursal (si existe) para
+    // que los estudios sembrados en seedStudies muestren precio de inmediato.
+    const publicPriceSheet = await prisma.priceSheets.findFirst({
+      where: { branchId, isPublic: true },
+      select: { id: true },
+    });
+
     await prisma.service.upsert({
       where: { branchId_slug: { branchId, slug: service.slug } },
       update: {
@@ -22,6 +29,7 @@ export async function seedServices(prisma: PrismaClient) {
         imageUrl: service.imageUrl,
         mobileImageUrl: service.mobileImageUrl,
         branchId,
+        priceSheetId: publicPriceSheet?.id,
       },
       create: {
         name: service.name,
@@ -31,6 +39,7 @@ export async function seedServices(prisma: PrismaClient) {
         mobileImageUrl: service.mobileImageUrl,
         isActive: true,
         branchId,
+        priceSheetId: publicPriceSheet?.id,
         benefits: {
           create: service.benefits,
         },

@@ -90,4 +90,8 @@ export class CreateServiceDto {
   @IsUUID()
   @IsNotEmpty()
   branchId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  priceSheetId?: string;
 }
