@@ -29,14 +29,14 @@ export class ServicesController {
     return this.servicesService.findAll(dto);
   }
 
-  @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal.' })
+  @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit).' })
   @ApiParam({ name: 'id', description: 'Identificador del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio encontrado.' })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string, @Query() { branchId }: FindServicesDto) {
-    return this.servicesService.findOne(id, branchId);
+  findOne(@Param('id') id: string, @Query() dto: FindServicesDto) {
+    return this.servicesService.findOne(id, dto);
   }
 
   @ApiOperation({ summary: 'Actualizar servicio', description: 'Actualiza los datos de un servicio existente.' })
