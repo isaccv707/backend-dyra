@@ -29,7 +29,7 @@ export class ServicesController {
     return this.servicesService.findAll(dto);
   }
 
-  @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit).' })
+  @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit) y se pueden filtrar por nombre o código con "search".' })
   @ApiParam({ name: 'id', description: 'Identificador del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio encontrado.' })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
