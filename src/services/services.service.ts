@@ -221,7 +221,7 @@ export class ServicesService {
   }
 
   async findOne(id: string, dto: FindServicesDto = {}) {
-    const { branchId, page = 1, limit = 10 } = dto;
+    const { branchId, page = 1, limit = 10, search } = dto;
 
     if (branchId) {
       await this.branchesService.findOne(branchId);
@@ -253,9 +253,16 @@ export class ServicesService {
     // un servicio puede tener cientos de estudios (import masivo por
     // Excel), así que la página de detalle no trae todos de un jalón.
     const skip = (page - 1) * limit;
+    const term = search?.trim();
     const studiesWhere: Prisma.StudyWhereInput = {
       serviceId: service.id,
       isActive: true,
+      ...(term && {
+        OR: [
+          { name: { contains: term, mode: Prisma.QueryMode.insensitive } },
+          { code: { contains: term, mode: Prisma.QueryMode.insensitive } },
+        ],
+      }),
     };
 
     const [studies, studiesTotal] = await this.prisma.$transaction([
