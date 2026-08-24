@@ -10,6 +10,7 @@ import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
@@ -134,6 +135,34 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: payload.sub },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Contraseña actualizada exitosamente' };
+  }
+
+  async changePassword(
+    userId: string,
+    { currentPassword, newPassword }: ChangePasswordDto,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado');
+    }
+
+    const isPasswordValid = await bcrypt.compare(
+      currentPassword,
+      user.password,
+    );
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('La contraseña actual es incorrecta');
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
       data: { password: hashedPassword },
     });
 
