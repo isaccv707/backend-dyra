@@ -10,10 +10,35 @@ import { FindTransfersDto } from './dto/find-transfers.dto';
 import { CancelTransferDto } from './dto/cancel-transfer.dto';
 import { RejectTransferDto } from './dto/reject-transfer.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { DeviceStatus, OwnershipType, Prisma, TransferStatus } from '@prisma/client';
+import {
+  DeviceStatus,
+  DeviceType,
+  OwnershipType,
+  Prisma,
+  ResguardoUsageType,
+  TransferStatus,
+} from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import { ResguardosService } from 'src/resguardos/resguardos.service';
+import {
+  ACCESSORY_DEVICE_TYPES,
+  getResguardoSectionForType,
+} from 'src/resguardos/constants/resguardable-device-types.const';
+import { ResguardoVehicleInspectionItemDto } from 'src/resguardos/dto/resguardo-vehicle-inspection-item.dto';
+
+// Forma mínima compartida por AssignDeviceDto y los campos de resguardo de
+// CreateDeviceItemDto: lo que triggerResguardoForAssignment necesita para
+// generar/regenerar el resguardo, sin acoplarse a un DTO en particular.
+// condition/observations NO están aquí: se leen directo del DeviceItem.
+interface ResguardoAssignmentFields {
+  usageType?: ResguardoUsageType;
+  startDate?: string;
+  endDate?: string;
+  inspectionItems?: ResguardoVehicleInspectionItemDto[];
+  mobileAccessories?: string[];
+}
 
 const DEVICE_ALLOWED_FIELDS = ['internalCode', 'status', 'condition', 'createdAt'];
 const TRANSFER_ALLOWED_FIELDS = ['status', 'createdAt'];
@@ -22,6 +47,7 @@ const DEVICE_INCLUDE = {
   catalog: true,
   employee: true,
   location: true,
+  vehicleDetail: true,
   currentBranch: { select: { id: true, name: true } },
 } satisfies Prisma.DeviceItemInclude;
 
@@ -31,15 +57,20 @@ const TRANSFER_INCLUDE = {
   items: { include: { device: { select: { id: true, internalCode: true, status: true } } } },
 } satisfies Prisma.TransferRequestInclude;
 
+type AuthUser = BranchScopedUser & { id: string };
+
 @Injectable()
 export class DevicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resguardosService: ResguardosService,
+  ) {}
 
   // ---------------------------------------------------------------------
   // Alta / lectura de equipos
   // ---------------------------------------------------------------------
 
-  async create(dto: CreateDeviceItemDto, user: BranchScopedUser) {
+  async create(dto: CreateDeviceItemDto, user: AuthUser) {
     assertBranchAccess(user, dto.currentBranchId);
 
     if (dto.employeeId && dto.locationId) {
@@ -58,6 +89,37 @@ export class DevicesService {
       throw new NotFoundException(`Branch with ID '${dto.currentBranchId}' not found`);
     }
 
+    if (dto.vehicleDetail && catalog.type !== DeviceType.VEHICLE) {
+      throw new BadRequestException('vehicleDetail solo aplica a equipos de catálogo tipo VEHICLE');
+    }
+    if ((dto.hardDrive || dto.processor) && catalog.type !== DeviceType.COMPUTER) {
+      throw new BadRequestException('hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER');
+    }
+    if (dto.phoneNumber && catalog.type !== DeviceType.MOBILE) {
+      throw new BadRequestException('phoneNumber solo aplica a equipos de catálogo tipo MOBILE');
+    }
+
+    const isAccessory = ACCESSORY_DEVICE_TYPES.includes(catalog.type);
+    if (dto.mainDeviceId && !isAccessory) {
+      throw new BadRequestException('mainDeviceId solo aplica a equipos de catálogo tipo MONITOR/KEYBOARD/MOUSE');
+    }
+    if (isAccessory && (dto.employeeId || dto.locationId)) {
+      throw new BadRequestException(
+        'Los accesorios (MONITOR/KEYBOARD/MOUSE) no se asignan directamente a un empleado/ubicación; enlácelos a una computadora con mainDeviceId',
+      );
+    }
+
+    let mainDevice: Prisma.DeviceItemGetPayload<{ include: { catalog: true } }> | null = null;
+    if (dto.mainDeviceId) {
+      mainDevice = await this.getDeviceOrThrow(dto.mainDeviceId);
+      if (mainDevice.catalog.type !== DeviceType.COMPUTER) {
+        throw new BadRequestException('mainDeviceId debe apuntar a un equipo de catálogo tipo COMPUTER');
+      }
+      if (mainDevice.currentBranchId !== dto.currentBranchId) {
+        throw new BadRequestException('El accesorio debe darse de alta en la misma sucursal que su computadora principal');
+      }
+    }
+
     if (dto.employeeId) {
       await this.assertEmployeeInBranch(dto.employeeId, dto.currentBranchId);
     }
@@ -65,12 +127,35 @@ export class DevicesService {
       await this.assertLocationInBranch(dto.locationId, dto.currentBranchId);
     }
 
-    const status = dto.employeeId || dto.locationId ? DeviceStatus.ASSIGNED : DeviceStatus.AVAILABLE;
+    // Un accesorio hereda employeeId/locationId/status de su mainDevice en
+    // el momento de enlazarse; el resto de equipos sigue la regla normal.
+    const employeeId = mainDevice ? mainDevice.employeeId : dto.employeeId;
+    const locationId = mainDevice ? mainDevice.locationId : dto.locationId;
+    const status = mainDevice
+      ? mainDevice.status
+      : dto.employeeId || dto.locationId
+        ? DeviceStatus.ASSIGNED
+        : DeviceStatus.AVAILABLE;
+
+    const { vehicleDetail, usageType, startDate, endDate, inspectionItems, mobileAccessories, ...deviceFields } = dto;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        if (dto.employeeId) {
+          await this.assertNoDuplicateTypeForEmployee(tx, dto.employeeId, catalog.type);
+        }
+        if (dto.mainDeviceId) {
+          await this.assertNoDuplicateAccessoryTypeForMainDevice(tx, dto.mainDeviceId, catalog.type);
+        }
+
         const device = await tx.deviceItem.create({
-          data: { ...dto, status },
+          data: {
+            ...deviceFields,
+            employeeId,
+            locationId,
+            status,
+            ...(vehicleDetail && { vehicleDetail: { create: vehicleDetail } }),
+          },
           include: DEVICE_INCLUDE,
         });
 
@@ -82,6 +167,20 @@ export class DevicesService {
             details: `Alta de equipo ${device.internalCode} en sucursal ${branch.name}`,
           },
         });
+
+        if (dto.employeeId) {
+          await this.triggerResguardoForAssignment(tx, dto.employeeId, catalog.type, user.id, {
+            usageType,
+            startDate,
+            endDate,
+            inspectionItems,
+            mobileAccessories,
+          });
+        } else if (employeeId) {
+          // El accesorio heredó employeeId de su mainDevice: refresca el
+          // resguardo de ese empleado para que aparezca en "Accesorios incluidos".
+          await this.triggerResguardoForAssignment(tx, employeeId, catalog.type, user.id, {});
+        }
 
         return device;
       });
@@ -143,7 +242,7 @@ export class DevicesService {
     return paginatedResponse(data, total, page, limit);
   }
 
-  async update(id: string, dto: UpdateDeviceItemDto, user: BranchScopedUser) {
+  async update(id: string, dto: UpdateDeviceItemDto, user: AuthUser) {
     const device = await this.getDeviceOrThrow(id);
     assertBranchAccess(user, device.currentBranchId);
 
@@ -156,11 +255,83 @@ export class DevicesService {
       throw new BadRequestException('providerFolio es obligatorio para equipos con ownershipType PROVIDER');
     }
 
+    if (dto.vehicleDetail && device.catalog.type !== DeviceType.VEHICLE) {
+      throw new BadRequestException('vehicleDetail solo aplica a equipos de catálogo tipo VEHICLE');
+    }
+    if ((dto.hardDrive || dto.processor) && device.catalog.type !== DeviceType.COMPUTER) {
+      throw new BadRequestException('hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER');
+    }
+    if (dto.phoneNumber && device.catalog.type !== DeviceType.MOBILE) {
+      throw new BadRequestException('phoneNumber solo aplica a equipos de catálogo tipo MOBILE');
+    }
+    if (dto.mainDeviceId && !ACCESSORY_DEVICE_TYPES.includes(device.catalog.type)) {
+      throw new BadRequestException('mainDeviceId solo aplica a equipos de catálogo tipo MONITOR/KEYBOARD/MOUSE');
+    }
+
+    // Reenlazar un accesorio a otra computadora vuelve a derivar employeeId/
+    // locationId/status desde la nueva mainDevice (misma lógica que create()).
+    let inheritedFields: { employeeId: string | null; locationId: string | null; status: DeviceStatus } | undefined;
+    if (dto.mainDeviceId) {
+      const mainDevice = await this.getDeviceOrThrow(dto.mainDeviceId);
+      if (mainDevice.catalog.type !== DeviceType.COMPUTER) {
+        throw new BadRequestException('mainDeviceId debe apuntar a un equipo de catálogo tipo COMPUTER');
+      }
+      if (mainDevice.currentBranchId !== device.currentBranchId) {
+        throw new BadRequestException('El accesorio debe estar en la misma sucursal que su nueva computadora principal');
+      }
+      inheritedFields = { employeeId: mainDevice.employeeId, locationId: mainDevice.locationId, status: mainDevice.status };
+    }
+
+    // usageType/startDate/endDate/inspectionItems/mobileAccessories son
+    // términos de resguardo heredados de CreateDeviceItemDto, no columnas de
+    // DeviceItem — se descartan aquí; PATCH nunca toca employeeId ni
+    // regenera resguardos.
+    const {
+      vehicleDetail,
+      usageType: _usageType,
+      startDate: _startDate,
+      endDate: _endDate,
+      inspectionItems: _inspectionItems,
+      mobileAccessories: _mobileAccessories,
+      ...deviceFields
+    } = dto;
+
     try {
-      return await this.prisma.deviceItem.update({
-        where: { id },
-        data: dto,
-        include: DEVICE_INCLUDE,
+      return await this.prisma.$transaction(async (tx) => {
+        if (dto.mainDeviceId) {
+          await this.assertNoDuplicateAccessoryTypeForMainDevice(tx, dto.mainDeviceId, device.catalog.type, id);
+        }
+
+        const updated = await tx.deviceItem.update({
+          where: { id },
+          data: {
+            ...deviceFields,
+            ...inheritedFields,
+            ...(vehicleDetail && {
+              vehicleDetail: { upsert: { create: vehicleDetail, update: vehicleDetail } },
+            }),
+          },
+          include: DEVICE_INCLUDE,
+        });
+
+        if (dto.mainDeviceId) {
+          await tx.deviceMovementHistory.create({
+            data: {
+              deviceId: id,
+              type: 'ASSIGNMENT',
+              details: `Enlazado como accesorio a la computadora ${dto.mainDeviceId}`,
+            },
+          });
+
+          // Reenlazar un accesorio cambia lo que aparece en "Accesorios
+          // incluidos" de su nueva computadora — hay que refrescar la
+          // responsiva del empleado dueño de esa computadora, si tiene una.
+          if (inheritedFields?.employeeId) {
+            await this.triggerResguardoForAssignment(tx, inheritedFields.employeeId, device.catalog.type, user.id, {});
+          }
+        }
+
+        return updated;
       });
     } catch (error) {
       handleDatabaseErrors(error, 'DeviceItem');
@@ -171,9 +342,15 @@ export class DevicesService {
   // Asignación exclusiva
   // ---------------------------------------------------------------------
 
-  async assign(deviceId: string, dto: AssignDeviceDto, user: BranchScopedUser) {
+  async assign(deviceId: string, dto: AssignDeviceDto, user: AuthUser) {
     const device = await this.getDeviceOrThrow(deviceId);
     assertBranchAccess(user, device.currentBranchId);
+
+    if (ACCESSORY_DEVICE_TYPES.includes(device.catalog.type)) {
+      throw new BadRequestException(
+        'Los accesorios (MONITOR/KEYBOARD/MOUSE) no se asignan directamente; enlácelos a una computadora con mainDeviceId (POST /devices o PATCH /devices/:id)',
+      );
+    }
 
     if (dto.employeeId && dto.locationId) {
       throw new BadRequestException(
@@ -197,6 +374,10 @@ export class DevicesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        if (dto.employeeId) {
+          await this.assertNoDuplicateTypeForEmployee(tx, dto.employeeId, device.catalog.type, deviceId);
+        }
+
         const updated = await tx.deviceItem.update({
           where: { id: deviceId },
           data: {
@@ -205,6 +386,14 @@ export class DevicesService {
             status: DeviceStatus.ASSIGNED,
           },
           include: DEVICE_INCLUDE,
+        });
+
+        // Monitor/teclado/mouse enlazados a esta computadora viajan con
+        // ella: mismo empleado/ubicación/status.
+        await this.cascadeToAccessories(tx, deviceId, {
+          employeeId: updated.employeeId,
+          locationId: updated.locationId,
+          status: DeviceStatus.ASSIGNED,
         });
 
         await tx.deviceMovementHistory.create({
@@ -216,6 +405,10 @@ export class DevicesService {
               : `Asignado a la ubicación ${updated.location!.name}`,
           },
         });
+
+        if (dto.employeeId) {
+          await this.triggerResguardoForAssignment(tx, dto.employeeId, device.catalog.type, user.id, dto);
+        }
 
         return updated;
       });
@@ -240,9 +433,55 @@ export class DevicesService {
           include: DEVICE_INCLUDE,
         });
 
+        await this.cascadeToAccessories(tx, deviceId, {
+          employeeId: null,
+          locationId: null,
+          status: DeviceStatus.AVAILABLE,
+        });
+
         await tx.deviceMovementHistory.create({
           data: { deviceId, type: 'UNASSIGNMENT', details: 'Equipo liberado' },
         });
+
+        return updated;
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'DeviceItem');
+    }
+  }
+
+  // Desenlaza un accesorio (MONITOR/KEYBOARD/MOUSE) de su computadora
+  // principal sin darlo de baja — queda AVAILABLE, listo para enlazarse a
+  // otra. Si la computadora tenía empleado asignado, se regenera su
+  // responsiva para que el accesorio deje de aparecer en "Accesorios incluidos".
+  async unlink(deviceId: string, user: AuthUser) {
+    const device = await this.getDeviceOrThrow(deviceId);
+    assertBranchAccess(user, device.currentBranchId);
+
+    if (!ACCESSORY_DEVICE_TYPES.includes(device.catalog.type)) {
+      throw new BadRequestException('Solo los accesorios (MONITOR/KEYBOARD/MOUSE) se pueden desenlazar');
+    }
+    if (!device.mainDeviceId) {
+      throw new BadRequestException('Este accesorio no está enlazado a ninguna computadora');
+    }
+
+    const employeeId = device.employeeId;
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.deviceItem.update({
+          where: { id: deviceId },
+          data: { mainDeviceId: null, employeeId: null, locationId: null, status: DeviceStatus.AVAILABLE },
+          include: DEVICE_INCLUDE,
+        });
+
+        await tx.deviceMovementHistory.create({
+          data: { deviceId, type: 'UNLINK', details: 'Accesorio desenlazado de su computadora principal' },
+        });
+
+        if (employeeId) {
+          await this.triggerResguardoForAssignment(tx, employeeId, device.catalog.type, user.id, {});
+        }
 
         return updated;
       });
@@ -266,6 +505,15 @@ export class DevicesService {
             ...(dto.notes && { notes: dto.notes }),
           },
           include: DEVICE_INCLUDE,
+        });
+
+        // Dar de baja la computadora no da de baja sus periféricos: se
+        // desenlazan y quedan disponibles para reutilizarse en otra.
+        await this.cascadeToAccessories(tx, deviceId, {
+          mainDeviceId: null,
+          employeeId: null,
+          locationId: null,
+          status: DeviceStatus.AVAILABLE,
         });
 
         await tx.deviceMovementHistory.create({
@@ -327,6 +575,13 @@ export class DevicesService {
       );
     }
 
+    const linkedAccessories = devices.filter((d) => d.mainDeviceId);
+    if (linkedAccessories.length) {
+      throw new BadRequestException(
+        `Los siguientes equipos son accesorios enlazados a una computadora y viajan con ella, no se agregan sueltos a un traspaso: ${linkedAccessories.map((d) => d.internalCode).join(', ')}`,
+      );
+    }
+
     try {
       return await this.prisma.transferRequest.create({
         data: {
@@ -370,6 +625,13 @@ export class DevicesService {
           data: { status: DeviceStatus.IN_TRANSFER },
         });
 
+        // Los accesorios enlazados a una computadora en traspaso viajan con
+        // ella (nunca se agregan sueltos, ver createTransfer).
+        await tx.deviceItem.updateMany({
+          where: { mainDeviceId: { in: deviceIds } },
+          data: { status: DeviceStatus.IN_TRANSFER },
+        });
+
         await tx.deviceMovementHistory.createMany({
           data: deviceIds.map((deviceId) => ({
             deviceId,
@@ -403,6 +665,11 @@ export class DevicesService {
 
         await tx.deviceItem.updateMany({
           where: { id: { in: deviceIds } },
+          data: { currentBranchId: transfer.destinationBranchId, status: DeviceStatus.AVAILABLE },
+        });
+
+        await tx.deviceItem.updateMany({
+          where: { mainDeviceId: { in: deviceIds } },
           data: { currentBranchId: transfer.destinationBranchId, status: DeviceStatus.AVAILABLE },
         });
 
@@ -466,6 +733,11 @@ export class DevicesService {
           data: { status: DeviceStatus.AVAILABLE },
         });
 
+        await tx.deviceItem.updateMany({
+          where: { mainDeviceId: { in: deviceIds } },
+          data: { status: DeviceStatus.AVAILABLE },
+        });
+
         return tx.transferRequest.findUniqueOrThrow({ where: { id }, include: TRANSFER_INCLUDE });
       });
     } catch (error) {
@@ -502,8 +774,97 @@ export class DevicesService {
   // Helpers privados
   // ---------------------------------------------------------------------
 
+  // Dispara/regenera el resguardo del empleado tras asignarle un equipo.
+  // COMPUTER/MOBILE/VEHICLE siempre regeneran (condition/observations ya
+  // viven en el DeviceItem, no hace falta validarlos aquí). MONITOR/KEYBOARD/
+  // MOUSE no tienen sección propia: solo regeneran el resguardo (para
+  // refrescar "Accesorios incluidos") si el empleado ya tiene una
+  // computadora asignada.
+  private async triggerResguardoForAssignment(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+    catalogType: DeviceType,
+    createdByUserId: string,
+    fields: ResguardoAssignmentFields,
+  ) {
+    const sectionKey = getResguardoSectionForType(catalogType);
+
+    if (!sectionKey) {
+      const hasComputer = await tx.deviceItem.findFirst({
+        where: { employeeId, status: DeviceStatus.ASSIGNED, catalog: { type: DeviceType.COMPUTER } },
+      });
+      if (!hasComputer) return;
+
+      await this.resguardosService.createFromEmployeeDevices(tx, employeeId, { createdByUserId });
+      return;
+    }
+
+    await this.resguardosService.createFromEmployeeDevices(tx, employeeId, {
+      usageType: fields.usageType,
+      startDate: fields.startDate ? new Date(fields.startDate) : undefined,
+      endDate: fields.endDate ? new Date(fields.endDate) : undefined,
+      createdByUserId,
+      inspectionItems: fields.inspectionItems,
+      mobileAccessories: fields.mobileAccessories,
+    });
+  }
+
+  private async assertNoDuplicateTypeForEmployee(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+    catalogType: DeviceType,
+    excludeDeviceId?: string,
+  ) {
+    const conflict = await tx.deviceItem.findFirst({
+      where: {
+        employeeId,
+        status: DeviceStatus.ASSIGNED,
+        catalog: { type: catalogType },
+        ...(excludeDeviceId && { id: { not: excludeDeviceId } }),
+      },
+    });
+    if (conflict) {
+      throw new BadRequestException(
+        `El empleado ya tiene un equipo de tipo ${catalogType} asignado (${conflict.internalCode}); libérelo antes de asignar otro`,
+      );
+    }
+  }
+
+  // "Máximo 1 accesorio por tipo por computadora" — análogo a
+  // assertNoDuplicateTypeForEmployee pero scoped por mainDeviceId.
+  private async assertNoDuplicateAccessoryTypeForMainDevice(
+    tx: Prisma.TransactionClient,
+    mainDeviceId: string,
+    catalogType: DeviceType,
+    excludeDeviceId?: string,
+  ) {
+    const conflict = await tx.deviceItem.findFirst({
+      where: {
+        mainDeviceId,
+        catalog: { type: catalogType },
+        ...(excludeDeviceId && { id: { not: excludeDeviceId } }),
+      },
+    });
+    if (conflict) {
+      throw new BadRequestException(
+        `Esta computadora ya tiene un accesorio de tipo ${catalogType} enlazado (${conflict.internalCode}); libérelo antes de enlazar otro`,
+      );
+    }
+  }
+
+  // Propaga employeeId/locationId/status/currentBranchId de una computadora
+  // a sus accesorios enlazados (mainDeviceId) — se usa cada vez que esos
+  // campos cambian en el equipo principal (assign/unassign/retire/traspaso).
+  private async cascadeToAccessories(
+    tx: Prisma.TransactionClient,
+    mainDeviceId: string,
+    data: Prisma.DeviceItemUncheckedUpdateManyInput,
+  ) {
+    await tx.deviceItem.updateMany({ where: { mainDeviceId }, data });
+  }
+
   private async getDeviceOrThrow(id: string) {
-    const device = await this.prisma.deviceItem.findUnique({ where: { id } });
+    const device = await this.prisma.deviceItem.findUnique({ where: { id }, include: { catalog: true } });
     if (!device) {
       throw new NotFoundException(`DeviceItem with ID '${id}' not found`);
     }

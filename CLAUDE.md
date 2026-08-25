@@ -55,6 +55,7 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 - `Study.branchId` must match the `branchId` of its `Study.service` (`assertServiceBelongsToBranch` in `studies.service.ts`), and `StudyOnPriceSheet` can only link a study to a `PriceSheets` row from that same branch — a study is never priced by another branch's tarifario. Both are enforced in the service layer, not at the DB level.
 - `Banner.order` is a per-`(branchId, placement)` queue — reordering logic in `banners.service.ts` scopes its shifts by both fields, not just `placement`.
 - `Service`, `Author`, `Post`, and `Study` uniqueness (`name`/`nameKey`, `slug`, `code`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug/code can exist in two different branches; they're unrelated records (e.g. "Análisis Clínicos" can be a separate `Service` row in two branches).
+- `Resguardo.branchId` must match the `branchId` of its `Resguardo.employee` (derived from the employee, never taken from the request body) — enforced in `resguardos.service.ts`, not at the DB level.
 
 Intentional exceptions to the "single required `branchId`" rule:
 - `Review`: strict `where.branchId` match, no "global" concept, but `branchId` is nullable (a review not tied to any branch is allowed).
@@ -66,7 +67,7 @@ Intentional exceptions to the "single required `branchId`" rule:
 
 **Excel import (Studies):** The `POST /api/studies/import` endpoint accepts `.xlsx`/`.xls` files via `FileInterceptor`. Batch processing uses 100-item chunks with a 60-second Prisma timeout; the response includes per-row success/error details.
 
-**PDF generation (Quotations):** Uses `pdfkit` with server-side rendering. Company logo is embedded from `dist/assets/`.
+**PDF generation (Quotations, Resguardos):** Uses `pdfkit` with server-side rendering. Company logo is embedded from `dist/assets/`. `resguardos` generates an equipment-custody document (`ADM.F.00`) for an employee with up to three optional, combinable sections (computer/mobile/vehicle); a vehicle section adds a second page with a fixed inspection checklist (`src/resguardos/constants/vehicle-inspection-items.const.ts`).
 
 ## Environment Variables
 
