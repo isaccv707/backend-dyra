@@ -61,6 +61,11 @@ export const PERMISSIONS = [
   { action: 'quotations:update', description: 'Actualizar cotizaciones' },
   { action: 'quotations:delete', description: 'Eliminar cotizaciones' },
 
+  // Safeguards
+  { action: 'safeguards:create', description: 'Crear resguardos de equipo' },
+  { action: 'safeguards:read',   description: 'Leer resguardos de equipo' },
+  { action: 'safeguards:delete', description: 'Eliminar resguardos de equipo' },
+
   // Reviews
   { action: 'reviews:create', description: 'Crear reseñas' },
   { action: 'reviews:read',   description: 'Leer reseñas' },

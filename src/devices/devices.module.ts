@@ -5,9 +5,10 @@ import { DevicesService } from './devices.service';
 import { DevicesController } from './devices.controller';
 import { TransfersController } from './transfers.controller';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
+import { SafeguardsModule } from 'src/safeguards/safeguards.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, SafeguardsModule],
   controllers: [DeviceCatalogController, DevicesController, TransfersController],
   providers: [DeviceCatalogService, DevicesService],
   exports: [DevicesService],

@@ -5,6 +5,10 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   name!: string;
 
+  @IsOptional()
+  @IsString()
+  position?: string;
+
   @IsString()
   @IsNotEmpty()
   department!: string;
