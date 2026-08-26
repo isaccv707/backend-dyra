@@ -1,9 +1,9 @@
-import { ResguardoVehicleInspectionSection } from '@prisma/client';
+import { SafeguardVehicleInspectionSection } from '@prisma/client';
 
 export interface VehicleInspectionItemDefinition {
   key: string;
   label: string;
-  section: ResguardoVehicleInspectionSection;
+  section: SafeguardVehicleInspectionSection;
 }
 
 // Renglones fijos de la tabla "Revisión" del formato ADM.F.00, en el orden
@@ -46,13 +46,13 @@ export const VEHICLE_BODY_INSPECTION_ITEMS: Omit<VehicleInspectionItemDefinition
 ];
 
 export const VEHICLE_INSPECTION_ITEMS: VehicleInspectionItemDefinition[] = [
-  ...VEHICLE_REVISION_ITEMS.map((item) => ({ ...item, section: ResguardoVehicleInspectionSection.DOCUMENTS })),
-  ...VEHICLE_BODY_INSPECTION_ITEMS.map((item) => ({ ...item, section: ResguardoVehicleInspectionSection.BODY })),
+  ...VEHICLE_REVISION_ITEMS.map((item) => ({ ...item, section: SafeguardVehicleInspectionSection.DOCUMENTS })),
+  ...VEHICLE_BODY_INSPECTION_ITEMS.map((item) => ({ ...item, section: SafeguardVehicleInspectionSection.BODY })),
 ];
 
 export const VEHICLE_INSPECTION_ITEM_KEYS: string[] = VEHICLE_INSPECTION_ITEMS.map((item) => item.key);
 
-export function getVehicleInspectionItemSection(key: string): ResguardoVehicleInspectionSection {
+export function getVehicleInspectionItemSection(key: string): SafeguardVehicleInspectionSection {
   const item = VEHICLE_INSPECTION_ITEMS.find((i) => i.key === key);
   if (!item) {
     throw new Error(`Unknown vehicle inspection item key: ${key}`);

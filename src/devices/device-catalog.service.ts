@@ -15,6 +15,7 @@ const DEVICE_CATALOG_ALLOWED_FIELDS = [
   'brand',
   'model',
   'type',
+  'isActive',
   'createdAt',
 ];
 
@@ -42,6 +43,7 @@ export class DeviceCatalogService {
     const finalWhere = {
       ...where,
       ...(dto.type && { type: dto.type }),
+      ...(!dto.includeInactive && { isActive: true }),
     } as Prisma.DeviceCatalogWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
@@ -91,7 +93,8 @@ export class DeviceCatalogService {
     const itemCount = await this.prisma.deviceItem.count({ where: { catalogId: id } });
     if (itemCount > 0) {
       throw new BadRequestException(
-        `No se puede eliminar: existen ${itemCount} equipo(s) dado(s) de alta con este modelo de catálogo`,
+        `No se puede eliminar: existen ${itemCount} equipo(s) dado(s) de alta con este modelo de catálogo. ` +
+          'Puede archivarlo en su lugar (PATCH con isActive: false) para ocultarlo del listado sin perder el historial.',
       );
     }
 

@@ -1,24 +1,24 @@
-export interface ResguardoMeta {
+export interface SafeguardMeta {
   formattedDate: string;
   docCode: string;
   companyName: string;
   logoPath: string | null;
 }
 
-export interface ResguardoEmployeeInfo {
+export interface SafeguardEmployeeInfo {
   employeeName: string;
   position: string;
   area: string;
 }
 
-export interface ResguardoUsageInfo {
+export interface SafeguardUsageInfo {
   usageType: 'TEMPORARY' | 'PERMANENT';
   usageLabel: string;
   formattedStartDate: string | null;
   formattedEndDate: string | null;
 }
 
-export interface ResguardoComputerInfo {
+export interface SafeguardComputerInfo {
   brand: string;
   model: string;
   serialNumber: string;
@@ -30,7 +30,7 @@ export interface ResguardoComputerInfo {
   observations: string;
 }
 
-export interface ResguardoMobileInfo {
+export interface SafeguardMobileInfo {
   brand: string;
   model: string;
   imei: string;
@@ -46,7 +46,7 @@ export interface VehicleInspectionRow {
   observations: string;
 }
 
-export interface ResguardoVehicleInfo {
+export interface SafeguardVehicleInfo {
   brand: string;
   model: string;
   mileage: string;
@@ -58,11 +58,11 @@ export interface ResguardoVehicleInfo {
   inspectionRows: VehicleInspectionRow[];
 }
 
-export interface ResguardoPdfData {
-  meta: ResguardoMeta;
-  employee: ResguardoEmployeeInfo;
-  usage: ResguardoUsageInfo;
-  computer?: ResguardoComputerInfo;
-  mobile?: ResguardoMobileInfo;
-  vehicle?: ResguardoVehicleInfo;
+export interface SafeguardPdfData {
+  meta: SafeguardMeta;
+  employee: SafeguardEmployeeInfo;
+  usage: SafeguardUsageInfo;
+  computer?: SafeguardComputerInfo;
+  mobile?: SafeguardMobileInfo;
+  vehicle?: SafeguardVehicleInfo;
 }

@@ -2,18 +2,18 @@ import { Controller, Get, Post, Body, Param, Delete, Query, ParseUUIDPipe, Res }
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import PDFDocument = require('pdfkit');
-import { ResguardosService } from './resguardos.service';
-import { CreateResguardoDto } from './dto/create-resguardo.dto';
-import { FindResguardosDto } from './dto/find-resguardos.dto';
+import { SafeguardsService } from './safeguards.service';
+import { CreateSafeguardDto } from './dto/create-safeguard.dto';
+import { FindSafeguardsDto } from './dto/find-safeguards.dto';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 
-@ApiTags('resguardos')
+@ApiTags('safeguards')
 @ApiBearerAuth()
-@Controller('resguardos')
-export class ResguardosController {
-  constructor(private readonly resguardosService: ResguardosService) {}
+@Controller('safeguards')
+export class SafeguardsController {
+  constructor(private readonly safeguardsService: SafeguardsService) {}
 
   @ApiOperation({
     summary: 'Generar/regenerar resguardo',
@@ -25,28 +25,28 @@ export class ResguardosController {
   @ApiResponse({ status: 201, description: 'Resguardo creado exitosamente.' })
   @ApiResponse({ status: 400, description: 'El empleado no tiene ningún equipo de cómputo, celular o vehículo asignado.' })
   @ApiResponse({ status: 404, description: 'Empleado no encontrado.' })
-  @Permissions('resguardos:create')
+  @Permissions('safeguards:create')
   @Post()
-  create(@Body() dto: CreateResguardoDto, @CurrentUser() user: BranchScopedUser & { id: string }) {
-    return this.resguardosService.create(dto, user);
+  create(@Body() dto: CreateSafeguardDto, @CurrentUser() user: BranchScopedUser & { id: string }) {
+    return this.safeguardsService.create(dto, user);
   }
 
   @ApiOperation({ summary: 'Listar resguardos', description: 'Devuelve los resguardos, con alcance según la sucursal del usuario autenticado.' })
   @ApiResponse({ status: 200, description: 'Listado de resguardos.' })
-  @Permissions('resguardos:read')
+  @Permissions('safeguards:read')
   @Get()
-  findAll(@Query() dto: FindResguardosDto, @CurrentUser() user: BranchScopedUser) {
-    return this.resguardosService.findAll(dto, user);
+  findAll(@Query() dto: FindSafeguardsDto, @CurrentUser() user: BranchScopedUser) {
+    return this.safeguardsService.findAll(dto, user);
   }
 
   @ApiOperation({ summary: 'Obtener resguardo', description: 'Devuelve un resguardo por su identificador.' })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'Resguardo encontrado.' })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
-  @Permissions('resguardos:read')
+  @Permissions('safeguards:read')
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
-    return this.resguardosService.findOne(id, user);
+    return this.safeguardsService.findOne(id, user);
   }
 
   @ApiOperation({ summary: 'Descargar PDF de resguardo', description: 'Genera y descarga el PDF de un resguardo existente.' })
@@ -54,35 +54,35 @@ export class ResguardosController {
   @ApiProduces('application/pdf')
   @ApiResponse({ status: 200, description: 'PDF del resguardo.' })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
-  @Permissions('resguardos:read')
+  @Permissions('safeguards:read')
   @Get(':id/pdf')
   async downloadPdf(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: BranchScopedUser,
     @Res() res: Response,
   ) {
-    const resguardo = await this.resguardosService.findOne(id, user);
-    this.streamPdf(res, resguardo);
+    const safeguard = await this.safeguardsService.findOne(id, user);
+    this.streamPdf(res, safeguard);
   }
 
   @ApiOperation({ summary: 'Eliminar resguardo', description: 'Elimina un resguardo existente.' })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'Resguardo eliminado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
-  @Permissions('resguardos:delete')
+  @Permissions('safeguards:delete')
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
-    return this.resguardosService.remove(id, user);
+    return this.safeguardsService.remove(id, user);
   }
 
-  private streamPdf(res: Response, resguardo: Parameters<ResguardosService['buildResguardoPdf']>[1]) {
+  private streamPdf(res: Response, safeguard: Parameters<SafeguardsService['buildSafeguardPdf']>[1]) {
     const doc = new PDFDocument({ margin: 50 }) as PDFKit.PDFDocument;
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="Resguardo-${resguardo.employeeName}.pdf"`);
+    res.setHeader('Content-Disposition', `inline; filename="Resguardo-${safeguard.employeeName}.pdf"`);
 
     doc.pipe(res);
-    this.resguardosService.buildResguardoPdf(doc, resguardo);
+    this.safeguardsService.buildSafeguardPdf(doc, safeguard);
     doc.end();
   }
 }

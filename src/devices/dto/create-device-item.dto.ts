@@ -11,9 +11,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OwnershipType, ResguardoConditionState, ResguardoUsageType } from '@prisma/client';
+import { OwnershipType, SafeguardConditionState, SafeguardUsageType } from '@prisma/client';
 import { VehicleDetailDto } from './vehicle-detail.dto';
-import { ResguardoVehicleInspectionItemDto } from 'src/resguardos/dto/resguardo-vehicle-inspection-item.dto';
+import { SafeguardVehicleInspectionItemDto } from 'src/safeguards/dto/safeguard-vehicle-inspection-item.dto';
 
 export class CreateDeviceItemDto {
   @IsString()
@@ -52,8 +52,8 @@ export class CreateDeviceItemDto {
   // Estado físico del equipo (Nuevo/Seminuevo), obligatorio para cualquier
   // DeviceType. Se reutiliza tal cual al generar el resguardo del empleado
   // que lo tenga asignado — nunca se vuelve a pedir en assign().
-  @IsEnum(ResguardoConditionState)
-  condition!: ResguardoConditionState;
+  @IsEnum(SafeguardConditionState)
+  condition!: SafeguardConditionState;
 
   // Observaciones del equipo (inventario). Mismo texto que aparece como
   // "Observaciones" en el resguardo generado.
@@ -112,8 +112,8 @@ export class CreateDeviceItemDto {
   // describen la asignación, inspectionItems/mobileAccessories son checklist
   // y accesorios sin identificador propio capturados al momento de firmar.
   @IsOptional()
-  @IsEnum(ResguardoUsageType)
-  usageType?: ResguardoUsageType;
+  @IsEnum(SafeguardUsageType)
+  usageType?: SafeguardUsageType;
 
   @IsOptional()
   @IsDateString()
@@ -126,8 +126,8 @@ export class CreateDeviceItemDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ResguardoVehicleInspectionItemDto)
-  inspectionItems?: ResguardoVehicleInspectionItemDto[];
+  @Type(() => SafeguardVehicleInspectionItemDto)
+  inspectionItems?: SafeguardVehicleInspectionItemDto[];
 
   @IsOptional()
   @IsArray()

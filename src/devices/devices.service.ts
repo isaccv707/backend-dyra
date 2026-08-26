@@ -15,28 +15,28 @@ import {
   DeviceType,
   OwnershipType,
   Prisma,
-  ResguardoUsageType,
+  SafeguardUsageType,
   TransferStatus,
 } from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
-import { ResguardosService } from 'src/resguardos/resguardos.service';
+import { SafeguardsService } from 'src/safeguards/safeguards.service';
 import {
   ACCESSORY_DEVICE_TYPES,
-  getResguardoSectionForType,
-} from 'src/resguardos/constants/resguardable-device-types.const';
-import { ResguardoVehicleInspectionItemDto } from 'src/resguardos/dto/resguardo-vehicle-inspection-item.dto';
+  getSafeguardSectionForType,
+} from 'src/safeguards/constants/safeguardable-device-types.const';
+import { SafeguardVehicleInspectionItemDto } from 'src/safeguards/dto/safeguard-vehicle-inspection-item.dto';
 
 // Forma mínima compartida por AssignDeviceDto y los campos de resguardo de
-// CreateDeviceItemDto: lo que triggerResguardoForAssignment necesita para
+// CreateDeviceItemDto: lo que triggerSafeguardForAssignment necesita para
 // generar/regenerar el resguardo, sin acoplarse a un DTO en particular.
 // condition/observations NO están aquí: se leen directo del DeviceItem.
-interface ResguardoAssignmentFields {
-  usageType?: ResguardoUsageType;
+interface SafeguardAssignmentFields {
+  usageType?: SafeguardUsageType;
   startDate?: string;
   endDate?: string;
-  inspectionItems?: ResguardoVehicleInspectionItemDto[];
+  inspectionItems?: SafeguardVehicleInspectionItemDto[];
   mobileAccessories?: string[];
 }
 
@@ -63,7 +63,7 @@ type AuthUser = BranchScopedUser & { id: string };
 export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly resguardosService: ResguardosService,
+    private readonly safeguardsService: SafeguardsService,
   ) {}
 
   // ---------------------------------------------------------------------
@@ -169,7 +169,7 @@ export class DevicesService {
         });
 
         if (dto.employeeId) {
-          await this.triggerResguardoForAssignment(tx, dto.employeeId, catalog.type, user.id, {
+          await this.triggerSafeguardForAssignment(tx, dto.employeeId, catalog.type, user.id, {
             usageType,
             startDate,
             endDate,
@@ -179,7 +179,7 @@ export class DevicesService {
         } else if (employeeId) {
           // El accesorio heredó employeeId de su mainDevice: refresca el
           // resguardo de ese empleado para que aparezca en "Accesorios incluidos".
-          await this.triggerResguardoForAssignment(tx, employeeId, catalog.type, user.id, {});
+          await this.triggerSafeguardForAssignment(tx, employeeId, catalog.type, user.id, {});
         }
 
         return device;
@@ -327,7 +327,7 @@ export class DevicesService {
           // incluidos" de su nueva computadora — hay que refrescar la
           // responsiva del empleado dueño de esa computadora, si tiene una.
           if (inheritedFields?.employeeId) {
-            await this.triggerResguardoForAssignment(tx, inheritedFields.employeeId, device.catalog.type, user.id, {});
+            await this.triggerSafeguardForAssignment(tx, inheritedFields.employeeId, device.catalog.type, user.id, {});
           }
         }
 
@@ -407,7 +407,7 @@ export class DevicesService {
         });
 
         if (dto.employeeId) {
-          await this.triggerResguardoForAssignment(tx, dto.employeeId, device.catalog.type, user.id, dto);
+          await this.triggerSafeguardForAssignment(tx, dto.employeeId, device.catalog.type, user.id, dto);
         }
 
         return updated;
@@ -480,7 +480,7 @@ export class DevicesService {
         });
 
         if (employeeId) {
-          await this.triggerResguardoForAssignment(tx, employeeId, device.catalog.type, user.id, {});
+          await this.triggerSafeguardForAssignment(tx, employeeId, device.catalog.type, user.id, {});
         }
 
         return updated;
@@ -780,14 +780,14 @@ export class DevicesService {
   // MOUSE no tienen sección propia: solo regeneran el resguardo (para
   // refrescar "Accesorios incluidos") si el empleado ya tiene una
   // computadora asignada.
-  private async triggerResguardoForAssignment(
+  private async triggerSafeguardForAssignment(
     tx: Prisma.TransactionClient,
     employeeId: string,
     catalogType: DeviceType,
     createdByUserId: string,
-    fields: ResguardoAssignmentFields,
+    fields: SafeguardAssignmentFields,
   ) {
-    const sectionKey = getResguardoSectionForType(catalogType);
+    const sectionKey = getSafeguardSectionForType(catalogType);
 
     if (!sectionKey) {
       const hasComputer = await tx.deviceItem.findFirst({
@@ -795,11 +795,11 @@ export class DevicesService {
       });
       if (!hasComputer) return;
 
-      await this.resguardosService.createFromEmployeeDevices(tx, employeeId, { createdByUserId });
+      await this.safeguardsService.createFromEmployeeDevices(tx, employeeId, { createdByUserId });
       return;
     }
 
-    await this.resguardosService.createFromEmployeeDevices(tx, employeeId, {
+    await this.safeguardsService.createFromEmployeeDevices(tx, employeeId, {
       usageType: fields.usageType,
       startDate: fields.startDate ? new Date(fields.startDate) : undefined,
       endDate: fields.endDate ? new Date(fields.endDate) : undefined,

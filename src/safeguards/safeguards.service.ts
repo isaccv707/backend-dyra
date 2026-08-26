@@ -4,42 +4,42 @@ import * as path from 'path';
 import {
   DeviceStatus,
   Prisma,
-  ResguardoConditionState,
-  ResguardoUsageType,
+  SafeguardConditionState,
+  SafeguardUsageType,
 } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
-import { CreateResguardoDto } from './dto/create-resguardo.dto';
-import { FindResguardosDto } from './dto/find-resguardos.dto';
-import { ResguardoVehicleInspectionItemDto } from './dto/resguardo-vehicle-inspection-item.dto';
+import { CreateSafeguardDto } from './dto/create-safeguard.dto';
+import { FindSafeguardsDto } from './dto/find-safeguards.dto';
+import { SafeguardVehicleInspectionItemDto } from './dto/safeguard-vehicle-inspection-item.dto';
 import {
   ACCESSORY_DEVICE_TYPES,
   SECTION_DEVICE_TYPE,
-} from './constants/resguardable-device-types.const';
+} from './constants/safeguardable-device-types.const';
 import {
   getVehicleInspectionItemLabel,
   getVehicleInspectionItemSection,
   VEHICLE_BODY_INSPECTION_ITEMS,
   VEHICLE_REVISION_ITEMS,
 } from './constants/vehicle-inspection-items.const';
-import { ResguardoPdfData, VehicleInspectionRow } from './interfaces/resguardo-pdf-interfaces';
-import { ResguardoPdfRenderer } from './pdf/resguardo-pdf.renderer';
+import { SafeguardPdfData, VehicleInspectionRow } from './interfaces/safeguard-pdf-interfaces';
+import { SafeguardPdfRenderer } from './pdf/safeguard-pdf.renderer';
 
 const DOC_CODE = 'ADM.F.00';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
 
-const RESGUARDO_ALLOWED_FIELDS = ['employeeName', 'area', 'usageType', 'createdAt'];
+const SAFEGUARD_ALLOWED_FIELDS = ['employeeName', 'area', 'usageType', 'createdAt'];
 
-const RESGUARDO_INCLUDE = {
+const SAFEGUARD_INCLUDE = {
   employee: { select: { id: true, name: true, department: true, position: true } },
   computer: { include: { accessoryDetails: true } },
   mobile: { include: { accessoryDetails: true } },
   vehicle: { include: { inspectionItems: true } },
-} satisfies Prisma.ResguardoInclude;
+} satisfies Prisma.SafeguardInclude;
 
-type ResguardoWithDetails = Prisma.ResguardoGetPayload<{ include: typeof RESGUARDO_INCLUDE }>;
+type SafeguardWithDetails = Prisma.SafeguardGetPayload<{ include: typeof SAFEGUARD_INCLUDE }>;
 
 interface VehicleInspectionItemCreateInput {
   itemKey: string;
@@ -53,19 +53,19 @@ interface VehicleInspectionItemCreateInput {
 // momento de generar el resguardo. Marca/modelo/serie/placa/condición/
 // observaciones siempre se leen en vivo del DeviceItem correspondiente.
 export interface CreateFromEmployeeDevicesInput {
-  usageType?: ResguardoUsageType;
+  usageType?: SafeguardUsageType;
   startDate?: Date;
   endDate?: Date;
   createdByUserId: string;
-  inspectionItems?: ResguardoVehicleInspectionItemDto[];
+  inspectionItems?: SafeguardVehicleInspectionItemDto[];
   mobileAccessories?: string[];
 }
 
 @Injectable()
-export class ResguardosService {
+export class SafeguardsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly pdfRenderer: ResguardoPdfRenderer,
+    private readonly pdfRenderer: SafeguardPdfRenderer,
   ) {}
 
   // ===========================
@@ -73,7 +73,7 @@ export class ResguardosService {
   // ===========================
 
   // Punto central: arma (o regenera) LA responsiva del empleado (una sola
-  // fila por empleado — Resguardo.employeeId es @unique) a partir de lo que
+  // fila por empleado — Safeguard.employeeId es @unique) a partir de lo que
   // tiene ASSIGNED en DeviceItem en este momento. Marca/modelo/serie/placa/
   // condición/observaciones se leen en vivo del DeviceItem — nunca se piden
   // ni se heredan de una versión previa, porque son datos permanentes del
@@ -88,7 +88,7 @@ export class ResguardosService {
     tx: Prisma.TransactionClient,
     employeeId: string,
     input: CreateFromEmployeeDevicesInput,
-  ): Promise<ResguardoWithDetails> {
+  ): Promise<SafeguardWithDetails> {
     const employee = await tx.employee.findUniqueOrThrow({ where: { id: employeeId } });
 
     const assignedDevices = await tx.deviceItem.findMany({
@@ -110,9 +110,9 @@ export class ResguardosService {
       );
     }
 
-    const existing = await tx.resguardo.findUnique({
+    const existing = await tx.safeguard.findUnique({
       where: { employeeId },
-      include: RESGUARDO_INCLUDE,
+      include: SAFEGUARD_INCLUDE,
     });
 
     const usageType = input.usageType ?? existing?.usageType;
@@ -134,14 +134,14 @@ export class ResguardosService {
 
     // La responsiva es una sola fila por empleado: si ya existía, se
     // reemplazan sus secciones (delete + create) en vez de acumular otra
-    // fila de Resguardo — un @@unique([employeeId]) lo impediría de todos
+    // fila de Safeguard — un @@unique([employeeId]) lo impediría de todos
     // modos, pero además así nunca queda una sección "vieja" huérfana (p.ej.
     // el vehículo anterior) colgada del documento.
     if (existing) {
       await Promise.all([
-        tx.resguardoComputerDetail.deleteMany({ where: { resguardoId: existing.id } }),
-        tx.resguardoMobileDetail.deleteMany({ where: { resguardoId: existing.id } }),
-        tx.resguardoVehicleDetail.deleteMany({ where: { resguardoId: existing.id } }),
+        tx.safeguardComputerDetail.deleteMany({ where: { safeguardId: existing.id } }),
+        tx.safeguardMobileDetail.deleteMany({ where: { safeguardId: existing.id } }),
+        tx.safeguardVehicleDetail.deleteMany({ where: { safeguardId: existing.id } }),
       ]);
     }
 
@@ -151,7 +151,7 @@ export class ResguardosService {
       ...(vehicleData && { vehicle: { create: vehicleData } }),
     };
 
-    const resguardo = await tx.resguardo.upsert({
+    const safeguard = await tx.safeguard.upsert({
       where: { employeeId },
       create: {
         employeeId,
@@ -176,20 +176,18 @@ export class ResguardosService {
         createdByUserId: input.createdByUserId,
         ...sectionsData,
       },
-      include: RESGUARDO_INCLUDE,
+      include: SAFEGUARD_INCLUDE,
     });
 
-    // Generar/regenerar la responsiva es el mismo evento real que este flag
-    // representa; ver toggle manual en PATCH /employees/:id/signed-responsibility.
-    await tx.employee.update({
-      where: { id: employeeId },
-      data: { hasSignedResponsibility: true },
-    });
+    // hasSignedResponsibility representa la firma física de la carta, un hecho
+    // que solo un humano puede confirmar — no se toca aquí. Generar/regenerar
+    // el documento es un evento de sistema distinto; el único lugar que debe
+    // cambiar este flag es el toggle manual en PATCH /employees/:id/signed-responsibility.
 
-    return resguardo;
+    return safeguard;
   }
 
-  async create(dto: CreateResguardoDto, user: BranchScopedUser & { id: string }) {
+  async create(dto: CreateSafeguardDto, user: BranchScopedUser & { id: string }) {
     const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
     if (!employee) {
       throw new NotFoundException(`Employee with ID '${dto.employeeId}' not found`);
@@ -208,53 +206,53 @@ export class ResguardosService {
         }),
       );
     } catch (error) {
-      handleDatabaseErrors(error, 'Resguardo');
+      handleDatabaseErrors(error, 'Safeguard');
     }
   }
 
-  async findAll(dto: FindResguardosDto, user: BranchScopedUser) {
+  async findAll(dto: FindSafeguardsDto, user: BranchScopedUser) {
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
       searchFields: ['employeeName', 'area'],
       defaultSort: { createdAt: 'desc' },
-      allowedFields: RESGUARDO_ALLOWED_FIELDS,
+      allowedFields: SAFEGUARD_ALLOWED_FIELDS,
     });
 
     const finalWhere = {
       ...where,
       ...userBranchFilter(user, dto.branchId),
       ...(dto.employeeId && { employeeId: dto.employeeId }),
-    } as Prisma.ResguardoWhereInput;
+    } as Prisma.SafeguardWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.resguardo.findMany({ skip, take, where: finalWhere, orderBy, include: RESGUARDO_INCLUDE }),
-      this.prisma.resguardo.count({ where: finalWhere }),
+      this.prisma.safeguard.findMany({ skip, take, where: finalWhere, orderBy, include: SAFEGUARD_INCLUDE }),
+      this.prisma.safeguard.count({ where: finalWhere }),
     ]);
 
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string, user: BranchScopedUser): Promise<ResguardoWithDetails> {
-    const resguardo = await this.prisma.resguardo.findUnique({ where: { id }, include: RESGUARDO_INCLUDE });
-    if (!resguardo) {
-      throw new NotFoundException(`Resguardo with ID '${id}' not found`);
+  async findOne(id: string, user: BranchScopedUser): Promise<SafeguardWithDetails> {
+    const safeguard = await this.prisma.safeguard.findUnique({ where: { id }, include: SAFEGUARD_INCLUDE });
+    if (!safeguard) {
+      throw new NotFoundException(`Safeguard with ID '${id}' not found`);
     }
-    assertBranchAccess(user, resguardo.branchId);
+    assertBranchAccess(user, safeguard.branchId);
 
-    return resguardo;
+    return safeguard;
   }
 
   async remove(id: string, user: BranchScopedUser) {
     await this.findOne(id, user);
 
     try {
-      return await this.prisma.resguardo.delete({ where: { id } });
+      return await this.prisma.safeguard.delete({ where: { id } });
     } catch (error) {
-      handleDatabaseErrors(error, 'Resguardo');
+      handleDatabaseErrors(error, 'Safeguard');
     }
   }
 
-  buildResguardoPdf(doc: PDFKit.PDFDocument, resguardo: ResguardoWithDetails): void {
-    const data = this.buildPdfData(resguardo);
+  buildSafeguardPdf(doc: PDFKit.PDFDocument, safeguard: SafeguardWithDetails): void {
+    const data = this.buildPdfData(safeguard);
     this.pdfRenderer.render(doc, data);
   }
 
@@ -301,7 +299,7 @@ export class ResguardosService {
 
   private buildMobileSection(
     device: Prisma.DeviceItemGetPayload<{ include: { catalog: true } }>,
-    existing: ResguardoWithDetails | null,
+    existing: SafeguardWithDetails | null,
     mobileAccessoriesInput?: string[],
   ) {
     // Carry-forward solo si la responsiva vigente ya tenía sección mobile
@@ -332,8 +330,8 @@ export class ResguardosService {
 
   private buildVehicleSection(
     device: Prisma.DeviceItemGetPayload<{ include: { catalog: true; vehicleDetail: true } }>,
-    existing: ResguardoWithDetails | null,
-    inspectionItemsInput?: ResguardoVehicleInspectionItemDto[],
+    existing: SafeguardWithDetails | null,
+    inspectionItemsInput?: SafeguardVehicleInspectionItemDto[],
   ) {
     // Carry-forward solo si la responsiva vigente ya tenía sección vehicle
     // para ESTE MISMO deviceId — si el vehículo cambió, hay que capturar el
@@ -365,7 +363,7 @@ export class ResguardosService {
     };
   }
 
-  private resolveInspectionItems(items?: ResguardoVehicleInspectionItemDto[]) {
+  private resolveInspectionItems(items?: SafeguardVehicleInspectionItemDto[]) {
     if (!items?.length) return [];
 
     const keys = items.map((item) => item.itemKey);
@@ -386,60 +384,60 @@ export class ResguardosService {
   // Helpers privados: PDF
   // ===========================
 
-  private buildPdfData(resguardo: ResguardoWithDetails): ResguardoPdfData {
+  private buildPdfData(safeguard: SafeguardWithDetails): SafeguardPdfData {
     return {
       meta: {
-        formattedDate: resguardo.createdAt.toLocaleDateString('es-MX'),
+        formattedDate: safeguard.createdAt.toLocaleDateString('es-MX'),
         docCode: DOC_CODE,
         companyName: COMPANY_NAME,
         logoPath: this.resolveLogoPath(),
       },
       employee: {
-        employeeName: resguardo.employeeName,
-        position: resguardo.position ?? '',
-        area: resguardo.area,
+        employeeName: safeguard.employeeName,
+        position: safeguard.position ?? '',
+        area: safeguard.area,
       },
       usage: {
-        usageType: resguardo.usageType,
-        usageLabel: resguardo.usageType === ResguardoUsageType.TEMPORARY ? 'Temporal' : 'Permanente',
-        formattedStartDate: resguardo.startDate ? resguardo.startDate.toLocaleDateString('es-MX') : null,
-        formattedEndDate: resguardo.endDate ? resguardo.endDate.toLocaleDateString('es-MX') : null,
+        usageType: safeguard.usageType,
+        usageLabel: safeguard.usageType === SafeguardUsageType.TEMPORARY ? 'Temporal' : 'Permanente',
+        formattedStartDate: safeguard.startDate ? safeguard.startDate.toLocaleDateString('es-MX') : null,
+        formattedEndDate: safeguard.endDate ? safeguard.endDate.toLocaleDateString('es-MX') : null,
       },
-      computer: resguardo.computer
+      computer: safeguard.computer
         ? {
-            brand: resguardo.computer.brand,
-            model: resguardo.computer.model,
-            serialNumber: resguardo.computer.serialNumber ?? '',
-            internalCode: resguardo.computer.internalCode ?? '',
-            hardDrive: resguardo.computer.hardDrive ?? '',
-            processor: resguardo.computer.processor ?? '',
-            accessories: this.composeAccessoriesLabel(resguardo.computer.accessoryDetails),
-            conditionLabel: this.conditionLabel(resguardo.computer.condition),
-            observations: resguardo.computer.observations ?? '',
+            brand: safeguard.computer.brand,
+            model: safeguard.computer.model,
+            serialNumber: safeguard.computer.serialNumber ?? '',
+            internalCode: safeguard.computer.internalCode ?? '',
+            hardDrive: safeguard.computer.hardDrive ?? '',
+            processor: safeguard.computer.processor ?? '',
+            accessories: this.composeAccessoriesLabel(safeguard.computer.accessoryDetails),
+            conditionLabel: this.conditionLabel(safeguard.computer.condition),
+            observations: safeguard.computer.observations ?? '',
           }
         : undefined,
-      mobile: resguardo.mobile
+      mobile: safeguard.mobile
         ? {
-            brand: resguardo.mobile.brand,
-            model: resguardo.mobile.model,
-            imei: resguardo.mobile.imei ?? '',
-            phoneNumber: resguardo.mobile.phoneNumber ?? '',
-            accessories: this.composeAccessoriesLabel(resguardo.mobile.accessoryDetails),
-            conditionLabel: this.conditionLabel(resguardo.mobile.condition),
-            observations: resguardo.mobile.observations ?? '',
+            brand: safeguard.mobile.brand,
+            model: safeguard.mobile.model,
+            imei: safeguard.mobile.imei ?? '',
+            phoneNumber: safeguard.mobile.phoneNumber ?? '',
+            accessories: this.composeAccessoriesLabel(safeguard.mobile.accessoryDetails),
+            conditionLabel: this.conditionLabel(safeguard.mobile.condition),
+            observations: safeguard.mobile.observations ?? '',
           }
         : undefined,
-      vehicle: resguardo.vehicle
+      vehicle: safeguard.vehicle
         ? {
-            brand: resguardo.vehicle.brand,
-            model: resguardo.vehicle.model,
-            mileage: resguardo.vehicle.mileage ?? '',
-            plateNumber: resguardo.vehicle.plateNumber ?? '',
-            fuelType: resguardo.vehicle.fuelType ?? '',
-            transmission: resguardo.vehicle.transmission ?? '',
-            conditionLabel: this.conditionLabel(resguardo.vehicle.condition),
-            revisionRows: this.buildInspectionRows(VEHICLE_REVISION_ITEMS, resguardo.vehicle.inspectionItems),
-            inspectionRows: this.buildInspectionRows(VEHICLE_BODY_INSPECTION_ITEMS, resguardo.vehicle.inspectionItems),
+            brand: safeguard.vehicle.brand,
+            model: safeguard.vehicle.model,
+            mileage: safeguard.vehicle.mileage ?? '',
+            plateNumber: safeguard.vehicle.plateNumber ?? '',
+            fuelType: safeguard.vehicle.fuelType ?? '',
+            transmission: safeguard.vehicle.transmission ?? '',
+            conditionLabel: this.conditionLabel(safeguard.vehicle.condition),
+            revisionRows: this.buildInspectionRows(VEHICLE_REVISION_ITEMS, safeguard.vehicle.inspectionItems),
+            inspectionRows: this.buildInspectionRows(VEHICLE_BODY_INSPECTION_ITEMS, safeguard.vehicle.inspectionItems),
           }
         : undefined,
     };
@@ -474,8 +472,8 @@ export class ResguardosService {
     });
   }
 
-  private conditionLabel(condition: ResguardoConditionState): string {
-    return condition === ResguardoConditionState.NEW ? 'Nuevo' : 'Seminuevo';
+  private conditionLabel(condition: SafeguardConditionState): string {
+    return condition === SafeguardConditionState.NEW ? 'Nuevo' : 'Seminuevo';
   }
 
   private resolveLogoPath(): string | null {

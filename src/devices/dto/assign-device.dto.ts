@@ -1,7 +1,7 @@
 import { Type } from 'class-transformer';
 import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
-import { ResguardoUsageType } from '@prisma/client';
-import { ResguardoVehicleInspectionItemDto } from 'src/resguardos/dto/resguardo-vehicle-inspection-item.dto';
+import { SafeguardUsageType } from '@prisma/client';
+import { SafeguardVehicleInspectionItemDto } from 'src/safeguards/dto/safeguard-vehicle-inspection-item.dto';
 
 // Exactamente uno de los dos debe llegar; la exclusividad (nunca ambos, y
 // nunca ninguno) se valida en DevicesService, no alcanza con el DTO.
@@ -22,10 +22,10 @@ export class AssignDeviceDto {
   locationId?: string;
 
   // Obligatorio salvo que el empleado ya tenga un resguardo previo del que
-  // heredarlo (ver ResguardosService.createFromEmployeeDevices).
+  // heredarlo (ver SafeguardsService.createFromEmployeeDevices).
   @IsOptional()
-  @IsEnum(ResguardoUsageType)
-  usageType?: ResguardoUsageType;
+  @IsEnum(SafeguardUsageType)
+  usageType?: SafeguardUsageType;
 
   @IsOptional()
   @IsDateString()
@@ -40,8 +40,8 @@ export class AssignDeviceDto {
   @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => ResguardoVehicleInspectionItemDto)
-  inspectionItems?: ResguardoVehicleInspectionItemDto[];
+  @Type(() => SafeguardVehicleInspectionItemDto)
+  inspectionItems?: SafeguardVehicleInspectionItemDto[];
 
   // Solo móvil: accesorios sin identificador propio (p.ej. "Cargador"). Si
   // se omite, se hereda del resguardo anterior de ese mismo celular.

@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ResguardoComputerInfo,
-  ResguardoMobileInfo,
-  ResguardoPdfData,
-  ResguardoUsageInfo,
-  ResguardoVehicleInfo,
+  SafeguardComputerInfo,
+  SafeguardMobileInfo,
+  SafeguardPdfData,
+  SafeguardUsageInfo,
+  SafeguardVehicleInfo,
   VehicleInspectionRow,
-} from '../interfaces/resguardo-pdf-interfaces';
+} from '../interfaces/safeguard-pdf-interfaces';
 
 const SECTION_HEADER_COLOR = '#8DC63F';
 const LABEL_FILL_COLOR = '#E0E0E0';
@@ -40,8 +40,8 @@ interface Layout {
 }
 
 @Injectable()
-export class ResguardoPdfRenderer {
-  render(doc: PDFKit.PDFDocument, data: ResguardoPdfData): void {
+export class SafeguardPdfRenderer {
+  render(doc: PDFKit.PDFDocument, data: SafeguardPdfData): void {
     const layout = this.buildLayout(doc);
 
     let y = this.drawHeader(doc, layout, data);
@@ -63,7 +63,7 @@ export class ResguardoPdfRenderer {
   // ===========================
   // ENCABEZADO (se repite igual en cada página)
   // ===========================
-  private drawHeader(doc: PDFKit.PDFDocument, layout: Layout, data: ResguardoPdfData): number {
+  private drawHeader(doc: PDFKit.PDFDocument, layout: Layout, data: SafeguardPdfData): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const topY = doc.page.margins.top || 40;
 
@@ -149,7 +149,7 @@ export class ResguardoPdfRenderer {
   // ===========================
   // GRILLA: datos del empleado + herramientas a asignar + uso
   // ===========================
-  private drawInfoGrid(doc: PDFKit.PDFDocument, layout: Layout, y: number, data: ResguardoPdfData): number {
+  private drawInfoGrid(doc: PDFKit.PDFDocument, layout: Layout, y: number, data: SafeguardPdfData): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const width = pageWidth - marginLeft - marginRight;
 
@@ -228,7 +228,7 @@ export class ResguardoPdfRenderer {
   // ===========================
   // SECCIONES DE EQUIPO (PÁGINA 1)
   // ===========================
-  private drawComputerSection(doc: PDFKit.PDFDocument, layout: Layout, y: number, computer: ResguardoComputerInfo): number {
+  private drawComputerSection(doc: PDFKit.PDFDocument, layout: Layout, y: number, computer: SafeguardComputerInfo): number {
     let cursor = this.drawSectionHeader(doc, layout, y, 'Equipo de cómputo');
 
     cursor = this.drawTwoColumnRow(doc, layout, cursor, 'Marca', computer.brand, 'Modelo', computer.model);
@@ -241,7 +241,7 @@ export class ResguardoPdfRenderer {
     return cursor + 10;
   }
 
-  private drawMobileSection(doc: PDFKit.PDFDocument, layout: Layout, y: number, mobile: ResguardoMobileInfo): number {
+  private drawMobileSection(doc: PDFKit.PDFDocument, layout: Layout, y: number, mobile: SafeguardMobileInfo): number {
     let cursor = this.drawSectionHeader(doc, layout, y, 'Equipo celular');
 
     cursor = this.drawTwoColumnRow(doc, layout, cursor, 'Marca', mobile.brand, 'Modelo', mobile.model);
@@ -253,7 +253,7 @@ export class ResguardoPdfRenderer {
     return cursor + 10;
   }
 
-  private drawVehicleSummarySection(doc: PDFKit.PDFDocument, layout: Layout, y: number, vehicle: ResguardoVehicleInfo): number {
+  private drawVehicleSummarySection(doc: PDFKit.PDFDocument, layout: Layout, y: number, vehicle: SafeguardVehicleInfo): number {
     let cursor = this.drawSectionHeader(doc, layout, y, 'Equipo vehicular');
 
     cursor = this.drawTwoColumnRow(doc, layout, cursor, 'Marca', vehicle.brand, 'Modelo', vehicle.model);
@@ -267,7 +267,7 @@ export class ResguardoPdfRenderer {
   // ===========================
   // PÁGINA 2: INSPECCIÓN VEHICULAR
   // ===========================
-  private drawVehicleInspectionPage(doc: PDFKit.PDFDocument, layout: Layout, data: ResguardoPdfData): void {
+  private drawVehicleInspectionPage(doc: PDFKit.PDFDocument, layout: Layout, data: SafeguardPdfData): void {
     const vehicle = data.vehicle!;
     let y = this.drawHeader(doc, layout, data);
 

@@ -21,7 +21,7 @@ export class DeviceCatalogController {
     return this.deviceCatalogService.create(createDeviceCatalogDto);
   }
 
-  @ApiOperation({ summary: 'Listar catálogo', description: 'Devuelve los modelos de equipo disponibles en el catálogo.' })
+  @ApiOperation({ summary: 'Listar catálogo', description: 'Devuelve los modelos de equipo disponibles en el catálogo. Por defecto omite los archivados (isActive=false); use includeInactive=true para incluirlos.' })
   @ApiResponse({ status: 200, description: 'Listado de modelos de catálogo.' })
   @Public()
   @Get()
@@ -50,7 +50,7 @@ export class DeviceCatalogController {
     return this.deviceCatalogService.update(id, updateDeviceCatalogDto);
   }
 
-  @ApiOperation({ summary: 'Eliminar modelo de catálogo', description: 'Elimina un modelo de catálogo. Falla si existen equipos dados de alta con ese modelo.' })
+  @ApiOperation({ summary: 'Eliminar modelo de catálogo', description: 'Elimina un modelo de catálogo. Falla si existen equipos dados de alta con ese modelo; en ese caso, archívelo (PATCH con isActive: false) en vez de eliminarlo.' })
   @ApiParam({ name: 'id', description: 'Identificador del modelo de catálogo.' })
   @ApiResponse({ status: 200, description: 'Modelo de catálogo eliminado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Modelo de catálogo no encontrado.' })
