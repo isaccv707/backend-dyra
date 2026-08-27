@@ -21,7 +21,10 @@ export class DevicesController {
   @ApiBearerAuth()
   @Permissions('devices:create')
   @Post()
-  create(@Body() createDeviceItemDto: CreateDeviceItemDto, @CurrentUser() user: BranchScopedUser) {
+  create(
+    @Body() createDeviceItemDto: CreateDeviceItemDto,
+    @CurrentUser() user: BranchScopedUser & { id: string },
+  ) {
     return this.devicesService.create(createDeviceItemDto, user);
   }
 
@@ -65,7 +68,7 @@ export class DevicesController {
   update(
     @Param('id') id: string,
     @Body() updateDeviceItemDto: UpdateDeviceItemDto,
-    @CurrentUser() user: BranchScopedUser,
+    @CurrentUser() user: BranchScopedUser & { id: string },
   ) {
     return this.devicesService.update(id, updateDeviceItemDto, user);
   }
@@ -79,7 +82,7 @@ export class DevicesController {
   assign(
     @Param('id') id: string,
     @Body() dto: AssignDeviceDto,
-    @CurrentUser() user: BranchScopedUser,
+    @CurrentUser() user: BranchScopedUser & { id: string },
   ) {
     return this.devicesService.assign(id, dto, user);
   }
@@ -92,6 +95,19 @@ export class DevicesController {
   @Post(':id/unassign')
   unassign(@Param('id') id: string, @CurrentUser() user: BranchScopedUser) {
     return this.devicesService.unassign(id, user);
+  }
+
+  @ApiOperation({
+    summary: 'Desenlazar accesorio',
+    description: 'Desenlaza un MONITOR/KEYBOARD/MOUSE de su computadora principal (mainDeviceId) sin darlo de baja; queda disponible.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del accesorio.' })
+  @ApiResponse({ status: 200, description: 'Accesorio desenlazado exitosamente.' })
+  @ApiBearerAuth()
+  @Permissions('devices:update')
+  @Post(':id/unlink')
+  unlink(@Param('id') id: string, @CurrentUser() user: BranchScopedUser & { id: string }) {
+    return this.devicesService.unlink(id, user);
   }
 
   @ApiOperation({ summary: 'Dar de baja un equipo', description: 'Marca un equipo como retirado/dado de baja. No elimina el registro.' })

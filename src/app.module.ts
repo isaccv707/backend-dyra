@@ -17,6 +17,7 @@ import { RolesPermissionsModule } from './roles-permissions/roles-permissions.mo
 import { EmployeesModule } from './employees/employees.module';
 import { LocationsModule } from './locations/locations.module';
 import { DevicesModule } from './devices/devices.module';
+import { SafeguardsModule } from './safeguards/safeguards.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { DevicesModule } from './devices/devices.module';
     EmployeesModule,
     LocationsModule,
     DevicesModule,
+    SafeguardsModule,
   ],
   controllers: [],
   providers: [],

@@ -18,7 +18,8 @@ model User {
   roleId String
   role   Role   @relation(fields: [roleId], references: [id])
 
-  branches Branch[]
+  branches          Branch[]
+  createdSafeguards Safeguard[]
 }
 
 model Role {
@@ -87,6 +88,7 @@ model Branch {
 
   locations                   Location[]
   employees                   Employee[]
+  safeguards                  Safeguard[]
   deviceItems                 DeviceItem[]            @relation("DeviceCurrentBranch")
   transferRequestsOrigin      TransferRequest[]       @relation("TransferOrigin")
   transferRequestsDestination TransferRequest[]       @relation("TransferDestination")
@@ -420,6 +422,7 @@ enum DeviceType {
   KEYBOARD
   MOUSE
   MOBILE
+  VEHICLE
 }
 
 enum OwnershipType {
@@ -436,11 +439,23 @@ enum DeviceStatus {
   LOST
 }
 
-enum DeviceCondition {
+enum SafeguardUsageType {
+  TEMPORARY
+  PERMANENT
+}
+
+// Estado físico Nuevo/Seminuevo. Se captura una sola vez en DeviceItem al dar
+// de alta el equipo (inventario); los detalles de un Safeguard (Computer/
+// Mobile/Vehicle) solo copian ese mismo valor al generarse, nunca lo piden
+// de nuevo.
+enum SafeguardConditionState {
   NEW
-  GOOD
-  FAIR
-  DAMAGED
+  SEMINUEVO
+}
+
+enum SafeguardVehicleInspectionSection {
+  DOCUMENTS
+  BODY
 }
 
 enum TransferStatus {
@@ -457,6 +472,7 @@ enum MovementType {
   TRANSFER_IN
   ASSIGNMENT
   UNASSIGNMENT
+  UNLINK
   MAINTENANCE
   DISPOSAL
 }
@@ -481,13 +497,15 @@ model Location {
 model Employee {
   id                      String  @id @default(uuid())
   name                    String
+  position                String?
   department              String
   hasSignedResponsibility Boolean @default(false) @map("has_signed_responsibility")
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  devices DeviceItem[]
+  devices    DeviceItem[]
+  safeguards Safeguard[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -502,6 +520,11 @@ model DeviceCatalog {
   type  DeviceType
   brand String
   model String
+  // Archivado en vez de borrado: un modelo con equipos dados de alta (incluso
+  // retirados) nunca se puede eliminar por integridad referencial, así que
+  // isActive=false es la forma de sacarlo del listado sin perder el historial
+  // de los DeviceItem que lo referencian.
+  isActive Boolean @default(true) @map("is_active")
 
   items DeviceItem[]
 
@@ -512,14 +535,27 @@ model DeviceCatalog {
 }
 
 model DeviceItem {
-  id            String          @id @default(uuid())
-  internalCode  String          @unique @map("internal_code")
-  serialNumber  String?         @unique @map("serial_number")
-  ownershipType OwnershipType   @default(INTERNAL) @map("ownership_type")
-  providerFolio String?         @map("provider_folio")
-  status        DeviceStatus    @default(AVAILABLE)
-  condition     DeviceCondition @default(GOOD)
-  notes         String?         @db.Text
+  id            String                  @id @default(uuid())
+  internalCode  String                  @unique @map("internal_code")
+  // Serie del equipo; para MOBILE se usa como IMEI (mismo campo, sin
+  // duplicar columna — ver SafeguardsService.buildMobileSection).
+  serialNumber  String?                 @unique @map("serial_number")
+  ownershipType OwnershipType           @default(INTERNAL) @map("ownership_type")
+  providerFolio String?                 @map("provider_folio")
+  status        DeviceStatus            @default(AVAILABLE)
+  // Estado físico del equipo, obligatorio para todo DeviceItem. Se captura
+  // una sola vez al dar de alta (o se corrige por PATCH); SafeguardsService
+  // lo copia tal cual al generar/regenerar un safeguard, nunca se vuelve a
+  // pedir en assign().
+  condition     SafeguardConditionState
+  notes         String?                 @db.Text
+
+  // Solo aplica cuando catalog.type = COMPUTER (validado en DevicesService).
+  hardDrive String? @map("hard_drive")
+  processor String?
+
+  // Solo aplica cuando catalog.type = MOBILE (validado en DevicesService).
+  phoneNumber String? @map("phone_number")
 
   catalogId String        @map("catalog_id")
   catalog   DeviceCatalog @relation(fields: [catalogId], references: [id])
@@ -533,8 +569,24 @@ model DeviceItem {
   locationId String?   @map("location_id")
   location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
-  transferItems   TransferItem[]
-  movementHistory DeviceMovementHistory[]
+  // Solo aplica cuando catalog.type es MONITOR/KEYBOARD/MOUSE, y solo puede
+  // apuntar a una DeviceItem con catalog.type = COMPUTER (validado en
+  // DevicesService, no a nivel DB). employeeId/locationId/status/
+  // currentBranchId de un accesorio SIEMPRE se derivan de su mainDevice —
+  // nunca se asignan de forma independiente (ver DevicesService.assign()/
+  // unassign()/retire()/receiveTransfer(), que hacen cascade a accessories).
+  mainDeviceId String?      @map("main_device_id")
+  mainDevice   DeviceItem?  @relation("DeviceAccessories", fields: [mainDeviceId], references: [id], onDelete: SetNull)
+  accessories  DeviceItem[] @relation("DeviceAccessories")
+
+  vehicleDetail VehicleDetail?
+
+  transferItems     TransferItem[]
+  movementHistory   DeviceMovementHistory[]
+  safeguardComputer SafeguardComputerDetail[]
+  safeguardMobile   SafeguardMobileDetail[]
+  safeguardVehicle  SafeguardVehicleDetail[]
+  accessoryDetails  SafeguardAccessoryDetail[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -543,7 +595,22 @@ model DeviceItem {
   @@index([currentBranchId])
   @@index([employeeId])
   @@index([locationId])
+  @@index([mainDeviceId])
   @@map("device_items")
+}
+
+model VehicleDetail {
+  id String @id @default(uuid())
+
+  deviceId String     @unique @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  plateNumber  String? @unique @map("plate_number")
+  mileage      String?
+  fuelType     String? @map("fuel_type")
+  transmission String?
+
+  @@map("vehicle_details")
 }
 
 model TransferRequest {
@@ -604,4 +671,159 @@ model DeviceMovementHistory {
   @@index([originBranchId])
   @@index([destinationBranchId])
   @@map("device_movement_history")
+}
+
+// Un empleado solo puede tener UNA responsiva a la vez: employeeId es
+// @unique, y SafeguardsService.createFromEmployeeDevices hace upsert sobre
+// ese mismo registro (nunca acumula historial de versiones anteriores).
+model Safeguard {
+  id String @id @default(uuid())
+
+  employeeId String   @unique @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  // Snapshot del momento en que se generó/regeneró por última vez este
+  // safeguard — no sigue en vivo el nombre/puesto/área del empleado, solo
+  // se actualiza cuando se regenera el documento.
+  employeeName String  @map("employee_name")
+  position     String?
+  area         String
+
+  usageType SafeguardUsageType @map("usage_type")
+  startDate DateTime?          @map("start_date")
+  endDate   DateTime?          @map("end_date")
+
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  computer SafeguardComputerDetail?
+  mobile   SafeguardMobileDetail?
+  vehicle  SafeguardVehicleDetail?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([createdByUserId])
+  @@map("safeguards")
+}
+
+model SafeguardComputerDetail {
+  id String @id @default(uuid())
+
+  safeguardId String    @unique @map("safeguard_id")
+  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
+
+  // El equipo puede reaparecer en varios safeguards a lo largo del tiempo
+  // (reasignaciones), por eso la relación es 1:N desde DeviceItem.
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  brand        String
+  model        String
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+  hardDrive    String? @map("hard_drive")
+  processor    String?
+
+  condition    SafeguardConditionState
+  observations String?                 @db.Text
+
+  accessoryDetails SafeguardAccessoryDetail[]
+
+  @@index([deviceId])
+  @@map("safeguard_computer_details")
+}
+
+model SafeguardMobileDetail {
+  id String @id @default(uuid())
+
+  safeguardId String    @unique @map("safeguard_id")
+  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  brand       String
+  model       String
+  imei        String?
+  phoneNumber String? @map("phone_number")
+
+  condition    SafeguardConditionState
+  observations String?                 @db.Text
+
+  accessoryDetails SafeguardAccessoryDetail[]
+
+  @@index([deviceId])
+  @@map("safeguard_mobile_details")
+}
+
+model SafeguardVehicleDetail {
+  id String @id @default(uuid())
+
+  safeguardId String    @unique @map("safeguard_id")
+  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  brand        String
+  model        String
+  mileage      String? @map("mileage")
+  plateNumber  String? @map("plate_number")
+  fuelType     String? @map("fuel_type")
+  transmission String?
+
+  condition SafeguardConditionState
+
+  inspectionItems SafeguardVehicleInspectionItem[]
+
+  @@index([deviceId])
+  @@map("safeguard_vehicle_details")
+}
+
+// Fila de "Accesorios incluidos" (sección computer o mobile de un safeguard).
+// deviceId presente = accesorio rastreado en inventario (monitor/teclado/mouse,
+// con marca/modelo/serie/código propios). deviceId null = accesorio sin
+// identificador propio (p.ej. cargador de celular), solo un nombre libre.
+model SafeguardAccessoryDetail {
+  id String @id @default(uuid())
+
+  computerDetailId String?                  @map("computer_detail_id")
+  computerDetail   SafeguardComputerDetail?  @relation(fields: [computerDetailId], references: [id], onDelete: Cascade)
+
+  mobileDetailId String?                @map("mobile_detail_id")
+  mobileDetail   SafeguardMobileDetail? @relation(fields: [mobileDetailId], references: [id], onDelete: Cascade)
+
+  deviceId String?     @map("device_id")
+  device   DeviceItem? @relation(fields: [deviceId], references: [id])
+
+  name         String
+  brand        String?
+  model        String?
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+
+  @@index([computerDetailId])
+  @@index([mobileDetailId])
+  @@index([deviceId])
+  @@map("safeguard_accessory_details")
+}
+
+model SafeguardVehicleInspectionItem {
+  id String @id @default(uuid())
+
+  vehicleDetailId String                 @map("vehicle_detail_id")
+  vehicleDetail   SafeguardVehicleDetail @relation(fields: [vehicleDetailId], references: [id], onDelete: Cascade)
+
+  section      SafeguardVehicleInspectionSection
+  itemKey      String                            @map("item_key")
+  state        String?
+  observations String?                           @db.Text
+
+  @@unique([vehicleDetailId, itemKey])
+  @@map("safeguard_vehicle_inspection_items")
 }
