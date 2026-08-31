@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
-export class FindSafeguardsDto extends PaginatedQueryDto {
+export class FindVehicleSafeguardsDto extends PaginatedQueryDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;

@@ -26,7 +26,6 @@ import {
   ACCESSORY_DEVICE_TYPES,
   getSafeguardSectionForType,
 } from 'src/safeguards/constants/safeguardable-device-types.const';
-import { SafeguardVehicleInspectionItemDto } from 'src/safeguards/dto/safeguard-vehicle-inspection-item.dto';
 
 // Forma mínima compartida por AssignDeviceDto y los campos de resguardo de
 // CreateDeviceItemDto: lo que triggerSafeguardForAssignment necesita para
@@ -36,7 +35,6 @@ interface SafeguardAssignmentFields {
   usageType?: SafeguardUsageType;
   startDate?: string;
   endDate?: string;
-  inspectionItems?: SafeguardVehicleInspectionItemDto[];
   mobileAccessories?: string[];
 }
 
@@ -47,7 +45,6 @@ const DEVICE_INCLUDE = {
   catalog: true,
   employee: true,
   location: true,
-  vehicleDetail: true,
   currentBranch: { select: { id: true, name: true } },
 } satisfies Prisma.DeviceItemInclude;
 
@@ -89,9 +86,6 @@ export class DevicesService {
       throw new NotFoundException(`Branch with ID '${dto.currentBranchId}' not found`);
     }
 
-    if (dto.vehicleDetail && catalog.type !== DeviceType.VEHICLE) {
-      throw new BadRequestException('vehicleDetail solo aplica a equipos de catálogo tipo VEHICLE');
-    }
     if ((dto.hardDrive || dto.processor) && catalog.type !== DeviceType.COMPUTER) {
       throw new BadRequestException('hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER');
     }
@@ -137,7 +131,7 @@ export class DevicesService {
         ? DeviceStatus.ASSIGNED
         : DeviceStatus.AVAILABLE;
 
-    const { vehicleDetail, usageType, startDate, endDate, inspectionItems, mobileAccessories, ...deviceFields } = dto;
+    const { usageType, startDate, endDate, mobileAccessories, ...deviceFields } = dto;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -154,7 +148,6 @@ export class DevicesService {
             employeeId,
             locationId,
             status,
-            ...(vehicleDetail && { vehicleDetail: { create: vehicleDetail } }),
           },
           include: DEVICE_INCLUDE,
         });
@@ -173,7 +166,6 @@ export class DevicesService {
             usageType,
             startDate,
             endDate,
-            inspectionItems,
             mobileAccessories,
           });
         } else if (employeeId) {
@@ -255,9 +247,6 @@ export class DevicesService {
       throw new BadRequestException('providerFolio es obligatorio para equipos con ownershipType PROVIDER');
     }
 
-    if (dto.vehicleDetail && device.catalog.type !== DeviceType.VEHICLE) {
-      throw new BadRequestException('vehicleDetail solo aplica a equipos de catálogo tipo VEHICLE');
-    }
     if ((dto.hardDrive || dto.processor) && device.catalog.type !== DeviceType.COMPUTER) {
       throw new BadRequestException('hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER');
     }
@@ -282,16 +271,13 @@ export class DevicesService {
       inheritedFields = { employeeId: mainDevice.employeeId, locationId: mainDevice.locationId, status: mainDevice.status };
     }
 
-    // usageType/startDate/endDate/inspectionItems/mobileAccessories son
-    // términos de resguardo heredados de CreateDeviceItemDto, no columnas de
-    // DeviceItem — se descartan aquí; PATCH nunca toca employeeId ni
-    // regenera resguardos.
+    // usageType/startDate/endDate/mobileAccessories son términos de resguardo
+    // heredados de CreateDeviceItemDto, no columnas de DeviceItem — se
+    // descartan aquí; PATCH nunca toca employeeId ni regenera resguardos.
     const {
-      vehicleDetail,
       usageType: _usageType,
       startDate: _startDate,
       endDate: _endDate,
-      inspectionItems: _inspectionItems,
       mobileAccessories: _mobileAccessories,
       ...deviceFields
     } = dto;
@@ -307,9 +293,6 @@ export class DevicesService {
           data: {
             ...deviceFields,
             ...inheritedFields,
-            ...(vehicleDetail && {
-              vehicleDetail: { upsert: { create: vehicleDetail, update: vehicleDetail } },
-            }),
           },
           include: DEVICE_INCLUDE,
         });
@@ -775,11 +758,10 @@ export class DevicesService {
   // ---------------------------------------------------------------------
 
   // Dispara/regenera el resguardo del empleado tras asignarle un equipo.
-  // COMPUTER/MOBILE/VEHICLE siempre regeneran (condition/observations ya
-  // viven en el DeviceItem, no hace falta validarlos aquí). MONITOR/KEYBOARD/
-  // MOUSE no tienen sección propia: solo regeneran el resguardo (para
-  // refrescar "Accesorios incluidos") si el empleado ya tiene una
-  // computadora asignada.
+  // COMPUTER/MOBILE siempre regeneran (condition/observations ya viven en el
+  // DeviceItem, no hace falta validarlos aquí). MONITOR/KEYBOARD/MOUSE no
+  // tienen sección propia: solo regeneran el resguardo (para refrescar
+  // "Accesorios incluidos") si el empleado ya tiene una computadora asignada.
   private async triggerSafeguardForAssignment(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -804,7 +786,6 @@ export class DevicesService {
       startDate: fields.startDate ? new Date(fields.startDate) : undefined,
       endDate: fields.endDate ? new Date(fields.endDate) : undefined,
       createdByUserId,
-      inspectionItems: fields.inspectionItems,
       mobileAccessories: fields.mobileAccessories,
     });
   }
@@ -886,6 +867,35 @@ export class DevicesService {
     }
     if (employee.branchId !== branchId) {
       throw new BadRequestException('El empleado pertenece a otra sucursal');
+    }
+    if (!employee.isActive) {
+      throw new BadRequestException('No se puede asignar equipo a un empleado dado de baja');
+    }
+  }
+
+  // Libera todo el equipo (computadoras/celulares/vehículos y sus accesorios
+  // enlazados) que un empleado tiene actualmente asignado. Usado por
+  // EmployeesService.offboard — corre dentro de la misma transacción para
+  // que la baja del empleado sea atómica junto con la liberación de su
+  // equipo y el cierre de su resguardo vigente.
+  async releaseAllForEmployee(tx: Prisma.TransactionClient, employeeId: string, reason: string) {
+    const mainDevices = await tx.deviceItem.findMany({ where: { employeeId, mainDeviceId: null } });
+
+    for (const device of mainDevices) {
+      await tx.deviceItem.update({
+        where: { id: device.id },
+        data: { employeeId: null, locationId: null, status: DeviceStatus.AVAILABLE },
+      });
+
+      await this.cascadeToAccessories(tx, device.id, {
+        employeeId: null,
+        locationId: null,
+        status: DeviceStatus.AVAILABLE,
+      });
+
+      await tx.deviceMovementHistory.create({
+        data: { deviceId: device.id, type: 'UNASSIGNMENT', details: reason },
+      });
     }
   }
 

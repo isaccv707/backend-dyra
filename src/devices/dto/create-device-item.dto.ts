@@ -8,12 +8,8 @@ import {
   IsUUID,
   Matches,
   ValidateIf,
-  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 import { OwnershipType, SafeguardConditionState, SafeguardUsageType } from '@prisma/client';
-import { VehicleDetailDto } from './vehicle-detail.dto';
-import { SafeguardVehicleInspectionItemDto } from 'src/safeguards/dto/safeguard-vehicle-inspection-item.dto';
 
 export class CreateDeviceItemDto {
   @IsString()
@@ -98,19 +94,11 @@ export class CreateDeviceItemDto {
   @IsUUID()
   mainDeviceId?: string;
 
-  // Solo aplica cuando el DeviceCatalog referenciado por catalogId es de tipo
-  // VEHICLE; la correspondencia se valida en DevicesService, no aquí (el DTO
-  // no conoce el type del catálogo sin consultarlo).
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => VehicleDetailDto)
-  vehicleDetail?: VehicleDetailDto;
-
   // Términos del resguardo que se genera automáticamente cuando el alta ya
-  // trae employeeId para un equipo COMPUTER/MOBILE/VEHICLE (misma regla que
+  // trae employeeId para un equipo COMPUTER/MOBILE (misma regla que
   // POST /devices/:id/assign). No son datos del equipo: usageType/fechas
-  // describen la asignación, inspectionItems/mobileAccessories son checklist
-  // y accesorios sin identificador propio capturados al momento de firmar.
+  // describen la asignación, mobileAccessories son accesorios sin
+  // identificador propio capturados al momento de firmar.
   @IsOptional()
   @IsEnum(SafeguardUsageType)
   usageType?: SafeguardUsageType;
@@ -122,12 +110,6 @@ export class CreateDeviceItemDto {
   @IsOptional()
   @IsDateString()
   endDate?: string;
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => SafeguardVehicleInspectionItemDto)
-  inspectionItems?: SafeguardVehicleInspectionItemDto[];
 
   @IsOptional()
   @IsArray()
