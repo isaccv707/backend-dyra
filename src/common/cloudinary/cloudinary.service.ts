@@ -6,6 +6,16 @@ export interface SignedDownloadUrl {
   expiresAt: Date;
 }
 
+export interface SignedUploadParams {
+  cloudName: string;
+  apiKey: string;
+  timestamp: number;
+  signature: string;
+  publicId: string;
+  type: 'authenticated';
+  resourceType: 'raw';
+}
+
 // Genera URLs de descarga firmadas y con expiración para recursos privados
 // (type: authenticated) subidos a Cloudinary — nunca genera URLs públicas
 // permanentes. El binario nunca pasa por este backend: el frontend sube
@@ -32,5 +42,27 @@ export class CloudinaryService {
     });
 
     return { url, expiresAt };
+  }
+
+  // Firma los parámetros de un upload directo a Cloudinary (frontend -> Cloudinary,
+  // el binario nunca pasa por este backend) fijando type/resource_type desde el
+  // servidor — el cliente no puede alterarlos sin invalidar la firma. El upload
+  // resultante debe hacerse a POST https://api.cloudinary.com/v1_1/{cloudName}/raw/upload
+  // con estos mismos valores (más el archivo) como multipart/form-data.
+  generateSignedUploadParams(publicId: string): SignedUploadParams {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const paramsToSign = { timestamp, public_id: publicId, type: 'authenticated' };
+
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET as string);
+
+    return {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME as string,
+      apiKey: process.env.CLOUDINARY_API_KEY as string,
+      timestamp,
+      signature,
+      publicId,
+      type: 'authenticated',
+      resourceType: 'raw',
+    };
   }
 }

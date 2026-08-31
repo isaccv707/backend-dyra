@@ -284,6 +284,21 @@ export class SafeguardsService {
     return this.cloudinaryService.getSignedDownloadUrl(safeguard.signedDocumentPublicId);
   }
 
+  // Firma los parámetros para que el frontend suba el PDF firmado escaneado
+  // directo a Cloudinary (carpeta "safeguards", prefijo "device-" para no
+  // chocar con los public_id de resguardos de vehículo). El public_id
+  // resultante se manda después a sign().
+  async createUploadSignature(id: string, user: BranchScopedUser) {
+    const safeguard = await this.findOne(id, user);
+
+    if (safeguard.supersededAt) {
+      throw new BadRequestException('No se puede adjuntar un documento a una versión histórica del resguardo');
+    }
+
+    const publicId = `safeguards/device-${safeguard.id}-${Date.now()}`;
+    return this.cloudinaryService.generateSignedUploadParams(publicId);
+  }
+
   buildSafeguardPdf(doc: PDFKit.PDFDocument, safeguard: SafeguardWithDetails): void {
     const data = this.buildPdfData(safeguard);
     this.pdfRenderer.render(doc, data);

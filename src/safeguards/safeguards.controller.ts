@@ -67,6 +67,23 @@ export class SafeguardsController {
   }
 
   @ApiOperation({
+    summary: 'Solicitar firma de subida a Cloudinary',
+    description:
+      'Genera los parámetros firmados (timestamp + signature) para que el frontend suba el PDF firmado escaneado ' +
+      'directo a Cloudinary a POST https://api.cloudinary.com/v1_1/{cloudName}/raw/upload, con folder, type y ' +
+      'resource_type fijados por el backend. El public_id resultante se manda después a POST /:id/sign.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
+  @ApiResponse({ status: 200, description: 'Parámetros firmados generados.' })
+  @ApiResponse({ status: 400, description: 'No se puede adjuntar un documento a una versión histórica del resguardo.' })
+  @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
+  @Permissions('safeguards:update')
+  @Post(':id/upload-signature')
+  createUploadSignature(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+    return this.safeguardsService.createUploadSignature(id, user);
+  }
+
+  @ApiOperation({
     summary: 'Firmar resguardo',
     description:
       'Confirma la firma de la versión vigente de un resguardo, opcionalmente adjuntando el public_id de Cloudinary ' +
