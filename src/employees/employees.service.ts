@@ -1,19 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { FindEmployeesDto } from './dto/find-employees.dto';
-import { SetSignedResponsibilityDto } from './dto/set-signed-responsibility.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import { DevicesService } from 'src/devices/devices.service';
+import { SafeguardsService } from 'src/safeguards/safeguards.service';
+import { VehiclesService } from 'src/vehicles/vehicles.service';
+import { VehicleSafeguardsService } from 'src/vehicle-safeguards/vehicle-safeguards.service';
 
 const EMPLOYEE_ALLOWED_FIELDS = ['name', 'department', 'hasSignedResponsibility', 'createdAt'];
 
 @Injectable()
 export class EmployeesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly devicesService: DevicesService,
+    private readonly safeguardsService: SafeguardsService,
+    private readonly vehiclesService: VehiclesService,
+    private readonly vehicleSafeguardsService: VehicleSafeguardsService,
+  ) {}
 
   async create(createEmployeeDto: CreateEmployeeDto, user: BranchScopedUser) {
     assertBranchAccess(user, createEmployeeDto.branchId);
@@ -36,6 +45,7 @@ export class EmployeesService {
       ...where,
       ...userBranchFilter(user, dto.branchId),
       ...(dto.department && { department: dto.department }),
+      ...(!dto.includeInactive && { isActive: true }),
     } as Prisma.EmployeeWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
@@ -74,23 +84,44 @@ export class EmployeesService {
     }
   }
 
-  async setSignedResponsibility(id: string, dto: SetSignedResponsibilityDto, user: BranchScopedUser) {
+  // Baja de un empleado: libera todo su equipo asignado, sin importar quién
+  // lo administre (IT o Flotilla), con historial de movimiento por cada
+  // equipo/vehículo; cierra ambos resguardos vigentes (sin generar uno
+  // nuevo, ya no tiene nada que resguardar) y lo archiva (isActive: false)
+  // en vez de eliminarlo — preserva su historial de resguardos.
+  async offboard(id: string, user: BranchScopedUser & { id: string }) {
     const employee = await this.findOne(id);
     assertBranchAccess(user, employee.branchId);
 
-    try {
-      return await this.prisma.employee.update({
-        where: { id },
-        data: { hasSignedResponsibility: dto.hasSignedResponsibility },
-      });
-    } catch (error) {
-      handleDatabaseErrors(error, 'Employee');
-    }
+    const reason = `Baja de empleado: ${employee.name}`;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.devicesService.releaseAllForEmployee(tx, id, reason);
+      await this.safeguardsService.closeCurrentForEmployee(tx, id);
+      await this.vehiclesService.releaseAllForEmployee(tx, id, reason);
+      await this.vehicleSafeguardsService.closeCurrentForEmployee(tx, id);
+      return tx.employee.update({ where: { id }, data: { isActive: false } });
+    });
   }
 
   async remove(id: string, user: BranchScopedUser) {
     const employee = await this.findOne(id);
     assertBranchAccess(user, employee.branchId);
+
+    // Chequeo explícito (con mensaje claro para la UI) en vez de dejar que
+    // truene el FK constraint: un empleado con resguardos (vigentes o
+    // históricos, de IT o de vehículo) no se puede eliminar por integridad
+    // referencial.
+    const [safeguardCount, vehicleSafeguardCount] = await Promise.all([
+      this.prisma.safeguard.count({ where: { employeeId: id } }),
+      this.prisma.vehicleSafeguard.count({ where: { employeeId: id } }),
+    ]);
+    if (safeguardCount > 0 || vehicleSafeguardCount > 0) {
+      throw new BadRequestException(
+        'No se puede eliminar: este empleado tiene resguardos (vigentes o históricos). ' +
+          'Use POST /employees/:id/offboard para dar de baja en su lugar.',
+      );
+    }
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -98,6 +129,10 @@ export class EmployeesService {
         // onDelete: SetNull only nulls employeeId once the row is gone, it
         // has no notion of the `status` enum, so this can't be done after.
         await tx.deviceItem.updateMany({
+          where: { employeeId: id },
+          data: { employeeId: null, status: 'AVAILABLE' },
+        });
+        await tx.vehicleItem.updateMany({
           where: { employeeId: id },
           data: { employeeId: null, status: 'AVAILABLE' },
         });

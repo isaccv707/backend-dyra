@@ -64,6 +64,7 @@ export const PERMISSIONS = [
   // Safeguards
   { action: 'safeguards:create', description: 'Crear resguardos de equipo' },
   { action: 'safeguards:read',   description: 'Leer resguardos de equipo' },
+  { action: 'safeguards:update', description: 'Firmar resguardos y actualizar su documento firmado' },
   { action: 'safeguards:delete', description: 'Eliminar resguardos de equipo' },
 
   // Reviews
@@ -94,6 +95,29 @@ export const PERMISSIONS = [
   { action: 'transfers:create', description: 'Crear solicitudes de transferencia de equipos' },
   { action: 'transfers:read',   description: 'Leer transferencias de equipos' },
   { action: 'transfers:update', description: 'Iniciar, recibir, cancelar o rechazar transferencias' },
+
+  // Vehicle catalog
+  { action: 'vehicle-catalog:create', description: 'Crear modelos de catálogo de vehículos' },
+  { action: 'vehicle-catalog:read',   description: 'Leer catálogo de vehículos' },
+  { action: 'vehicle-catalog:update', description: 'Actualizar catálogo de vehículos' },
+  { action: 'vehicle-catalog:delete', description: 'Eliminar catálogo de vehículos' },
+
+  // Vehicles
+  { action: 'vehicles:create', description: 'Crear vehículos (alta de inventario)' },
+  { action: 'vehicles:read',   description: 'Leer vehículos de inventario' },
+  { action: 'vehicles:update', description: 'Actualizar vehículos de inventario (incluye asignación y retiro)' },
+  { action: 'vehicles:delete', description: 'Eliminar vehículos de inventario' },
+
+  // Vehicle transfers
+  { action: 'vehicle-transfers:create', description: 'Crear solicitudes de transferencia de vehículos' },
+  { action: 'vehicle-transfers:read',   description: 'Leer transferencias de vehículos' },
+  { action: 'vehicle-transfers:update', description: 'Iniciar, recibir, cancelar o rechazar transferencias de vehículos' },
+
+  // Vehicle safeguards
+  { action: 'vehicle-safeguards:create', description: 'Crear resguardos de vehículo' },
+  { action: 'vehicle-safeguards:read',   description: 'Leer resguardos de vehículo' },
+  { action: 'vehicle-safeguards:update', description: 'Firmar resguardos de vehículo y actualizar su documento firmado' },
+  { action: 'vehicle-safeguards:delete', description: 'Eliminar resguardos de vehículo' },
 
   // Users
   { action: 'users:create', description: 'Crear usuarios' },

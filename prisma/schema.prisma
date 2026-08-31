@@ -19,7 +19,11 @@ model User {
   role   Role   @relation(fields: [roleId], references: [id])
 
   branches          Branch[]
-  createdSafeguards Safeguard[]
+  createdSafeguards Safeguard[] @relation("SafeguardCreatedBy")
+  signedSafeguards  Safeguard[] @relation("SafeguardSignedBy")
+
+  createdVehicleSafeguards VehicleSafeguard[] @relation("VehicleSafeguardCreatedBy")
+  signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
 }
 
 model Role {
@@ -94,6 +98,13 @@ model Branch {
   transferRequestsDestination TransferRequest[]       @relation("TransferDestination")
   movementHistoryOrigin       DeviceMovementHistory[] @relation("MovementOrigin")
   movementHistoryDestination  DeviceMovementHistory[] @relation("MovementDestination")
+
+  vehicleItems                       VehicleItem[]             @relation("VehicleCurrentBranch")
+  vehicleTransferRequestsOrigin      VehicleTransferRequest[]  @relation("VehicleTransferOrigin")
+  vehicleTransferRequestsDestination VehicleTransferRequest[]  @relation("VehicleTransferDestination")
+  vehicleMovementHistoryOrigin       VehicleMovementHistory[]  @relation("VehicleMovementOrigin")
+  vehicleMovementHistoryDestination  VehicleMovementHistory[]  @relation("VehicleMovementDestination")
+  vehicleSafeguards                  VehicleSafeguard[]        @relation("VehicleSafeguardBranch")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -422,7 +433,6 @@ enum DeviceType {
   KEYBOARD
   MOUSE
   MOBILE
-  VEHICLE
 }
 
 enum OwnershipType {
@@ -444,15 +454,17 @@ enum SafeguardUsageType {
   PERMANENT
 }
 
-// Estado físico Nuevo/Seminuevo. Se captura una sola vez en DeviceItem al dar
-// de alta el equipo (inventario); los detalles de un Safeguard (Computer/
-// Mobile/Vehicle) solo copian ese mismo valor al generarse, nunca lo piden
-// de nuevo.
+// Estado físico Nuevo/Seminuevo. Se captura una sola vez en DeviceItem/
+// VehicleItem al dar de alta el equipo/vehículo (inventario); los detalles de
+// un Safeguard/VehicleSafeguard solo copian ese mismo valor al generarse,
+// nunca lo piden de nuevo.
 enum SafeguardConditionState {
   NEW
   SEMINUEVO
 }
 
+// Compartido por Safeguard (IT, ya sin sección de vehículo) y por
+// VehicleSafeguard — el checklist fijo del formato ADM.F.00 es el mismo.
 enum SafeguardVehicleInspectionSection {
   DOCUMENTS
   BODY
@@ -484,7 +496,8 @@ model Location {
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  devices DeviceItem[]
+  devices  DeviceItem[]
+  vehicles VehicleItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -500,12 +513,20 @@ model Employee {
   position                String?
   department              String
   hasSignedResponsibility Boolean @default(false) @map("has_signed_responsibility")
+  // Archivado en vez de borrado: un empleado dado de baja (offboard) nunca se
+  // puede eliminar por integridad referencial en cuanto tiene resguardos
+  // (vigentes o históricos), así que isActive=false lo saca del listado sin
+  // perder su historial — ver EmployeesService.offboard().
+  isActive                Boolean @default(true) @map("is_active")
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
   devices    DeviceItem[]
   safeguards Safeguard[]
+
+  vehicles          VehicleItem[]
+  vehicleSafeguards VehicleSafeguard[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -579,13 +600,10 @@ model DeviceItem {
   mainDevice   DeviceItem?  @relation("DeviceAccessories", fields: [mainDeviceId], references: [id], onDelete: SetNull)
   accessories  DeviceItem[] @relation("DeviceAccessories")
 
-  vehicleDetail VehicleDetail?
-
   transferItems     TransferItem[]
   movementHistory   DeviceMovementHistory[]
   safeguardComputer SafeguardComputerDetail[]
   safeguardMobile   SafeguardMobileDetail[]
-  safeguardVehicle  SafeguardVehicleDetail[]
   accessoryDetails  SafeguardAccessoryDetail[]
 
   createdAt DateTime @default(now())
@@ -599,19 +617,6 @@ model DeviceItem {
   @@map("device_items")
 }
 
-model VehicleDetail {
-  id String @id @default(uuid())
-
-  deviceId String     @unique @map("device_id")
-  device   DeviceItem @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-
-  plateNumber  String? @unique @map("plate_number")
-  mileage      String?
-  fuelType     String? @map("fuel_type")
-  transmission String?
-
-  @@map("vehicle_details")
-}
 
 model TransferRequest {
   id     String         @id @default(uuid())
@@ -673,21 +678,23 @@ model DeviceMovementHistory {
   @@map("device_movement_history")
 }
 
-// Un empleado solo puede tener UNA responsiva a la vez: employeeId es
-// @unique, y SafeguardsService.createFromEmployeeDevices hace upsert sobre
-// ese mismo registro (nunca acumula historial de versiones anteriores).
+// Un empleado puede tener varias filas de Safeguard a lo largo del tiempo:
+// employeeId ya NO es @unique. En cualquier momento hay a lo más UNA vigente
+// por empleado (supersededAt: null) — SafeguardsService.createFromEmployeeDevices
+// nunca sobrescribe esa fila, la marca supersededAt y crea una nueva, así el
+// contenido exacto que se pudo haber firmado antes queda intacto como
+// historial.
 model Safeguard {
   id String @id @default(uuid())
 
-  employeeId String   @unique @map("employee_id")
+  employeeId String   @map("employee_id")
   employee   Employee @relation(fields: [employeeId], references: [id])
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  // Snapshot del momento en que se generó/regeneró por última vez este
-  // safeguard — no sigue en vivo el nombre/puesto/área del empleado, solo
-  // se actualiza cuando se regenera el documento.
+  // Snapshot del momento en que se generó esta versión — no sigue en vivo el
+  // nombre/puesto/área del empleado.
   employeeName String  @map("employee_name")
   position     String?
   area         String
@@ -697,17 +704,34 @@ model Safeguard {
   endDate   DateTime?          @map("end_date")
 
   createdByUserId String? @map("created_by_user_id")
-  createdByUser   User?   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdByUser   User?   @relation("SafeguardCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  // null = esta es la versión vigente del resguardo del empleado. Se marca
+  // con la fecha en que se generó la siguiente versión (o en que se cerró
+  // por offboarding, ver EmployeesService.offboard) — la fila y sus secciones
+  // nunca se tocan después de eso, quedan como evidencia histórica.
+  supersededAt DateTime? @map("superseded_at")
+
+  // Firma física/evidencia de esta versión específica del documento — se
+  // resetea (signedAt: null) cada vez que se genera una versión nueva, nunca
+  // se hereda de la anterior. signedDocumentPublicId es el public_id de
+  // Cloudinary (type: authenticated, resource_type: raw) del PDF firmado
+  // escaneado; puede quedar null si la firma se confirmó manualmente sin
+  // adjuntar documento.
+  signedAt               DateTime? @map("signed_at")
+  signedByUserId         String?   @map("signed_by_user_id")
+  signedByUser           User?     @relation("SafeguardSignedBy", fields: [signedByUserId], references: [id], onDelete: SetNull)
+  signedDocumentPublicId String?   @map("signed_document_public_id")
 
   computer SafeguardComputerDetail?
   mobile   SafeguardMobileDetail?
-  vehicle  SafeguardVehicleDetail?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([branchId])
   @@index([createdByUserId])
+  @@index([employeeId, supersededAt])
   @@map("safeguards")
 }
 
@@ -761,30 +785,6 @@ model SafeguardMobileDetail {
   @@map("safeguard_mobile_details")
 }
 
-model SafeguardVehicleDetail {
-  id String @id @default(uuid())
-
-  safeguardId String    @unique @map("safeguard_id")
-  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
-
-  deviceId String     @map("device_id")
-  device   DeviceItem @relation(fields: [deviceId], references: [id])
-
-  brand        String
-  model        String
-  mileage      String? @map("mileage")
-  plateNumber  String? @map("plate_number")
-  fuelType     String? @map("fuel_type")
-  transmission String?
-
-  condition SafeguardConditionState
-
-  inspectionItems SafeguardVehicleInspectionItem[]
-
-  @@index([deviceId])
-  @@map("safeguard_vehicle_details")
-}
-
 // Fila de "Accesorios incluidos" (sección computer o mobile de un safeguard).
 // deviceId presente = accesorio rastreado en inventario (monitor/teclado/mouse,
 // con marca/modelo/serie/código propios). deviceId null = accesorio sin
@@ -813,17 +813,197 @@ model SafeguardAccessoryDetail {
   @@map("safeguard_accessory_details")
 }
 
-model SafeguardVehicleInspectionItem {
+// ============================================================================
+// Vehículos — módulo independiente de devices/safeguards (administrado por
+// un equipo distinto a IT). Mismo patrón de negocio (catálogo + unidades +
+// traspasos + resguardo con historial/firma), pero completamente desacoplado:
+// su propio catálogo, su propio ciclo de vida de asignación, y su propio
+// documento de resguardo (VehicleSafeguard), nunca combinado con el de IT.
+// ============================================================================
+
+model VehicleCatalog {
+  id    String @id @default(uuid())
+  name  String
+  brand String
+  model String
+  // Archivado en vez de borrado — mismo patrón que DeviceCatalog.isActive.
+  isActive Boolean @default(true) @map("is_active")
+
+  items VehicleItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vehicle_catalogs")
+}
+
+model VehicleItem {
+  id            String                  @id @default(uuid())
+  internalCode  String                  @unique @map("internal_code")
+  plateNumber   String?                 @unique @map("plate_number")
+  mileage       String?
+  fuelType      String?                 @map("fuel_type")
+  transmission  String?
+  ownershipType OwnershipType           @default(INTERNAL) @map("ownership_type")
+  providerFolio String?                 @map("provider_folio")
+  status        DeviceStatus            @default(AVAILABLE)
+  condition     SafeguardConditionState
+  notes         String?                 @db.Text
+
+  catalogId String         @map("catalog_id")
+  catalog   VehicleCatalog @relation(fields: [catalogId], references: [id])
+
+  currentBranchId String @map("current_branch_id")
+  currentBranch   Branch @relation("VehicleCurrentBranch", fields: [currentBranchId], references: [id])
+
+  employeeId String?   @map("employee_id")
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  locationId String?   @map("location_id")
+  location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  transferItems   VehicleTransferItem[]
+  movementHistory VehicleMovementHistory[]
+  safeguards      VehicleSafeguard[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([catalogId])
+  @@index([currentBranchId])
+  @@index([employeeId])
+  @@index([locationId])
+  @@map("vehicle_items")
+}
+
+model VehicleTransferRequest {
+  id     String         @id @default(uuid())
+  status TransferStatus @default(PENDING)
+  notes  String?        @db.Text
+
+  originBranchId String @map("origin_branch_id")
+  originBranch   Branch @relation("VehicleTransferOrigin", fields: [originBranchId], references: [id])
+
+  destinationBranchId String @map("destination_branch_id")
+  destinationBranch   Branch @relation("VehicleTransferDestination", fields: [destinationBranchId], references: [id])
+
+  items VehicleTransferItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([originBranchId])
+  @@index([destinationBranchId])
+  @@index([status])
+  @@map("vehicle_transfer_requests")
+}
+
+model VehicleTransferItem {
   id String @id @default(uuid())
 
-  vehicleDetailId String                 @map("vehicle_detail_id")
-  vehicleDetail   SafeguardVehicleDetail @relation(fields: [vehicleDetailId], references: [id], onDelete: Cascade)
+  transferRequestId String                 @map("transfer_request_id")
+  transferRequest   VehicleTransferRequest @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+
+  vehicleId String      @map("vehicle_id")
+  vehicle   VehicleItem @relation(fields: [vehicleId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([transferRequestId, vehicleId])
+  @@index([vehicleId])
+  @@map("vehicle_transfer_items")
+}
+
+model VehicleMovementHistory {
+  id      String       @id @default(uuid())
+  type    MovementType
+  details String       @db.Text
+
+  vehicleId String      @map("vehicle_id")
+  vehicle   VehicleItem @relation(fields: [vehicleId], references: [id])
+
+  originBranchId String? @map("origin_branch_id")
+  originBranch   Branch? @relation("VehicleMovementOrigin", fields: [originBranchId], references: [id])
+
+  destinationBranchId String? @map("destination_branch_id")
+  destinationBranch   Branch? @relation("VehicleMovementDestination", fields: [destinationBranchId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([vehicleId])
+  @@index([originBranchId])
+  @@index([destinationBranchId])
+  @@map("vehicle_movement_history")
+}
+
+// Documento de resguardo de vehículo — independiente de Safeguard (IT). Nace
+// ya con historial de versiones (supersededAt) y firma con evidencia
+// (signedAt/signedByUserId/signedDocumentPublicId vía Cloudinary), mismo
+// patrón que Safeguard: employeeId ya no es @unique, a lo más una fila por
+// empleado tiene supersededAt: null (la vigente) en un momento dado.
+model VehicleSafeguard {
+  id String @id @default(uuid())
+
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  vehicleId String      @map("vehicle_id")
+  vehicle   VehicleItem @relation(fields: [vehicleId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation("VehicleSafeguardBranch", fields: [branchId], references: [id])
+
+  // Snapshot del momento en que se generó esta versión.
+  employeeName String  @map("employee_name")
+  position     String?
+  area         String
+
+  // Snapshot del vehículo en ese momento (se lee en vivo de VehicleItem al
+  // generar/regenerar, igual que Safeguard hace con DeviceItem).
+  brand        String
+  model        String
+  mileage      String?
+  plateNumber  String? @map("plate_number")
+  fuelType     String? @map("fuel_type")
+  transmission String?
+  condition    SafeguardConditionState
+
+  usageType SafeguardUsageType @map("usage_type")
+  startDate DateTime?          @map("start_date")
+  endDate   DateTime?          @map("end_date")
+
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation("VehicleSafeguardCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  supersededAt DateTime? @map("superseded_at")
+
+  signedAt               DateTime? @map("signed_at")
+  signedByUserId         String?   @map("signed_by_user_id")
+  signedByUser           User?     @relation("VehicleSafeguardSignedBy", fields: [signedByUserId], references: [id], onDelete: SetNull)
+  signedDocumentPublicId String?   @map("signed_document_public_id")
+
+  inspectionItems VehicleSafeguardInspectionItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([vehicleId])
+  @@index([employeeId, supersededAt])
+  @@map("vehicle_safeguards")
+}
+
+model VehicleSafeguardInspectionItem {
+  id String @id @default(uuid())
+
+  vehicleSafeguardId String           @map("vehicle_safeguard_id")
+  vehicleSafeguard   VehicleSafeguard @relation(fields: [vehicleSafeguardId], references: [id], onDelete: Cascade)
 
   section      SafeguardVehicleInspectionSection
   itemKey      String                            @map("item_key")
   state        String?
   observations String?                           @db.Text
 
-  @@unique([vehicleDetailId, itemKey])
-  @@map("safeguard_vehicle_inspection_items")
+  @@unique([vehicleSafeguardId, itemKey])
+  @@map("vehicle_safeguard_inspection_items")
 }

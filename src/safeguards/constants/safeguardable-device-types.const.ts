@@ -1,19 +1,18 @@
 import { DeviceType } from '@prisma/client';
 
-export type SafeguardSectionKey = 'computer' | 'mobile' | 'vehicle';
+export type SafeguardSectionKey = 'computer' | 'mobile';
 
 // Tipos de equipo que generan su propia sección top-level en un Safeguard
-// (computer/mobile/vehicle en el formato ADM.F.00).
+// (computer/mobile en el formato ADM.F.00 — vehículo vive en su propio
+// VehicleSafeguard, ver src/vehicle-safeguards/).
 export const SECTION_DEVICE_TYPE: Record<SafeguardSectionKey, DeviceType> = {
   computer: DeviceType.COMPUTER,
   mobile: DeviceType.MOBILE,
-  vehicle: DeviceType.VEHICLE,
 };
 
 export const SECTION_KEY_BY_DEVICE_TYPE: Partial<Record<DeviceType, SafeguardSectionKey>> = {
   [DeviceType.COMPUTER]: 'computer',
   [DeviceType.MOBILE]: 'mobile',
-  [DeviceType.VEHICLE]: 'vehicle',
 };
 
 // Periféricos que no tienen sección propia: se cuelgan como "Accesorios

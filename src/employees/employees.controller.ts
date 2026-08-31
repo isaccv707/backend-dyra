@@ -4,7 +4,6 @@ import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { FindEmployeesDto } from './dto/find-employees.dto';
-import { SetSignedResponsibilityDto } from './dto/set-signed-responsibility.dto';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
@@ -58,24 +57,27 @@ export class EmployeesController {
     return this.employeesService.update(id, updateEmployeeDto, user);
   }
 
-  @ApiOperation({ summary: 'Actualizar carta responsiva', description: 'Marca si el empleado firmó o no la carta responsiva de sus equipos asignados.' })
+  @ApiOperation({
+    summary: 'Dar de baja empleado',
+    description:
+      'Libera todo el equipo asignado al empleado, cierra su resguardo vigente y lo archiva (isActive: false) ' +
+      'sin eliminar su historial. Reemplaza al PATCH manual de carta responsiva: para dejar constancia de que ' +
+      'el empleado firmó, use POST /safeguards/:id/sign.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del empleado.' })
-  @ApiResponse({ status: 200, description: 'Estado de carta responsiva actualizado.' })
+  @ApiResponse({ status: 200, description: 'Empleado dado de baja exitosamente.' })
   @ApiResponse({ status: 404, description: 'Empleado no encontrado.' })
   @ApiBearerAuth()
   @Permissions('employees:update')
-  @Patch(':id/signed-responsibility')
-  setSignedResponsibility(
-    @Param('id') id: string,
-    @Body() dto: SetSignedResponsibilityDto,
-    @CurrentUser() user: BranchScopedUser,
-  ) {
-    return this.employeesService.setSignedResponsibility(id, dto, user);
+  @Post(':id/offboard')
+  offboard(@Param('id') id: string, @CurrentUser() user: BranchScopedUser & { id: string }) {
+    return this.employeesService.offboard(id, user);
   }
 
-  @ApiOperation({ summary: 'Eliminar empleado', description: 'Elimina un empleado existente. Los equipos que tenía asignados quedan disponibles.' })
+  @ApiOperation({ summary: 'Eliminar empleado', description: 'Elimina un empleado existente. Solo aplica si nunca tuvo resguardos; use offboard en su lugar.' })
   @ApiParam({ name: 'id', description: 'Identificador del empleado.' })
   @ApiResponse({ status: 200, description: 'Empleado eliminado exitosamente.' })
+  @ApiResponse({ status: 400, description: 'El empleado tiene resguardos y no se puede eliminar; use offboard.' })
   @ApiResponse({ status: 404, description: 'Empleado no encontrado.' })
   @ApiBearerAuth()
   @Permissions('employees:delete')

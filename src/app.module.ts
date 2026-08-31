@@ -18,6 +18,8 @@ import { EmployeesModule } from './employees/employees.module';
 import { LocationsModule } from './locations/locations.module';
 import { DevicesModule } from './devices/devices.module';
 import { SafeguardsModule } from './safeguards/safeguards.module';
+import { VehiclesModule } from './vehicles/vehicles.module';
+import { VehicleSafeguardsModule } from './vehicle-safeguards/vehicle-safeguards.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { SafeguardsModule } from './safeguards/safeguards.module';
     LocationsModule,
     DevicesModule,
     SafeguardsModule,
+    VehiclesModule,
+    VehicleSafeguardsModule,
   ],
   controllers: [],
   providers: [],

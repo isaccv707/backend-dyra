@@ -11,20 +11,15 @@ import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
 import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { CreateSafeguardDto } from './dto/create-safeguard.dto';
 import { FindSafeguardsDto } from './dto/find-safeguards.dto';
-import { SafeguardVehicleInspectionItemDto } from './dto/safeguard-vehicle-inspection-item.dto';
+import { SignSafeguardDto } from './dto/sign-safeguard.dto';
 import {
   ACCESSORY_DEVICE_TYPES,
   SECTION_DEVICE_TYPE,
 } from './constants/safeguardable-device-types.const';
-import {
-  getVehicleInspectionItemLabel,
-  getVehicleInspectionItemSection,
-  VEHICLE_BODY_INSPECTION_ITEMS,
-  VEHICLE_REVISION_ITEMS,
-} from './constants/vehicle-inspection-items.const';
-import { SafeguardPdfData, VehicleInspectionRow } from './interfaces/safeguard-pdf-interfaces';
+import { SafeguardPdfData } from './interfaces/safeguard-pdf-interfaces';
 import { SafeguardPdfRenderer } from './pdf/safeguard-pdf.renderer';
 
 const DOC_CODE = 'ADM.F.00';
@@ -36,28 +31,19 @@ const SAFEGUARD_INCLUDE = {
   employee: { select: { id: true, name: true, department: true, position: true } },
   computer: { include: { accessoryDetails: true } },
   mobile: { include: { accessoryDetails: true } },
-  vehicle: { include: { inspectionItems: true } },
 } satisfies Prisma.SafeguardInclude;
 
 type SafeguardWithDetails = Prisma.SafeguardGetPayload<{ include: typeof SAFEGUARD_INCLUDE }>;
 
-interface VehicleInspectionItemCreateInput {
-  itemKey: string;
-  section: ReturnType<typeof getVehicleInspectionItemSection>;
-  state?: string | null;
-  observations?: string | null;
-}
-
 // Todo lo que NO vive en DeviceItem: términos de la asignación (usageType/
-// fechas) y checklist/accesorios sin identificador propio, capturados al
-// momento de generar el resguardo. Marca/modelo/serie/placa/condición/
+// fechas) y accesorios de celular sin identificador propio, capturados al
+// momento de generar el resguardo. Marca/modelo/serie/condición/
 // observaciones siempre se leen en vivo del DeviceItem correspondiente.
 export interface CreateFromEmployeeDevicesInput {
   usageType?: SafeguardUsageType;
   startDate?: Date;
   endDate?: Date;
   createdByUserId: string;
-  inspectionItems?: SafeguardVehicleInspectionItemDto[];
   mobileAccessories?: string[];
 }
 
@@ -66,24 +52,28 @@ export class SafeguardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly pdfRenderer: SafeguardPdfRenderer,
+    private readonly cloudinaryService: CloudinaryService,
   ) {}
 
   // ===========================
   // Generación desde inventario
   // ===========================
 
-  // Punto central: arma (o regenera) LA responsiva del empleado (una sola
-  // fila por empleado — Safeguard.employeeId es @unique) a partir de lo que
-  // tiene ASSIGNED en DeviceItem en este momento. Marca/modelo/serie/placa/
-  // condición/observaciones se leen en vivo del DeviceItem — nunca se piden
-  // ni se heredan de una versión previa, porque son datos permanentes del
-  // equipo, no del momento de la firma. Los "Accesorios incluidos" (monitor/
-  // teclado/mouse) también se recalculan en vivo.
+  // Punto central: arma la VIGENTE responsiva del empleado (supersededAt:
+  // null) a partir de lo que tiene ASSIGNED en DeviceItem en este momento.
+  // Marca/modelo/serie/placa/condición/observaciones se leen en vivo del
+  // DeviceItem — nunca se piden ni se heredan de una versión previa, porque
+  // son datos permanentes del equipo, no del momento de la firma. Los
+  // "Accesorios incluidos" (monitor/teclado/mouse) también se recalculan en
+  // vivo.
   // `input.inspectionItems`/`input.mobileAccessories` sí son datos de la
   // firma (no viven en DeviceItem): si se omiten, se heredan de la sección
   // actual de ESE MISMO deviceId dentro de la responsiva vigente del
   // empleado ("carry-forward") — si el vehículo/celular cambió, no hay nada
   // que heredar y hay que capturarlos de nuevo.
+  // Si ya existía una vigente, se marca supersededAt (queda intacta como
+  // evidencia histórica de lo que se pudo haber firmado) y se crea una fila
+  // nueva — nunca se sobreescribe ni se le borran sus secciones.
   async createFromEmployeeDevices(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -95,23 +85,22 @@ export class SafeguardsService {
       where: {
         employeeId,
         status: DeviceStatus.ASSIGNED,
-        catalog: { type: { in: [SECTION_DEVICE_TYPE.computer, SECTION_DEVICE_TYPE.mobile, SECTION_DEVICE_TYPE.vehicle] } },
+        catalog: { type: { in: [SECTION_DEVICE_TYPE.computer, SECTION_DEVICE_TYPE.mobile] } },
       },
-      include: { catalog: true, vehicleDetail: true },
+      include: { catalog: true },
     });
 
     const computerDevice = assignedDevices.find((d) => d.catalog.type === SECTION_DEVICE_TYPE.computer);
     const mobileDevice = assignedDevices.find((d) => d.catalog.type === SECTION_DEVICE_TYPE.mobile);
-    const vehicleDevice = assignedDevices.find((d) => d.catalog.type === SECTION_DEVICE_TYPE.vehicle);
 
-    if (!computerDevice && !mobileDevice && !vehicleDevice) {
+    if (!computerDevice && !mobileDevice) {
       throw new BadRequestException(
-        'El empleado no tiene ningún equipo de cómputo, celular o vehículo asignado actualmente',
+        'El empleado no tiene ningún equipo de cómputo o celular asignado actualmente',
       );
     }
 
-    const existing = await tx.safeguard.findUnique({
-      where: { employeeId },
+    const existing = await tx.safeguard.findFirst({
+      where: { employeeId, supersededAt: null },
       include: SAFEGUARD_INCLUDE,
     });
 
@@ -128,44 +117,24 @@ export class SafeguardsService {
     const mobileData = mobileDevice
       ? this.buildMobileSection(mobileDevice, existing, input.mobileAccessories)
       : undefined;
-    const vehicleData = vehicleDevice
-      ? this.buildVehicleSection(vehicleDevice, existing, input.inspectionItems)
-      : undefined;
 
-    // La responsiva es una sola fila por empleado: si ya existía, se
-    // reemplazan sus secciones (delete + create) en vez de acumular otra
-    // fila de Safeguard — un @@unique([employeeId]) lo impediría de todos
-    // modos, pero además así nunca queda una sección "vieja" huérfana (p.ej.
-    // el vehículo anterior) colgada del documento.
+    // Si ya había una vigente, se cierra (queda intacta con sus secciones,
+    // es evidencia histórica) y se crea una fila nueva — nunca se sobreescribe.
     if (existing) {
-      await Promise.all([
-        tx.safeguardComputerDetail.deleteMany({ where: { safeguardId: existing.id } }),
-        tx.safeguardMobileDetail.deleteMany({ where: { safeguardId: existing.id } }),
-        tx.safeguardVehicleDetail.deleteMany({ where: { safeguardId: existing.id } }),
-      ]);
+      await tx.safeguard.update({
+        where: { id: existing.id },
+        data: { supersededAt: new Date() },
+      });
     }
 
     const sectionsData = {
       ...(computerData && { computer: { create: computerData } }),
       ...(mobileData && { mobile: { create: mobileData } }),
-      ...(vehicleData && { vehicle: { create: vehicleData } }),
     };
 
-    const safeguard = await tx.safeguard.upsert({
-      where: { employeeId },
-      create: {
+    const safeguard = await tx.safeguard.create({
+      data: {
         employeeId,
-        branchId: employee.branchId,
-        employeeName: employee.name,
-        position: employee.position,
-        area: employee.department,
-        usageType,
-        startDate,
-        endDate,
-        createdByUserId: input.createdByUserId,
-        ...sectionsData,
-      },
-      update: {
         branchId: employee.branchId,
         employeeName: employee.name,
         position: employee.position,
@@ -179,10 +148,14 @@ export class SafeguardsService {
       include: SAFEGUARD_INCLUDE,
     });
 
-    // hasSignedResponsibility representa la firma física de la carta, un hecho
-    // que solo un humano puede confirmar — no se toca aquí. Generar/regenerar
-    // el documento es un evento de sistema distinto; el único lugar que debe
-    // cambiar este flag es el toggle manual en PATCH /employees/:id/signed-responsibility.
+    // La versión nueva nunca hereda la firma de la anterior: si el contenido
+    // cambió, hay que volver a firmar. hasSignedResponsibility es un flag
+    // denormalizado en Employee que solo esta clase mantiene en sync (ver
+    // también sign()); ya no se togglea a mano desde fuera.
+    await tx.employee.update({
+      where: { id: employeeId },
+      data: { hasSignedResponsibility: false },
+    });
 
     return safeguard;
   }
@@ -201,7 +174,6 @@ export class SafeguardsService {
           startDate: dto.startDate ? new Date(dto.startDate) : undefined,
           endDate: dto.endDate ? new Date(dto.endDate) : undefined,
           createdByUserId: user.id,
-          inspectionItems: dto.inspectionItems,
           mobileAccessories: dto.mobileAccessories,
         }),
       );
@@ -221,6 +193,7 @@ export class SafeguardsService {
       ...where,
       ...userBranchFilter(user, dto.branchId),
       ...(dto.employeeId && { employeeId: dto.employeeId }),
+      ...(!dto.includeHistory && { supersededAt: null }),
     } as Prisma.SafeguardWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
@@ -242,13 +215,88 @@ export class SafeguardsService {
   }
 
   async remove(id: string, user: BranchScopedUser) {
-    await this.findOne(id, user);
+    const safeguard = await this.findOne(id, user);
+
+    if (safeguard.supersededAt) {
+      throw new BadRequestException(
+        'No se pueden eliminar versiones históricas del resguardo; solo la vigente.',
+      );
+    }
 
     try {
       return await this.prisma.safeguard.delete({ where: { id } });
     } catch (error) {
       handleDatabaseErrors(error, 'Safeguard');
     }
+  }
+
+  // Cierra la responsiva vigente del empleado sin generar una nueva — se usa
+  // al hacer offboard (el empleado ya no tiene equipo asignado, así que no
+  // hay contenido para una versión nueva).
+  async closeCurrentForEmployee(tx: Prisma.TransactionClient, employeeId: string) {
+    await tx.safeguard.updateMany({
+      where: { employeeId, supersededAt: null },
+      data: { supersededAt: new Date() },
+    });
+  }
+
+  // Confirma la firma de la versión VIGENTE de un resguardo, con o sin
+  // documento adjunto (signedDocumentPublicId). Es la única forma soportada
+  // de marcar Employee.hasSignedResponsibility en true.
+  async sign(id: string, dto: SignSafeguardDto, user: BranchScopedUser & { id: string }) {
+    const safeguard = await this.findOne(id, user);
+
+    if (safeguard.supersededAt) {
+      throw new BadRequestException('No se puede firmar una versión histórica del resguardo');
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const signed = await tx.safeguard.update({
+          where: { id },
+          data: {
+            signedAt: new Date(),
+            signedByUserId: user.id,
+            signedDocumentPublicId: dto.signedDocumentPublicId ?? null,
+          },
+          include: SAFEGUARD_INCLUDE,
+        });
+
+        await tx.employee.update({
+          where: { id: safeguard.employeeId },
+          data: { hasSignedResponsibility: true },
+        });
+
+        return signed;
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Safeguard');
+    }
+  }
+
+  async getSignedDocumentUrl(id: string, user: BranchScopedUser) {
+    const safeguard = await this.findOne(id, user);
+
+    if (!safeguard.signedDocumentPublicId) {
+      throw new NotFoundException('Este resguardo no tiene un documento firmado adjunto');
+    }
+
+    return this.cloudinaryService.getSignedDownloadUrl(safeguard.signedDocumentPublicId);
+  }
+
+  // Firma los parámetros para que el frontend suba el PDF firmado escaneado
+  // directo a Cloudinary (carpeta "safeguards", prefijo "device-" para no
+  // chocar con los public_id de resguardos de vehículo). El public_id
+  // resultante se manda después a sign().
+  async createUploadSignature(id: string, user: BranchScopedUser) {
+    const safeguard = await this.findOne(id, user);
+
+    if (safeguard.supersededAt) {
+      throw new BadRequestException('No se puede adjuntar un documento a una versión histórica del resguardo');
+    }
+
+    const publicId = `safeguards/device-${safeguard.id}-${Date.now()}`;
+    return this.cloudinaryService.generateSignedUploadParams(publicId);
   }
 
   buildSafeguardPdf(doc: PDFKit.PDFDocument, safeguard: SafeguardWithDetails): void {
@@ -328,58 +376,6 @@ export class SafeguardsService {
     };
   }
 
-  private buildVehicleSection(
-    device: Prisma.DeviceItemGetPayload<{ include: { catalog: true; vehicleDetail: true } }>,
-    existing: SafeguardWithDetails | null,
-    inspectionItemsInput?: SafeguardVehicleInspectionItemDto[],
-  ) {
-    // Carry-forward solo si la responsiva vigente ya tenía sección vehicle
-    // para ESTE MISMO deviceId — si el vehículo cambió, hay que capturar el
-    // checklist de nuevo.
-    let inspectionItemsData: VehicleInspectionItemCreateInput[];
-    if (inspectionItemsInput) {
-      inspectionItemsData = this.resolveInspectionItems(inspectionItemsInput);
-    } else if (existing?.vehicle?.deviceId === device.id) {
-      inspectionItemsData = existing.vehicle.inspectionItems.map((item) => ({
-        itemKey: item.itemKey,
-        section: item.section,
-        state: item.state,
-        observations: item.observations,
-      }));
-    } else {
-      inspectionItemsData = [];
-    }
-
-    return {
-      deviceId: device.id,
-      brand: device.catalog.brand,
-      model: device.catalog.model,
-      mileage: device.vehicleDetail?.mileage,
-      plateNumber: device.vehicleDetail?.plateNumber,
-      fuelType: device.vehicleDetail?.fuelType,
-      transmission: device.vehicleDetail?.transmission,
-      condition: device.condition,
-      ...(inspectionItemsData.length && { inspectionItems: { create: inspectionItemsData } }),
-    };
-  }
-
-  private resolveInspectionItems(items?: SafeguardVehicleInspectionItemDto[]) {
-    if (!items?.length) return [];
-
-    const keys = items.map((item) => item.itemKey);
-    const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
-    if (duplicates.length) {
-      throw new BadRequestException(`itemKey duplicado(s) en inspectionItems: ${[...new Set(duplicates)].join(', ')}`);
-    }
-
-    return items.map((item) => ({
-      itemKey: item.itemKey,
-      section: getVehicleInspectionItemSection(item.itemKey),
-      state: item.state,
-      observations: item.observations,
-    }));
-  }
-
   // ===========================
   // Helpers privados: PDF
   // ===========================
@@ -427,19 +423,6 @@ export class SafeguardsService {
             observations: safeguard.mobile.observations ?? '',
           }
         : undefined,
-      vehicle: safeguard.vehicle
-        ? {
-            brand: safeguard.vehicle.brand,
-            model: safeguard.vehicle.model,
-            mileage: safeguard.vehicle.mileage ?? '',
-            plateNumber: safeguard.vehicle.plateNumber ?? '',
-            fuelType: safeguard.vehicle.fuelType ?? '',
-            transmission: safeguard.vehicle.transmission ?? '',
-            conditionLabel: this.conditionLabel(safeguard.vehicle.condition),
-            revisionRows: this.buildInspectionRows(VEHICLE_REVISION_ITEMS, safeguard.vehicle.inspectionItems),
-            inspectionRows: this.buildInspectionRows(VEHICLE_BODY_INSPECTION_ITEMS, safeguard.vehicle.inspectionItems),
-          }
-        : undefined,
     };
   }
 
@@ -454,22 +437,6 @@ export class SafeguardsService {
         return codes.length ? `${a.name} (${codes.join(' — ')})` : a.name;
       })
       .join('; ');
-  }
-
-  private buildInspectionRows(
-    canonicalItems: { key: string; label: string }[],
-    submitted: { itemKey: string; state: string | null; observations: string | null }[],
-  ): VehicleInspectionRow[] {
-    const byKey = new Map(submitted.map((item) => [item.itemKey, item]));
-
-    return canonicalItems.map(({ key, label }) => {
-      const found = byKey.get(key);
-      return {
-        label: label ?? getVehicleInspectionItemLabel(key),
-        state: found?.state ?? '',
-        observations: found?.observations ?? '',
-      };
-    });
   }
 
   private conditionLabel(condition: SafeguardConditionState): string {
