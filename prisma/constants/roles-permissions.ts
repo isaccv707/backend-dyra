@@ -91,6 +91,9 @@ export const PERMISSIONS = [
   { action: 'studies:update', description: 'Actualizar estudios' },
   { action: 'studies:delete', description: 'Eliminar estudios' },
 
+  // Tickets
+  { action: 'tickets:update', description: 'Cambiar estado/prioridad, asignar tickets y unirse a la sala de tiempo real de TI' },
+
   // Transfers
   { action: 'transfers:create', description: 'Crear solicitudes de transferencia de equipos' },
   { action: 'transfers:read',   description: 'Leer transferencias de equipos' },
