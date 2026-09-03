@@ -1,11 +1,15 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateStateDto } from './dto/create-state.dto';
 import { UpdateStateDto } from './dto/update-state.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 
 @Injectable()
 export class StatesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(createStateDto: CreateStateDto) {
     const existingState = await this.prisma.state.findUnique({
@@ -13,7 +17,9 @@ export class StatesService {
     });
 
     if (existingState) {
-      throw new ConflictException(`State with name '${createStateDto.name}' already exists`);
+      throw new ConflictException(
+        `State with name '${createStateDto.name}' already exists`,
+      );
     }
 
     return this.prisma.state.create({
@@ -55,7 +61,9 @@ export class StatesService {
       });
 
       if (existingState && existingState.id !== id) {
-        throw new ConflictException(`State with name '${updateStateDto.name}' already exists`);
+        throw new ConflictException(
+          `State with name '${updateStateDto.name}' already exists`,
+        );
       }
     }
 

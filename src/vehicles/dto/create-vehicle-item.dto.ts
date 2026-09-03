@@ -11,13 +11,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { OwnershipType, SafeguardConditionState, SafeguardUsageType } from '@prisma/client';
+import {
+  OwnershipType,
+  SafeguardConditionState,
+  SafeguardUsageType,
+} from '@prisma/client';
 import { VehicleSafeguardInspectionItemDto } from 'src/vehicle-safeguards/dto/vehicle-safeguard-inspection-item.dto';
 
 export class CreateVehicleItemDto {
   @IsString()
   @Matches(/^DYRA\d{8}$/, {
-    message: 'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
+    message:
+      'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
   })
   internalCode!: string;
 
@@ -51,9 +56,13 @@ export class CreateVehicleItemDto {
   @IsEnum(OwnershipType)
   ownershipType?: OwnershipType;
 
-  @ValidateIf((o: CreateVehicleItemDto) => o.ownershipType === OwnershipType.PROVIDER)
+  @ValidateIf(
+    (o: CreateVehicleItemDto) => o.ownershipType === OwnershipType.PROVIDER,
+  )
   @IsString()
-  @IsNotEmpty({ message: 'providerFolio es obligatorio cuando ownershipType es PROVIDER' })
+  @IsNotEmpty({
+    message: 'providerFolio es obligatorio cuando ownershipType es PROVIDER',
+  })
   providerFolio?: string;
 
   // Estado físico del vehículo (Nuevo/Seminuevo), obligatorio. Se reutiliza

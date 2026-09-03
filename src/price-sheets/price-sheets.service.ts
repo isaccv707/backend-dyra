@@ -25,6 +25,7 @@ import {
 } from 'src/common/utils/branch-access.util';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import {
+  ExcelCellValue,
   toOptionalBool,
   toOptionalInt,
   toRequiredNumber,
@@ -220,7 +221,9 @@ export class PriceSheetsService {
       showPrice: 'true',
     };
 
-    const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], { header: headers });
+    const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], {
+      header: headers,
+    });
 
     const servicesSheet = XLSX.utils.json_to_sheet(
       services.map((s) => ({ name: s.name })),
@@ -234,10 +237,14 @@ export class PriceSheetsService {
       'Servicios (referencia)',
     );
 
-    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
-  async importStudiesFromExcel(id: string, buffer: Buffer, user: BranchScopedUser) {
+  async importStudiesFromExcel(
+    id: string,
+    buffer: Buffer,
+    user: BranchScopedUser,
+  ) {
     const priceSheet = await this.getPriceSheetOrThrow(id, user);
     const branchId = priceSheet.branchId;
 
@@ -247,11 +254,14 @@ export class PriceSheetsService {
       throw new BadRequestException('El archivo de Excel no contiene hojas.');
 
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
-      defval: null,
-      raw: false,
-      blankrows: false,
-    });
+    const rows = XLSX.utils.sheet_to_json<Record<string, ExcelCellValue>>(
+      sheet,
+      {
+        defval: null,
+        raw: false,
+        blankrows: false,
+      },
+    );
 
     if (!rows.length)
       throw new BadRequestException('El Excel no contiene filas de datos');
@@ -284,11 +294,14 @@ export class PriceSheetsService {
       return messages;
     };
 
-    const getPriceValue = (val: any): number => {
+    const getPriceValue = (val: ExcelCellValue): number => {
       if (val === null || val === undefined) return 0;
-      const cleaned = val.toString().trim();
+      const cleaned = String(val).trim();
       return cleaned === '' ? 0 : Number(cleaned);
     };
+
+    const cellToString = (val: ExcelCellValue): string | undefined =>
+      val === null || val === undefined ? undefined : String(val).trim();
 
     type ValidRow = {
       code: string;
@@ -312,8 +325,8 @@ export class PriceSheetsService {
       const initialRow = i + 2;
       const row = rows[i];
 
-      const code = row.code?.toString()?.trim();
-      const name = row.name?.toString()?.trim();
+      const code = cellToString(row.code);
+      const name = cellToString(row.name);
 
       if (!name && !code) continue;
 
@@ -326,7 +339,7 @@ export class PriceSheetsService {
         seenCodes.add(code);
       }
 
-      const serviceName = row.serviceName?.toString()?.trim();
+      const serviceName = cellToString(row.serviceName);
       const serviceId = serviceName
         ? serviceIdByName.get(serviceName.toLowerCase())
         : undefined;
@@ -339,9 +352,9 @@ export class PriceSheetsService {
       const normalizedData = {
         code,
         name,
-        description: row.description?.toString()?.trim(),
-        sampleType: row.sampleType?.toString()?.trim(),
-        preparation: row.preparation?.toString()?.trim(),
+        description: cellToString(row.description),
+        sampleType: cellToString(row.sampleType),
+        preparation: cellToString(row.preparation),
         serviceName,
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,

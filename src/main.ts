@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { Application } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
@@ -11,7 +12,8 @@ async function bootstrap() {
   // soporte para notación de corchetes). Los DTOs de paginación dependen de
   // `sort[field]`/`filters[and][0][field]` anidándose en objetos, así que
   // necesitamos el parser 'extended' (qs) como en Express 4.
-  app.getHttpAdapter().getInstance().set('query parser', 'extended');
+  const httpAdapterInstance = app.getHttpAdapter().getInstance() as Application;
+  httpAdapterInstance.set('query parser', 'extended');
 
   const config = new DocumentBuilder()
     .setTitle('Mi API en NestJS')
@@ -49,4 +51,4 @@ async function bootstrap() {
   );
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
-bootstrap();
+void bootstrap();

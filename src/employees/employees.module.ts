@@ -8,7 +8,13 @@ import { VehiclesModule } from 'src/vehicles/vehicles.module';
 import { VehicleSafeguardsModule } from 'src/vehicle-safeguards/vehicle-safeguards.module';
 
 @Module({
-  imports: [PrismaModule, DevicesModule, SafeguardsModule, VehiclesModule, VehicleSafeguardsModule],
+  imports: [
+    PrismaModule,
+    DevicesModule,
+    SafeguardsModule,
+    VehiclesModule,
+    VehicleSafeguardsModule,
+  ],
   controllers: [EmployeesController],
   providers: [EmployeesService],
   exports: [EmployeesService],

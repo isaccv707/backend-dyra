@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
@@ -6,9 +11,7 @@ import { BannerPlacement } from '@prisma/client';
 
 @Injectable()
 export class BannersService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async findOne(id: string) {
     const banner = await this.prisma.banner.findUnique({
@@ -43,16 +46,10 @@ export class BannersService {
         branchId,
         AND: [
           {
-            OR: [
-              { startAt: null },
-              { startAt: { lte: now } },
-            ],
+            OR: [{ startAt: null }, { startAt: { lte: now } }],
           },
           {
-            OR: [
-              { endAt: null },
-              { endAt: { gte: now } },
-            ],
+            OR: [{ endAt: null }, { endAt: { gte: now } }],
           },
         ],
       },
@@ -96,7 +93,9 @@ export class BannersService {
     });
 
     if (existingBanner) {
-      throw new ConflictException('A banner with this configuration already exists');
+      throw new ConflictException(
+        'A banner with this configuration already exists',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -124,19 +123,26 @@ export class BannersService {
 
   async update(id: string, dto: UpdateBannerDto) {
     const currentBanner = await this.findOne(id);
-    const { order: newOrder, placement: newPlacement, branchId: newBranchId, ...rest } = dto;
+    const {
+      order: newOrder,
+      placement: newPlacement,
+      branchId: newBranchId,
+      ...rest
+    } = dto;
 
     const oldOrder = currentBanner.order;
     const oldPlacement = currentBanner.placement;
     const oldBranchId = currentBanner.branchId;
     const targetPlacement = newPlacement ?? oldPlacement;
     const targetBranchId = newBranchId ?? oldBranchId;
-    const movingQueue = targetBranchId !== oldBranchId || targetPlacement !== oldPlacement;
+    const movingQueue =
+      targetBranchId !== oldBranchId || targetPlacement !== oldPlacement;
 
     return this.prisma.$transaction(async (tx) => {
       // Logic for reordering
       if (newOrder !== undefined && (newOrder !== oldOrder || movingQueue)) {
-        if (newOrder < 0) throw new BadRequestException('Order cannot be less than 0');
+        if (newOrder < 0)
+          throw new BadRequestException('Order cannot be less than 0');
 
         if (!movingQueue) {
           // Reordering within the same branch+placement queue
@@ -163,25 +169,41 @@ export class BannersService {
           // Moving to a different branch and/or placement queue
           // 1. Close gap in the old queue
           await tx.banner.updateMany({
-            where: { branchId: oldBranchId, placement: oldPlacement, order: { gt: oldOrder } },
+            where: {
+              branchId: oldBranchId,
+              placement: oldPlacement,
+              order: { gt: oldOrder },
+            },
             data: { order: { decrement: 1 } },
           });
           // 2. Open space in the new queue
           await tx.banner.updateMany({
-            where: { branchId: targetBranchId, placement: targetPlacement, order: { gte: newOrder } },
+            where: {
+              branchId: targetBranchId,
+              placement: targetPlacement,
+              order: { gte: newOrder },
+            },
             data: { order: { increment: 1 } },
           });
         }
       } else if (movingQueue) {
         // Queue changed but order not specified - keep the same order and just close the gap in the old one
         await tx.banner.updateMany({
-          where: { branchId: oldBranchId, placement: oldPlacement, order: { gt: oldOrder } },
+          where: {
+            branchId: oldBranchId,
+            placement: oldPlacement,
+            order: { gt: oldOrder },
+          },
           data: { order: { decrement: 1 } },
         });
         // We could shift in the new queue but since order is not provided,
         // it might conflict or create gaps. For safety, we shift in the new queue too.
         await tx.banner.updateMany({
-          where: { branchId: targetBranchId, placement: targetPlacement, order: { gte: oldOrder } },
+          where: {
+            branchId: targetBranchId,
+            placement: targetPlacement,
+            order: { gte: oldOrder },
+          },
           data: { order: { increment: 1 } },
         });
       }

@@ -1,5 +1,19 @@
-import { Controller, Get, Post, Body, Patch, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { DevicesService } from './devices.service';
 import { CreateDeviceItemDto } from './dto/create-device-item.dto';
 import { UpdateDeviceItemDto } from './dto/update-device-item.dto';
@@ -16,7 +30,11 @@ import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
-  @ApiOperation({ summary: 'Dar de alta un equipo', description: 'Registra un nuevo equipo de hardware en el inventario de una sucursal.' })
+  @ApiOperation({
+    summary: 'Dar de alta un equipo',
+    description:
+      'Registra un nuevo equipo de hardware en el inventario de una sucursal.',
+  })
   @ApiResponse({ status: 201, description: 'Equipo creado exitosamente.' })
   @ApiBearerAuth()
   @Permissions('devices:create')
@@ -28,7 +46,11 @@ export class DevicesController {
     return this.devicesService.create(createDeviceItemDto, user);
   }
 
-  @ApiOperation({ summary: 'Listar equipos', description: 'Devuelve los equipos de inventario, con alcance según la sucursal del usuario autenticado.' })
+  @ApiOperation({
+    summary: 'Listar equipos',
+    description:
+      'Devuelve los equipos de inventario, con alcance según la sucursal del usuario autenticado.',
+  })
   @ApiResponse({ status: 200, description: 'Listado de equipos.' })
   @ApiBearerAuth()
   @Permissions('devices:read')
@@ -37,7 +59,10 @@ export class DevicesController {
     return this.devicesService.findAll(dto, user);
   }
 
-  @ApiOperation({ summary: 'Obtener equipo', description: 'Devuelve un equipo por su identificador.' })
+  @ApiOperation({
+    summary: 'Obtener equipo',
+    description: 'Devuelve un equipo por su identificador.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
   @ApiResponse({ status: 200, description: 'Equipo encontrado.' })
   @ApiResponse({ status: 404, description: 'Equipo no encontrado.' })
@@ -48,17 +73,31 @@ export class DevicesController {
     return this.devicesService.findOne(id);
   }
 
-  @ApiOperation({ summary: 'Historial de movimientos', description: 'Devuelve el historial de movimientos de un equipo (altas, asignaciones, traspasos, bajas).' })
+  @ApiOperation({
+    summary: 'Historial de movimientos',
+    description:
+      'Devuelve el historial de movimientos de un equipo (altas, asignaciones, traspasos, bajas).',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
-  @ApiResponse({ status: 200, description: 'Historial de movimientos del equipo.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Historial de movimientos del equipo.',
+  })
   @ApiBearerAuth()
   @Permissions('devices:read')
   @Get(':id/movement-history')
-  findMovementHistory(@Param('id') id: string, @Query() dto: FindMovementHistoryDto) {
+  findMovementHistory(
+    @Param('id') id: string,
+    @Query() dto: FindMovementHistoryDto,
+  ) {
     return this.devicesService.findMovementHistory(id, dto);
   }
 
-  @ApiOperation({ summary: 'Actualizar equipo', description: 'Actualiza los datos de un equipo existente (no incluye asignación ni sucursal actual).' })
+  @ApiOperation({
+    summary: 'Actualizar equipo',
+    description:
+      'Actualiza los datos de un equipo existente (no incluye asignación ni sucursal actual).',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
   @ApiResponse({ status: 200, description: 'Equipo actualizado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Equipo no encontrado.' })
@@ -73,7 +112,11 @@ export class DevicesController {
     return this.devicesService.update(id, updateDeviceItemDto, user);
   }
 
-  @ApiOperation({ summary: 'Asignar equipo', description: 'Asigna un equipo disponible a un empleado o a una ubicación (exclusivo, nunca ambos).' })
+  @ApiOperation({
+    summary: 'Asignar equipo',
+    description:
+      'Asigna un equipo disponible a un empleado o a una ubicación (exclusivo, nunca ambos).',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
   @ApiResponse({ status: 200, description: 'Equipo asignado exitosamente.' })
   @ApiBearerAuth()
@@ -87,7 +130,11 @@ export class DevicesController {
     return this.devicesService.assign(id, dto, user);
   }
 
-  @ApiOperation({ summary: 'Liberar equipo', description: 'Quita la asignación de un equipo (empleado o ubicación) y lo deja disponible.' })
+  @ApiOperation({
+    summary: 'Liberar equipo',
+    description:
+      'Quita la asignación de un equipo (empleado o ubicación) y lo deja disponible.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
   @ApiResponse({ status: 200, description: 'Equipo liberado exitosamente.' })
   @ApiBearerAuth()
@@ -99,20 +146,34 @@ export class DevicesController {
 
   @ApiOperation({
     summary: 'Desenlazar accesorio',
-    description: 'Desenlaza un MONITOR/KEYBOARD/MOUSE de su computadora principal (mainDeviceId) sin darlo de baja; queda disponible.',
+    description:
+      'Desenlaza un MONITOR/KEYBOARD/MOUSE de su computadora principal (mainDeviceId) sin darlo de baja; queda disponible.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del accesorio.' })
-  @ApiResponse({ status: 200, description: 'Accesorio desenlazado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Accesorio desenlazado exitosamente.',
+  })
   @ApiBearerAuth()
   @Permissions('devices:update')
   @Post(':id/unlink')
-  unlink(@Param('id') id: string, @CurrentUser() user: BranchScopedUser & { id: string }) {
+  unlink(
+    @Param('id') id: string,
+    @CurrentUser() user: BranchScopedUser & { id: string },
+  ) {
     return this.devicesService.unlink(id, user);
   }
 
-  @ApiOperation({ summary: 'Dar de baja un equipo', description: 'Marca un equipo como retirado/dado de baja. No elimina el registro.' })
+  @ApiOperation({
+    summary: 'Dar de baja un equipo',
+    description:
+      'Marca un equipo como retirado/dado de baja. No elimina el registro.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del equipo.' })
-  @ApiResponse({ status: 200, description: 'Equipo dado de baja exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Equipo dado de baja exitosamente.',
+  })
   @ApiBearerAuth()
   @Permissions('devices:update')
   @Post(':id/retire')

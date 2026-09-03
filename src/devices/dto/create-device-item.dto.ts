@@ -9,12 +9,17 @@ import {
   Matches,
   ValidateIf,
 } from 'class-validator';
-import { OwnershipType, SafeguardConditionState, SafeguardUsageType } from '@prisma/client';
+import {
+  OwnershipType,
+  SafeguardConditionState,
+  SafeguardUsageType,
+} from '@prisma/client';
 
 export class CreateDeviceItemDto {
   @IsString()
   @Matches(/^DYRA\d{8}$/, {
-    message: 'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
+    message:
+      'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
   })
   internalCode!: string;
 
@@ -40,9 +45,13 @@ export class CreateDeviceItemDto {
   // The callback receives the DTO instance being validated (conventionally
   // named `o`), not the value of this property. When it returns false the
   // property is skipped entirely, so no @IsOptional is needed alongside it.
-  @ValidateIf((o: CreateDeviceItemDto) => o.ownershipType === OwnershipType.PROVIDER)
+  @ValidateIf(
+    (o: CreateDeviceItemDto) => o.ownershipType === OwnershipType.PROVIDER,
+  )
   @IsString()
-  @IsNotEmpty({ message: 'providerFolio es obligatorio cuando ownershipType es PROVIDER' })
+  @IsNotEmpty({
+    message: 'providerFolio es obligatorio cuando ownershipType es PROVIDER',
+  })
   providerFolio?: string;
 
   // Estado físico del equipo (Nuevo/Seminuevo), obligatorio para cualquier
