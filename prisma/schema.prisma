@@ -25,9 +25,10 @@ model User {
   createdVehicleSafeguards VehicleSafeguard[] @relation("VehicleSafeguardCreatedBy")
   signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
 
-  createdTickets  Ticket[]        @relation("TicketCreatedBy")
-  assignedTickets Ticket[]        @relation("TicketAssignedTo")
-  ticketComments  TicketComment[] @relation("TicketCommentAuthor")
+  createdTickets      Ticket[]             @relation("TicketCreatedBy")
+  assignedTickets     Ticket[]             @relation("TicketAssignedTo")
+  ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
+  ticketNotifications TicketNotification[]
 }
 
 model Role {
@@ -1067,8 +1068,8 @@ model Ticket {
   assignedToId String? @map("assigned_to_id")
   assignedTo   User?   @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
 
-  attachments TicketAttachment[]
-  comments    TicketComment[]
+  comments      TicketComment[]
+  notifications TicketNotification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1078,19 +1079,6 @@ model Ticket {
   @@index([assignedToId])
   @@index([status])
   @@map("tickets")
-}
-
-model TicketAttachment {
-  id       String @id @default(uuid())
-  url      String
-  fileName String @map("file_name")
-  fileType String @map("file_type")
-
-  ticketId String @map("ticket_id")
-  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-
-  @@index([ticketId])
-  @@map("ticket_attachments")
 }
 
 model TicketComment {
@@ -1113,4 +1101,26 @@ model TicketComment {
   @@index([ticketId])
   @@index([authorId])
   @@map("ticket_comments")
+}
+
+// Copia persistida de lo que TicketsGateway.notifyUsers emite por socket —
+// sin esto, un usuario desconectado en el momento del evento se pierde el
+// aviso para siempre. El socket sigue siendo el canal "en vivo"; esta tabla
+// es el respaldo que el frontend puede listar al reconectarse.
+model TicketNotification {
+  id      String  @id @default(uuid())
+  message String  @db.Text
+  read    Boolean @default(false)
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([ticketId])
+  @@map("ticket_notifications")
 }

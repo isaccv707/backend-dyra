@@ -1,16 +1,12 @@
-import { Type } from 'class-transformer';
 import {
-  ArrayMinSize,
-  IsArray,
   IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
-  ValidateNested,
+  MaxLength,
 } from 'class-validator';
 import { Category, TicketPriority } from '@prisma/client';
-import { AttachmentDto } from './attachment.dto';
 
 export class CreateTicketDto {
   @IsUUID()
@@ -18,10 +14,14 @@ export class CreateTicketDto {
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(200)
   title: string;
 
   @IsString()
   @IsNotEmpty()
+  @MaxLength(3000, {
+    message: 'description no debe exceder los 3000 caracteres',
+  })
   description: string;
 
   @IsEnum(Category)
@@ -30,11 +30,4 @@ export class CreateTicketDto {
   @IsOptional()
   @IsEnum(TicketPriority)
   priority?: TicketPriority = TicketPriority.MEDIUM;
-
-  @IsOptional()
-  @IsArray()
-  @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => AttachmentDto)
-  attachments?: AttachmentDto[];
 }

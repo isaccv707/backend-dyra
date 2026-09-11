@@ -2,6 +2,7 @@ import { HttpAdapterHost, NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
+import { parseCorsOrigins } from './common/utils/cors.util';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Application } from 'express';
 
@@ -33,9 +34,7 @@ async function bootstrap() {
   const { httpAdapter } = app.get(HttpAdapterHost);
   app.useGlobalFilters(new PrismaClientExceptionFilter(httpAdapter));
 
-  const rawOrigins = process.env.CORS_ORIGINS || '';
-
-  const allowedOrigins = rawOrigins.split(',').map((origin) => origin.trim());
+  const allowedOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
 
   app.setGlobalPrefix('api');
   app.enableCors({

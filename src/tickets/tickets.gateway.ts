@@ -10,6 +10,7 @@ import {
 import { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
+import { parseCorsOrigins } from 'src/common/utils/cors.util';
 import {
   TicketCommentWithAuthor,
   TicketWithRelations,
@@ -39,9 +40,7 @@ type TicketsSocket = Socket<
 @WebSocketGateway({
   namespace: '/tickets',
   cors: {
-    origin: (process.env.CORS_ORIGINS || '')
-      .split(',')
-      .map((origin) => origin.trim()),
+    origin: parseCorsOrigins(process.env.CORS_ORIGINS),
   },
 })
 export class TicketsGateway implements OnGatewayConnection {
