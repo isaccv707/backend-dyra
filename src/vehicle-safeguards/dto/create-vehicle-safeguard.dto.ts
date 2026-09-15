@@ -1,5 +1,14 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ValidateIf, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import { SafeguardUsageType } from '@prisma/client';
 import { VehicleSafeguardInspectionItemDto } from './vehicle-safeguard-inspection-item.dto';
 
@@ -17,8 +26,14 @@ export class CreateVehicleSafeguardDto {
   @IsEnum(SafeguardUsageType)
   usageType?: SafeguardUsageType;
 
-  @ValidateIf((o) => o.usageType === SafeguardUsageType.TEMPORARY)
-  @IsDateString({}, { message: 'startDate es obligatorio cuando usageType es TEMPORARY' })
+  @ValidateIf(
+    (o: CreateVehicleSafeguardDto) =>
+      o.usageType === SafeguardUsageType.TEMPORARY,
+  )
+  @IsDateString(
+    {},
+    { message: 'startDate es obligatorio cuando usageType es TEMPORARY' },
+  )
   startDate?: string;
 
   @IsOptional()

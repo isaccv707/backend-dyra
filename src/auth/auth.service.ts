@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'prisma/prisma/prisma.service';
@@ -72,7 +69,9 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      return { message: 'Si el correo está registrado, recibirás el código en breve' };
+      return {
+        message: 'Si el correo está registrado, recibirás el código en breve',
+      };
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -86,7 +85,9 @@ export class AuthService {
 
     await this.mailService.sendOtpEmail(email, otp);
 
-    return { message: 'Si el correo está registrado, recibirás el código en breve' };
+    return {
+      message: 'Si el correo está registrado, recibirás el código en breve',
+    };
   }
 
   async verifyOtp({ email, otp }: VerifyOtpDto) {

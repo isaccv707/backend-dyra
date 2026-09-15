@@ -9,7 +9,11 @@ import { VehicleSafeguardPdfRenderer } from './pdf/vehicle-safeguard-pdf.rendere
 @Module({
   imports: [PrismaModule, CloudinaryModule],
   controllers: [VehicleSafeguardsController],
-  providers: [VehicleSafeguardsService, VehicleSafeguardPdfRenderer, PdfDrawingKit],
+  providers: [
+    VehicleSafeguardsService,
+    VehicleSafeguardPdfRenderer,
+    PdfDrawingKit,
+  ],
   exports: [VehicleSafeguardsService],
 })
 export class VehicleSafeguardsModule {}

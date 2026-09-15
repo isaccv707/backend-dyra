@@ -2,7 +2,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   MaxLength,
   MinLength,

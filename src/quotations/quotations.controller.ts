@@ -10,9 +10,16 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
-import PDFDocument = require('pdfkit');
+import PDFDocument from 'pdfkit';
 import { CreateQuotationDto } from './dto/create-quotation.dto';
 import { FindQuotationsDto } from './dto/find-quotations.dto';
 import { QuotationsService } from './quotations.service';
@@ -32,8 +39,15 @@ export class QuotationsController {
       'Crea una cotización con los estudios seleccionados y devuelve el PDF generado. La hoja de precios (priceSheetId) debe pertenecer a la sucursal indicada y ser pública.',
   })
   @ApiProduces('application/pdf')
-  @ApiResponse({ status: 201, description: 'PDF de la cotización generado exitosamente.' })
-  @ApiResponse({ status: 400, description: 'La hoja de precios no pertenece a la sucursal indicada, no está activa o no es pública.' })
+  @ApiResponse({
+    status: 201,
+    description: 'PDF de la cotización generado exitosamente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'La hoja de precios no pertenece a la sucursal indicada, no está activa o no es pública.',
+  })
   @Public()
   @Post('pdf')
   async generatePdf(@Body() dto: CreateQuotationDto, @Res() res: Response) {
@@ -47,37 +61,69 @@ export class QuotationsController {
       'Crea una cotización (sin generar PDF) usando cualquier hoja de precios activa de la sucursal, pública o privada. El PDF puede obtenerse después vía GET /quotations/:id/pdf.',
   })
   @ApiResponse({ status: 201, description: 'Cotización creada exitosamente.' })
-  @ApiResponse({ status: 400, description: 'La hoja de precios no pertenece a la sucursal indicada o no está activa.' })
-  @ApiResponse({ status: 403, description: 'El usuario no tiene acceso a la sucursal indicada.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'La hoja de precios no pertenece a la sucursal indicada o no está activa.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El usuario no tiene acceso a la sucursal indicada.',
+  })
   @ApiBearerAuth()
   @Permissions('quotations:create')
   @Post()
-  create(@Body() dto: CreateQuotationDto, @CurrentUser() user: BranchScopedUser) {
+  create(
+    @Body() dto: CreateQuotationDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.quotationsService.createForAdmin(dto, user);
   }
 
-  @ApiOperation({ summary: 'Listar cotizaciones', description: 'Devuelve las cotizaciones con alcance según la sucursal del usuario autenticado.' })
+  @ApiOperation({
+    summary: 'Listar cotizaciones',
+    description:
+      'Devuelve las cotizaciones con alcance según la sucursal del usuario autenticado.',
+  })
   @ApiResponse({ status: 200, description: 'Listado de cotizaciones.' })
   @ApiBearerAuth()
   @Permissions('quotations:read')
   @Get()
-  findAll(@Query() dto: FindQuotationsDto, @CurrentUser() user: BranchScopedUser) {
+  findAll(
+    @Query() dto: FindQuotationsDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.quotationsService.findAll(dto, user);
   }
 
-  @ApiOperation({ summary: 'Obtener cotización', description: 'Devuelve una cotización por su identificador.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) de la cotización.' })
+  @ApiOperation({
+    summary: 'Obtener cotización',
+    description: 'Devuelve una cotización por su identificador.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador (UUID) de la cotización.',
+  })
   @ApiResponse({ status: 200, description: 'Cotización encontrada.' })
   @ApiResponse({ status: 404, description: 'Cotización no encontrada.' })
   @ApiBearerAuth()
   @Permissions('quotations:read')
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.quotationsService.findOne(id, user);
   }
 
-  @ApiOperation({ summary: 'Descargar PDF de cotización', description: 'Genera y descarga el PDF de una cotización existente.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) de la cotización.' })
+  @ApiOperation({
+    summary: 'Descargar PDF de cotización',
+    description: 'Genera y descarga el PDF de una cotización existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador (UUID) de la cotización.',
+  })
   @ApiProduces('application/pdf')
   @ApiResponse({ status: 200, description: 'PDF de la cotización.' })
   @ApiResponse({ status: 404, description: 'Cotización no encontrada.' })
@@ -93,22 +139,40 @@ export class QuotationsController {
     this.streamPdf(res, quotation);
   }
 
-  @ApiOperation({ summary: 'Eliminar cotización', description: 'Elimina una cotización existente.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) de la cotización.' })
-  @ApiResponse({ status: 200, description: 'Cotización eliminada exitosamente.' })
+  @ApiOperation({
+    summary: 'Eliminar cotización',
+    description: 'Elimina una cotización existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador (UUID) de la cotización.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Cotización eliminada exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Cotización no encontrada.' })
   @ApiBearerAuth()
   @Permissions('quotations:delete')
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.quotationsService.remove(id, user);
   }
 
-  private streamPdf(res: Response, quotation: Parameters<QuotationsService['buildQuotationPdf']>[1]) {
-    const doc = new PDFDocument({ margin: 50 }) as PDFKit.PDFDocument;
+  private streamPdf(
+    res: Response,
+    quotation: Parameters<QuotationsService['buildQuotationPdf']>[1],
+  ) {
+    const doc = new PDFDocument({ margin: 50 });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="${quotation.folio}.pdf"`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${quotation.folio}.pdf"`,
+    );
 
     doc.pipe(res);
     this.quotationsService.buildQuotationPdf(doc, quotation);

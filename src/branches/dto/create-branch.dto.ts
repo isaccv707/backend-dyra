@@ -7,7 +7,6 @@ import {
   IsOptional,
   IsString,
   IsUrl,
-  IsUUID,
   ValidateNested,
 } from 'class-validator';
 import { CreateAddressDto } from './create-address.dto';

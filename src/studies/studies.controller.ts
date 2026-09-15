@@ -30,7 +30,11 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 export class StudiesController {
   constructor(private readonly studiesService: StudiesService) {}
 
-  @ApiOperation({ summary: 'Crear estudio', description: 'Crea un nuevo estudio de laboratorio con sus precios por tabulador.' })
+  @ApiOperation({
+    summary: 'Crear estudio',
+    description:
+      'Crea un nuevo estudio de laboratorio con sus precios por tabulador.',
+  })
   @ApiResponse({ status: 201, description: 'Estudio creado exitosamente.' })
   @ApiBearerAuth()
   @Permissions('studies:create')
@@ -39,8 +43,16 @@ export class StudiesController {
     return this.studiesService.create(createStudyDto);
   }
 
-  @ApiOperation({ summary: 'Listar estudios', description: 'Devuelve el listado paginado de estudios de laboratorio. Cada estudio pertenece a una sola sucursal; usa branchId para filtrar los de esa sucursal.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar estudios.' })
+  @ApiOperation({
+    summary: 'Listar estudios',
+    description:
+      'Devuelve el listado paginado de estudios de laboratorio. Cada estudio pertenece a una sola sucursal; usa branchId para filtrar los de esa sucursal.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal para filtrar estudios.',
+  })
   @ApiResponse({ status: 200, description: 'Listado paginado de estudios.' })
   @Public()
   @Get()
@@ -48,9 +60,17 @@ export class StudiesController {
     return this.studiesService.findAll(pagination);
   }
 
-  @ApiOperation({ summary: 'Obtener estudio', description: 'Devuelve un estudio por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.' })
+  @ApiOperation({
+    summary: 'Obtener estudio',
+    description:
+      'Devuelve un estudio por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador o slug del estudio.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal, recomendado al buscar por slug.' })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal, recomendado al buscar por slug.',
+  })
   @ApiResponse({ status: 200, description: 'Estudio encontrado.' })
   @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
   @Public()
@@ -59,9 +79,15 @@ export class StudiesController {
     return this.studiesService.findOne(id, branchId);
   }
 
-  @ApiOperation({ summary: 'Actualizar estudio', description: 'Actualiza los datos de un estudio existente.' })
+  @ApiOperation({
+    summary: 'Actualizar estudio',
+    description: 'Actualiza los datos de un estudio existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
-  @ApiResponse({ status: 200, description: 'Estudio actualizado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Estudio actualizado exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
   @ApiBearerAuth()
   @Permissions('studies:update')
@@ -73,7 +99,10 @@ export class StudiesController {
     return this.studiesService.update(id, updateStudyDto);
   }
 
-  @ApiOperation({ summary: 'Eliminar estudio', description: 'Elimina un estudio existente.' })
+  @ApiOperation({
+    summary: 'Eliminar estudio',
+    description: 'Elimina un estudio existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
   @ApiResponse({ status: 200, description: 'Estudio eliminado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
@@ -84,10 +113,20 @@ export class StudiesController {
     return this.studiesService.remove(id);
   }
 
-  @ApiOperation({ summary: 'Asignar tarifario a un estudio', description: 'Crea o actualiza el precio de un estudio para un tarifario (price sheet) específico.' })
+  @ApiOperation({
+    summary: 'Asignar tarifario a un estudio',
+    description:
+      'Crea o actualiza el precio de un estudio para un tarifario (price sheet) específico.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
-  @ApiResponse({ status: 200, description: 'Tarifario asignado/actualizado exitosamente.' })
-  @ApiResponse({ status: 404, description: 'Estudio o tarifario no encontrado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Tarifario asignado/actualizado exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Estudio o tarifario no encontrado.',
+  })
   @ApiBearerAuth()
   @Permissions('studies:update')
   @Post(':id/price-sheets')
@@ -98,11 +137,24 @@ export class StudiesController {
     return this.studiesService.assignPriceSheet(id, assignPriceSheetDto);
   }
 
-  @ApiOperation({ summary: 'Quitar tarifario de un estudio', description: 'Elimina la asignación de precio de un estudio para un tarifario específico.' })
+  @ApiOperation({
+    summary: 'Quitar tarifario de un estudio',
+    description:
+      'Elimina la asignación de precio de un estudio para un tarifario específico.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
-  @ApiParam({ name: 'priceSheetId', description: 'Identificador (UUID) del tarifario.' })
-  @ApiResponse({ status: 200, description: 'Asignación eliminada exitosamente.' })
-  @ApiResponse({ status: 404, description: 'El estudio no tiene precio asignado para ese tarifario.' })
+  @ApiParam({
+    name: 'priceSheetId',
+    description: 'Identificador (UUID) del tarifario.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Asignación eliminada exitosamente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'El estudio no tiene precio asignado para ese tarifario.',
+  })
   @ApiBearerAuth()
   @Permissions('studies:update')
   @Delete(':id/price-sheets/:priceSheetId')

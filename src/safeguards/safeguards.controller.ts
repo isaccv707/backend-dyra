@@ -1,7 +1,24 @@
-import { Controller, Get, Post, Body, Param, Delete, Query, ParseUUIDPipe, Res } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Delete,
+  Query,
+  ParseUUIDPipe,
+  Res,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiProduces,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
-import PDFDocument = require('pdfkit');
+import PDFDocument from 'pdfkit';
 import { SafeguardsService } from './safeguards.service';
 import { CreateSafeguardDto } from './dto/create-safeguard.dto';
 import { FindSafeguardsDto } from './dto/find-safeguards.dto';
@@ -24,33 +41,56 @@ export class SafeguardsController {
       'Útil para reconstruir el resguardo de empleados con equipo ya asignado antes de esta funcionalidad, o para forzar una regeneración.',
   })
   @ApiResponse({ status: 201, description: 'Resguardo creado exitosamente.' })
-  @ApiResponse({ status: 400, description: 'El empleado no tiene ningún equipo de cómputo, celular o vehículo asignado.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'El empleado no tiene ningún equipo de cómputo, celular o vehículo asignado.',
+  })
   @ApiResponse({ status: 404, description: 'Empleado no encontrado.' })
   @Permissions('safeguards:create')
   @Post()
-  create(@Body() dto: CreateSafeguardDto, @CurrentUser() user: BranchScopedUser & { id: string }) {
+  create(
+    @Body() dto: CreateSafeguardDto,
+    @CurrentUser() user: BranchScopedUser & { id: string },
+  ) {
     return this.safeguardsService.create(dto, user);
   }
 
-  @ApiOperation({ summary: 'Listar resguardos', description: 'Devuelve los resguardos, con alcance según la sucursal del usuario autenticado.' })
+  @ApiOperation({
+    summary: 'Listar resguardos',
+    description:
+      'Devuelve los resguardos, con alcance según la sucursal del usuario autenticado.',
+  })
   @ApiResponse({ status: 200, description: 'Listado de resguardos.' })
   @Permissions('safeguards:read')
   @Get()
-  findAll(@Query() dto: FindSafeguardsDto, @CurrentUser() user: BranchScopedUser) {
+  findAll(
+    @Query() dto: FindSafeguardsDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.safeguardsService.findAll(dto, user);
   }
 
-  @ApiOperation({ summary: 'Obtener resguardo', description: 'Devuelve un resguardo por su identificador.' })
+  @ApiOperation({
+    summary: 'Obtener resguardo',
+    description: 'Devuelve un resguardo por su identificador.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'Resguardo encontrado.' })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
   @Permissions('safeguards:read')
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.safeguardsService.findOne(id, user);
   }
 
-  @ApiOperation({ summary: 'Descargar PDF de resguardo', description: 'Genera y descarga el PDF de un resguardo existente.' })
+  @ApiOperation({
+    summary: 'Descargar PDF de resguardo',
+    description: 'Genera y descarga el PDF de un resguardo existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiProduces('application/pdf')
   @ApiResponse({ status: 200, description: 'PDF del resguardo.' })
@@ -75,11 +115,18 @@ export class SafeguardsController {
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'Parámetros firmados generados.' })
-  @ApiResponse({ status: 400, description: 'No se puede adjuntar un documento a una versión histórica del resguardo.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'No se puede adjuntar un documento a una versión histórica del resguardo.',
+  })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
   @Permissions('safeguards:update')
   @Post(':id/upload-signature')
-  createUploadSignature(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  createUploadSignature(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.safeguardsService.createUploadSignature(id, user);
   }
 
@@ -91,7 +138,10 @@ export class SafeguardsController {
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'Resguardo marcado como firmado.' })
-  @ApiResponse({ status: 400, description: 'No se puede firmar una versión histórica del resguardo.' })
+  @ApiResponse({
+    status: 400,
+    description: 'No se puede firmar una versión histórica del resguardo.',
+  })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
   @Permissions('safeguards:update')
   @Post(':id/sign')
@@ -105,32 +155,54 @@ export class SafeguardsController {
 
   @ApiOperation({
     summary: 'Obtener URL del documento firmado',
-    description: 'Genera una URL de descarga firmada y con expiración (Cloudinary) del PDF firmado adjunto a este resguardo.',
+    description:
+      'Genera una URL de descarga firmada y con expiración (Cloudinary) del PDF firmado adjunto a este resguardo.',
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
   @ApiResponse({ status: 200, description: 'URL firmada generada.' })
-  @ApiResponse({ status: 404, description: 'Resguardo no encontrado o sin documento firmado adjunto.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Resguardo no encontrado o sin documento firmado adjunto.',
+  })
   @Permissions('safeguards:read')
   @Get(':id/signed-document')
-  getSignedDocument(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  getSignedDocument(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.safeguardsService.getSignedDocumentUrl(id, user);
   }
 
-  @ApiOperation({ summary: 'Eliminar resguardo', description: 'Elimina un resguardo existente.' })
+  @ApiOperation({
+    summary: 'Eliminar resguardo',
+    description: 'Elimina un resguardo existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del resguardo.' })
-  @ApiResponse({ status: 200, description: 'Resguardo eliminado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Resguardo eliminado exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Resguardo no encontrado.' })
   @Permissions('safeguards:delete')
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: BranchScopedUser) {
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
     return this.safeguardsService.remove(id, user);
   }
 
-  private streamPdf(res: Response, safeguard: Parameters<SafeguardsService['buildSafeguardPdf']>[1]) {
-    const doc = new PDFDocument({ margin: 50 }) as PDFKit.PDFDocument;
+  private streamPdf(
+    res: Response,
+    safeguard: Parameters<SafeguardsService['buildSafeguardPdf']>[1],
+  ) {
+    const doc = new PDFDocument({ margin: 50 });
 
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `inline; filename="Resguardo-${safeguard.employeeName}.pdf"`);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="Resguardo-${safeguard.employeeName}.pdf"`,
+    );
 
     doc.pipe(res);
     this.safeguardsService.buildSafeguardPdf(doc, safeguard);

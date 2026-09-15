@@ -1,5 +1,13 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateNested,
+} from 'class-validator';
 import { SafeguardUsageType } from '@prisma/client';
 import { VehicleSafeguardInspectionItemDto } from 'src/vehicle-safeguards/dto/vehicle-safeguard-inspection-item.dto';
 

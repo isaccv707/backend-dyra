@@ -11,15 +11,27 @@ import { PaginationDto } from './dto/pagination-study.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
 
-const STUDY_ALLOWED_FIELDS = ['name', 'code', 'isActive', 'deliveryTime', 'createdAt'];
+const STUDY_ALLOWED_FIELDS = [
+  'name',
+  'code',
+  'isActive',
+  'deliveryTime',
+  'createdAt',
+];
 
 @Injectable()
 export class StudiesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async assertServiceBelongsToBranch(serviceId: string, branchId: string) {
+  private async assertServiceBelongsToBranch(
+    serviceId: string,
+    branchId: string,
+  ) {
     const service = await this.prisma.service.findUnique({
       where: { id: serviceId },
       select: { branchId: true },
@@ -34,7 +46,10 @@ export class StudiesService {
     }
   }
 
-  private async assertPriceSheetsBelongToBranch(priceSheetIds: string[], branchId: string) {
+  private async assertPriceSheetsBelongToBranch(
+    priceSheetIds: string[],
+    branchId: string,
+  ) {
     if (!priceSheetIds.length) return;
 
     const priceSheets = await this.prisma.priceSheets.findMany({
@@ -51,7 +66,8 @@ export class StudiesService {
   }
 
   async create(createStudyDto: CreateStudyDto) {
-    const { name, studyPrices, serviceId, branchId, ...studyData } = createStudyDto;
+    const { name, studyPrices, serviceId, branchId, ...studyData } =
+      createStudyDto;
     const slug = generateSlug(name);
 
     await this.assertServiceBelongsToBranch(serviceId, branchId);
@@ -129,7 +145,13 @@ export class StudiesService {
     ]);
 
     const priceSheetIdsToResolve = branchId
-      ? [...new Set(items.map((s) => s.service.priceSheetId).filter((id): id is string => !!id))]
+      ? [
+          ...new Set(
+            items
+              .map((s) => s.service.priceSheetId)
+              .filter((id): id is string => !!id),
+          ),
+        ]
       : priceSheetId
         ? [priceSheetId]
         : [];
@@ -144,12 +166,17 @@ export class StudiesService {
       : [];
 
     const priceByKey = new Map(
-      priceEntries.map((entry) => [`${entry.studyId}:${entry.priceSheetId}`, entry]),
+      priceEntries.map((entry) => [
+        `${entry.studyId}:${entry.priceSheetId}`,
+        entry,
+      ]),
     );
 
     const data = items.map((study) => {
       const { service, ...rest } = study;
-      const effectivePriceSheetId = branchId ? service.priceSheetId : priceSheetId;
+      const effectivePriceSheetId = branchId
+        ? service.priceSheetId
+        : priceSheetId;
       const regionalPrice = effectivePriceSheetId
         ? priceByKey.get(`${study.id}:${effectivePriceSheetId}`)
         : undefined;
@@ -205,7 +232,10 @@ export class StudiesService {
     const effectiveBranchId = branchId ?? existingStudy.branchId;
     const effectiveServiceId = serviceId ?? existingStudy.serviceId;
     if (branchId || serviceId) {
-      await this.assertServiceBelongsToBranch(effectiveServiceId, effectiveBranchId);
+      await this.assertServiceBelongsToBranch(
+        effectiveServiceId,
+        effectiveBranchId,
+      );
     }
 
     try {
@@ -312,5 +342,4 @@ export class StudiesService {
       handleDatabaseErrors(error, 'Study');
     }
   }
-
 }

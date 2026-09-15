@@ -9,7 +9,11 @@ import { VehicleSafeguardsModule } from 'src/vehicle-safeguards/vehicle-safeguar
 
 @Module({
   imports: [PrismaModule, VehicleSafeguardsModule],
-  controllers: [VehicleCatalogController, VehiclesController, VehicleTransfersController],
+  controllers: [
+    VehicleCatalogController,
+    VehiclesController,
+    VehicleTransfersController,
+  ],
   providers: [VehicleCatalogService, VehiclesService],
   exports: [VehiclesService],
 })

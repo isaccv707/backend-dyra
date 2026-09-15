@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
@@ -6,15 +10,21 @@ import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Prisma } from '@prisma/client';
 import { generateSlug } from 'src/common/utils/slugger.util';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
 
 const POST_ALLOWED_FIELDS = ['title', 'category', 'status', 'createdAt'];
 
 @Injectable()
 export class PostsService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  private async assertAuthorBelongsToBranch(authorId: string, branchId: string) {
+  private async assertAuthorBelongsToBranch(
+    authorId: string,
+    branchId: string,
+  ) {
     const author = await this.prisma.author.findUnique({
       where: { id: authorId },
       select: { branchId: true },
@@ -30,7 +40,8 @@ export class PostsService {
   }
 
   async create(createPostDto: CreatePostDto) {
-    const { contentBlocks, title, branchId, authorId, ...postData } = createPostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } =
+      createPostDto;
 
     if (authorId) {
       await this.assertAuthorBelongsToBranch(authorId, branchId);
@@ -50,13 +61,13 @@ export class PostsService {
         },
         include: {
           contentBlocks: {
-            orderBy: { order: "asc" },
+            orderBy: { order: 'asc' },
           },
           author: {
-            select: { id: true, name: true, avatar: true, }
-          }
-        }
-      })
+            select: { id: true, name: true, avatar: true },
+          },
+        },
+      });
     } catch (error) {
       handleDatabaseErrors(error, 'Post');
     }
@@ -98,10 +109,7 @@ export class PostsService {
   async findOne(id: string, branchId?: string) {
     const post = await this.prisma.post.findFirst({
       where: {
-        OR: [
-          { id },
-          { slug: id }
-        ],
+        OR: [{ id }, { slug: id }],
         ...(branchId && { branchId }),
       },
       include: {
@@ -111,8 +119,8 @@ export class PostsService {
         contentBlocks: {
           orderBy: { order: 'asc' },
         },
-      }
-    })
+      },
+    });
     if (!post) {
       throw new NotFoundException(`Post with identifier '${id}' not found`);
     }
@@ -120,7 +128,8 @@ export class PostsService {
   }
 
   async update(id: string, updatePostDto: UpdatePostDto) {
-    const { contentBlocks, title, branchId, authorId, ...postData } = updatePostDto;
+    const { contentBlocks, title, branchId, authorId, ...postData } =
+      updatePostDto;
 
     const existingPost = await this.prisma.post.findUnique({ where: { id } });
     if (!existingPost) {
@@ -128,12 +137,16 @@ export class PostsService {
     }
 
     const effectiveBranchId = branchId ?? existingPost.branchId;
-    const effectiveAuthorId = authorId !== undefined ? authorId : existingPost.authorId;
+    const effectiveAuthorId =
+      authorId !== undefined ? authorId : existingPost.authorId;
     if (effectiveAuthorId) {
-      await this.assertAuthorBelongsToBranch(effectiveAuthorId, effectiveBranchId);
+      await this.assertAuthorBelongsToBranch(
+        effectiveAuthorId,
+        effectiveBranchId,
+      );
     }
 
-    const dataToUpdate: any = { ...postData };
+    const dataToUpdate: Prisma.PostUncheckedUpdateInput = { ...postData };
     if (title) {
       dataToUpdate.title = title;
       dataToUpdate.slug = generateSlug(title);
@@ -143,7 +156,7 @@ export class PostsService {
       dataToUpdate.contentBlocks = {
         deleteMany: {},
         create: contentBlocks,
-      }
+      };
     }
 
     if (branchId) {
@@ -164,9 +177,9 @@ export class PostsService {
           },
           author: {
             select: { id: true, name: true, avatar: true },
-          }
+          },
         },
-      })
+      });
     } catch (error: any) {
       handleDatabaseErrors(error, 'Post');
     }
@@ -176,12 +189,15 @@ export class PostsService {
     try {
       const [deleteBlocks, deletedPost] = await this.prisma.$transaction([
         this.prisma.contentBlock.deleteMany({ where: { postId: id } }),
-        this.prisma.post.delete({ where: { id }, select: { id: true, title: true } })
-      ])
+        this.prisma.post.delete({
+          where: { id },
+          select: { id: true, title: true },
+        }),
+      ]);
       return {
         message: `Post '${deletedPost.title}' and its ${deleteBlocks.count} content blocks have been deleted successfully.`,
         deletedId: deletedPost.id,
-      }
+      };
     } catch (error: any) {
       handleDatabaseErrors(error, 'Post');
     }

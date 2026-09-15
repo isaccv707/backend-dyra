@@ -27,7 +27,7 @@ npx jest src/studies/studies.service.spec.ts
 
 All routes are prefixed with `/api`. The app uses a standard NestJS module-per-feature layout under `src/`.
 
-**Modules:** `authors`, `banners`, `branches`, `posts`, `price-sheets`, `quotations`, `reviews`, `services`, `states`, `studies`
+**Modules:** `authors`, `banners`, `branches`, `posts`, `price-sheets`, `quotations`, `reviews`, `services`, `states`, `studies`, `tickets`
 
 **Database:** PostgreSQL via Prisma. The `PrismaService` lives at `prisma/prisma/prisma.service.ts` (note the double-nested path) and uses the `@prisma/adapter-pg` native adapter. `PrismaModule` is global, so `PrismaService` is available throughout without re-importing.
 
@@ -56,10 +56,13 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 - `Banner.order` is a per-`(branchId, placement)` queue — reordering logic in `banners.service.ts` scopes its shifts by both fields, not just `placement`.
 - `Service`, `Author`, `Post`, and `Study` uniqueness (`name`/`nameKey`, `slug`, `code`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug/code can exist in two different branches; they're unrelated records (e.g. "Análisis Clínicos" can be a separate `Service` row in two branches).
 - `Safeguard.branchId` must match the `branchId` of its `Safeguard.employee` (derived from the employee, never taken from the request body) — enforced in `safeguards.service.ts`, not at the DB level.
+- `Ticket.branchId` is required and set from `CreateTicketDto.branchId` — creating a ticket still validates `branchId` against the creator's assigned branches (`assertBranchAccess`). But once created, a ticket's *ownership* is deliberately decoupled from branch: a user without `tickets:update` can only create tickets (requires `tickets:create`) and see/comment/attach on tickets they created themselves (`Ticket.createdById === user.id`), and that access **never depends on branch** — not the ticket's branch, not the branches currently assigned to the user (`TicketsService.assertTicketAccess()` intentionally skips `assertBranchAccess` for the owner path) — so a user's full ticket history stays visible even after being reassigned to a different branch. A user with `tickets:update` (IT support) is the exception that *does* stay branch-scoped: they see/manage every ticket across their assigned branches, and are the only ones who can see internal notes (`TicketComment.isInternal`), change status/priority/assignee, or join the `ti_staff_room` realtime socket room.
 
 Intentional exceptions to the "single required `branchId`" rule:
 - `Review`: strict `where.branchId` match, no "global" concept, but `branchId` is nullable (a review not tied to any branch is allowed).
 - `User`: assigned to branches via a genuine `Branch[]` many-to-many (staff can work across branches) — see `src/common/utils/branch-access.util.ts` for scoping admin queries/writes to a user's assigned branches (used by `reviews`, `price-sheets`, `quotations`).
+
+**Permissions:** The catalog in `prisma/constants/roles-permissions.ts` (`PERMISSIONS`, seeded via `seedRolesAndPermissions`) follows a `<module>:create/read/update/delete` convention per module, checked declaratively with `@Permissions('module:action')` (guarded globally by `PermissionsGuard`, registered in `auth.module.ts`). `tickets` is the deliberate exception: it only has `tickets:create` (report a ticket, see/comment/attach on your own) and `tickets:update` (IT support — see/manage every ticket in your branches; see the `Branch scoping` bullet above), no `read`/`delete`. The seeded `ROLES` are `Administrador` (all permissions), `Usuario` (read-only across modules except `users`/`roles`/`permissions`, plus `tickets:create` so any employee can report a ticket), and `Soporte TI` (`Usuario`'s permission set plus `tickets:update`).
 
 **DTOs:** Use `class-validator` decorators. Always use `@Type(() => ...)` from `class-transformer` for nested objects and numeric coercion (query params arrive as strings).
 

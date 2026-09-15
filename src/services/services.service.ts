@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { FindServicesDto } from './dto/find-services.dto';
@@ -23,13 +27,18 @@ export class ServicesService {
 
   // Una hoja de precios solo puede vincularse como la pública de un servicio
   // si es isPublic=true y pertenece a la misma sucursal que el servicio.
-  private async assertPriceSheetIsEligible(priceSheetId: string, branchId: string) {
+  private async assertPriceSheetIsEligible(
+    priceSheetId: string,
+    branchId: string,
+  ) {
     const priceSheet = await this.prisma.priceSheets.findUnique({
       where: { id: priceSheetId },
       select: { branchId: true, isPublic: true },
     });
     if (!priceSheet) {
-      throw new NotFoundException(`PriceSheet with id ${priceSheetId} not found`);
+      throw new NotFoundException(
+        `PriceSheet with id ${priceSheetId} not found`,
+      );
     }
     if (priceSheet.branchId !== branchId) {
       throw new BadRequestException(
@@ -44,7 +53,8 @@ export class ServicesService {
   }
 
   async create(createServiceDto: CreateServiceDto) {
-    const { benefits, details, branchId, priceSheetId, ...serviceData } = createServiceDto;
+    const { benefits, details, branchId, priceSheetId, ...serviceData } =
+      createServiceDto;
     const slug = generateSlug(serviceData.name);
 
     if (priceSheetId) {
@@ -59,7 +69,9 @@ export class ServicesService {
           benefits: benefits ? { create: benefits } : undefined,
           details: details ? { create: details } : undefined,
           branch: { connect: { id: branchId } },
-          ...(priceSheetId && { priceSheet: { connect: { id: priceSheetId } } }),
+          ...(priceSheetId && {
+            priceSheet: { connect: { id: priceSheetId } },
+          }),
         },
         include: {
           benefits: true,
@@ -171,23 +183,35 @@ export class ServicesService {
 
     const priceSheetIdsToResolve = overridePriceSheetId
       ? [overridePriceSheetId]
-      : [...new Set(services.map((s) => s.priceSheetId).filter((id): id is string => !!id))];
+      : [
+          ...new Set(
+            services
+              .map((s) => s.priceSheetId)
+              .filter((id): id is string => !!id),
+          ),
+        ];
 
     const priceEntries = priceSheetIdsToResolve.length
       ? await this.prisma.studyOnPriceSheet.findMany({
           where: {
             priceSheetId: { in: priceSheetIdsToResolve },
-            studyId: { in: services.flatMap((s) => s.studies.map((st) => st.id)) },
+            studyId: {
+              in: services.flatMap((s) => s.studies.map((st) => st.id)),
+            },
           },
         })
       : [];
 
     const priceByKey = new Map(
-      priceEntries.map((entry) => [`${entry.studyId}:${entry.priceSheetId}`, entry]),
+      priceEntries.map((entry) => [
+        `${entry.studyId}:${entry.priceSheetId}`,
+        entry,
+      ]),
     );
 
     const data = services.map((service) => {
-      const effectivePriceSheetId = overridePriceSheetId ?? service.priceSheetId ?? undefined;
+      const effectivePriceSheetId =
+        overridePriceSheetId ?? service.priceSheetId ?? undefined;
 
       return {
         ...service,
@@ -294,7 +318,9 @@ export class ServicesService {
         })
       : [];
 
-    const priceByStudyId = new Map(priceEntries.map((entry) => [entry.studyId, entry]));
+    const priceByStudyId = new Map(
+      priceEntries.map((entry) => [entry.studyId, entry]),
+    );
 
     return {
       ...service,
@@ -323,7 +349,8 @@ export class ServicesService {
     // 1. Verificación de existencia del DTO
     if (!updateServiceDto) return;
 
-    const { benefits, details, branchId, priceSheetId, ...serviceData } = updateServiceDto;
+    const { benefits, details, branchId, priceSheetId, ...serviceData } =
+      updateServiceDto;
 
     const existingService = await this.prisma.service.findUnique({
       where: { id },
@@ -335,7 +362,10 @@ export class ServicesService {
     }
 
     if (priceSheetId) {
-      await this.assertPriceSheetIsEligible(priceSheetId, branchId ?? existingService.branchId);
+      await this.assertPriceSheetIsEligible(
+        priceSheetId,
+        branchId ?? existingService.branchId,
+      );
     }
 
     try {
@@ -354,7 +384,9 @@ export class ServicesService {
             ...serviceData,
             // Solo creamos si el arreglo existe y tiene contenido
             benefits:
-              benefits && benefits.length > 0 ? { create: benefits } : undefined,
+              benefits && benefits.length > 0
+                ? { create: benefits }
+                : undefined,
             details:
               details && details.length > 0 ? { create: details } : undefined,
             ...(branchId !== undefined && {

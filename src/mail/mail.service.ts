@@ -48,7 +48,9 @@ export class MailService {
         `,
       });
     } catch {
-      throw new InternalServerErrorException('No se pudo enviar el correo de verificación');
+      throw new InternalServerErrorException(
+        'No se pudo enviar el correo de verificación',
+      );
     }
   }
 }

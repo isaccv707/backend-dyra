@@ -1,4 +1,10 @@
-import { IsBoolean, IsEnum, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import {
+  IsBoolean,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
 import { DeviceType } from '@prisma/client';
 
 export class CreateDeviceCatalogDto {

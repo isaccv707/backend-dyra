@@ -1,4 +1,12 @@
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 import { SafeguardUsageType } from '@prisma/client';
 
 // Marca/modelo/serie/condición/observaciones NUNCA se capturan aquí: se leen
@@ -15,8 +23,13 @@ export class CreateSafeguardDto {
   @IsEnum(SafeguardUsageType)
   usageType?: SafeguardUsageType;
 
-  @ValidateIf((o) => o.usageType === SafeguardUsageType.TEMPORARY)
-  @IsDateString({}, { message: 'startDate es obligatorio cuando usageType es TEMPORARY' })
+  @ValidateIf(
+    (o: CreateSafeguardDto) => o.usageType === SafeguardUsageType.TEMPORARY,
+  )
+  @IsDateString(
+    {},
+    { message: 'startDate es obligatorio cuando usageType es TEMPORARY' },
+  )
   startDate?: string;
 
   @IsOptional()
