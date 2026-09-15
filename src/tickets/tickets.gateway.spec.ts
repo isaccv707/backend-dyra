@@ -190,4 +190,56 @@ describe('TicketsGateway', () => {
       expect(emit).toHaveBeenCalledWith('ticket_updated', ticket);
     });
   });
+
+  describe('emitNewComment', () => {
+    it('emite un comentario público a TI y a las salas personales del creador y del asignado', () => {
+      const emit = jest.fn();
+      const to = jest.fn().mockReturnValue({ emit });
+      gateway.server = { to } as any;
+
+      const comment = { id: 'comment-1', isInternal: false } as any;
+      gateway.emitNewComment('ticket-1', comment, ['reporter-1', 'tech-1']);
+
+      const rooms = to.mock.calls[0][0];
+      expect(rooms).toEqual(
+        expect.arrayContaining([
+          'ti_staff_room',
+          'user:reporter-1',
+          'user:tech-1',
+        ]),
+      );
+      expect(rooms).toHaveLength(3);
+      expect(emit).toHaveBeenCalledWith('ticket_comment_added', {
+        ticketId: 'ticket-1',
+        comment,
+      });
+    });
+
+    it('no envía una nota interna a las salas personales, solo a TI', () => {
+      const emit = jest.fn();
+      const to = jest.fn().mockReturnValue({ emit });
+      gateway.server = { to } as any;
+
+      const comment = { id: 'comment-1', isInternal: true } as any;
+      gateway.emitNewComment('ticket-1', comment, ['reporter-1', 'tech-1']);
+
+      expect(to).toHaveBeenCalledWith(['ti_staff_room']);
+    });
+
+    it('ignora IDs nulos/duplicados y no repite la sala de TI', () => {
+      const emit = jest.fn();
+      const to = jest.fn().mockReturnValue({ emit });
+      gateway.server = { to } as any;
+
+      const comment = { id: 'comment-1', isInternal: false } as any;
+      gateway.emitNewComment('ticket-1', comment, [
+        'reporter-1',
+        null,
+        undefined,
+        'reporter-1',
+      ]);
+
+      expect(to).toHaveBeenCalledWith(['ti_staff_room', 'user:reporter-1']);
+    });
+  });
 });

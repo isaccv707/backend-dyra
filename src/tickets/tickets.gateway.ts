@@ -112,14 +112,32 @@ export class TicketsGateway implements OnGatewayConnection {
     this.server.to(TI_STAFF_ROOM).emit('ticket_updated', ticket);
   }
 
-  // Solo llega a ti_staff_room, que ya está reservado a quienes tienen
-  // tickets:update (ver handleJoinTiRoom) — es seguro emitir aquí incluso
-  // los comentarios marcados isInternal, porque nadie fuera de TI se une a
-  // esta sala.
-  emitNewComment(ticketId: string, comment: TicketCommentWithAuthor) {
-    this.server
-      .to(TI_STAFF_ROOM)
-      .emit('ticket_comment_added', { ticketId, comment });
+  // TI siempre ve el comentario (incluidas las notas internas, porque nadie
+  // fuera de TI se une a ti_staff_room). Además, si el comentario NO es
+  // interno, también se emite a las salas personales de quien reportó el
+  // ticket y de quien lo tiene asignado — así un comentario de un usuario
+  // normal se renderiza en vivo para TI, y un comentario de TI se renderiza
+  // en vivo para el usuario normal, simétricamente. Se arma un solo set de
+  // salas y se emite una vez para que un socket presente en varias (p. ej.
+  // un técnico de TI que además es el asignado) no reciba el evento
+  // duplicado.
+  emitNewComment(
+    ticketId: string,
+    comment: TicketCommentWithAuthor,
+    recipientUserIds: (string | null | undefined)[] = [],
+  ) {
+    const rooms = new Set<string>([TI_STAFF_ROOM]);
+
+    if (!comment.isInternal) {
+      for (const userId of recipientUserIds) {
+        if (userId) rooms.add(userRoom(userId));
+      }
+    }
+
+    this.server.to([...rooms]).emit('ticket_comment_added', {
+      ticketId,
+      comment,
+    });
   }
 
   // Avisa directo al creador y/o al técnico asignado de un ticket (a

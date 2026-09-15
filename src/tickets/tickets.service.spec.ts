@@ -440,6 +440,7 @@ describe('TicketsService', () => {
       expect(gateway.emitNewComment).toHaveBeenCalledWith(
         'ticket-1',
         expect.objectContaining({ id: 'comment-1' }),
+        ['reporter-1', null],
       );
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1', null],
@@ -709,7 +710,10 @@ describe('TicketsService', () => {
           }),
         }),
       );
-      expect(gateway.emitNewComment).toHaveBeenCalledWith('ticket-1', created);
+      expect(gateway.emitNewComment).toHaveBeenCalledWith('ticket-1', created, [
+        'reporter-1',
+        'tech-1',
+      ]);
       expect(result).toBe(created);
     });
 

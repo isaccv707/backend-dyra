@@ -295,7 +295,10 @@ export class TicketsService {
       ...commentWithAuthor,
     });
 
-    this.ticketsGateway.emitNewComment(ticketId, comment);
+    this.ticketsGateway.emitNewComment(ticketId, comment, [
+      ticket.createdById,
+      ticket.assignedToId,
+    ]);
 
     // Las notas internas solo le importan a TI (ya llegan por
     // emitNewComment a ti_staff_room) — un comentario público sí debe
@@ -348,7 +351,10 @@ export class TicketsService {
       ...commentWithAuthor,
     });
 
-    this.ticketsGateway.emitNewComment(previousTicket.id, comment);
+    this.ticketsGateway.emitNewComment(previousTicket.id, comment, [
+      previousTicket.createdById,
+      updatedTicket.assignedToId,
+    ]);
     await this.persistAndNotify(
       [previousTicket.createdById, updatedTicket.assignedToId],
       previousTicket.id,
