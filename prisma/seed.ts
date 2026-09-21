@@ -12,6 +12,7 @@ import { seedBanners } from './seeds/banners.seed';
 import { seedAuthors } from './seeds/authors.seed';
 import { seedPosts } from './seeds/posts.seed';
 import { seedReviews } from './seeds/reviews.seed';
+import { seedTicketSubcategories } from './seeds/ticket-subcategories.seed';
 
 if (!process.env.DATABASE_URL) {
   console.error(
@@ -60,6 +61,9 @@ async function main() {
 
   // 10. Usuario administrador (depende del rol Administrador)
   await seedAdminUser(prisma);
+
+  // 11. Subcategorías de tickets (independiente — solo depende del enum Category)
+  await seedTicketSubcategories(prisma);
 
   console.log('All seeds completed successfully!');
 }

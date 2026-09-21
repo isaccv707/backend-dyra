@@ -22,4 +22,8 @@ export class FindTicketsDto extends PaginatedQueryDto {
   @IsOptional()
   @IsUUID()
   assignedToId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subcategoryId?: string;
 }

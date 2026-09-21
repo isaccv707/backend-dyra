@@ -33,6 +33,8 @@ describe('TicketsService', () => {
       update: jest.Mock;
       updateMany: jest.Mock;
     };
+    ticketEvent: { create: jest.Mock; createMany: jest.Mock };
+    ticketSubcategory: { findUnique: jest.Mock };
     user: { findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -41,6 +43,7 @@ describe('TicketsService', () => {
     emitTicketUpdated: jest.Mock;
     emitNewComment: jest.Mock;
     notifyUsers: jest.Mock;
+    emitOverdueTicket: jest.Mock;
   };
 
   const branchId = 'branch-1';
@@ -95,6 +98,8 @@ describe('TicketsService', () => {
         update: jest.fn(),
         updateMany: jest.fn(),
       },
+      ticketEvent: { create: jest.fn(), createMany: jest.fn() },
+      ticketSubcategory: { findUnique: jest.fn() },
       user: { findUnique: jest.fn() },
       $transaction: jest.fn(),
     };
@@ -103,6 +108,7 @@ describe('TicketsService', () => {
       emitTicketUpdated: jest.fn(),
       emitNewComment: jest.fn(),
       notifyUsers: jest.fn(),
+      emitOverdueTicket: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -959,6 +965,263 @@ describe('TicketsService', () => {
         data: { read: true },
       });
       expect(result).toEqual({ updated: 3 });
+    });
+  });
+
+  describe('trazabilidad: subcategoría', () => {
+    it('valida la subcategoría contra la categoría del ticket al crear', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'SOFTWARE',
+      });
+
+      await expect(
+        service.create(
+          { ...createDto, category: 'HARDWARE', subcategoryId: 'sub-1' } as any,
+          globalUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si la subcategoría no existe', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.create(
+          { ...createDto, subcategoryId: 'ghost' } as any,
+          globalUser,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('crea el ticket cuando la subcategoría pertenece a la categoría', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'HARDWARE',
+      });
+      prisma.ticket.create.mockResolvedValue({ id: 'ticket-1' });
+
+      await expect(
+        service.create(
+          { ...createDto, category: 'HARDWARE', subcategoryId: 'sub-1' } as any,
+          globalUser,
+        ),
+      ).resolves.toBeDefined();
+    });
+  });
+
+  describe('trazabilidad: SLA y ciclo de vida', () => {
+    const baseTicket = {
+      id: 'ticket-1',
+      branchId,
+      status: 'OPEN' as const,
+      priority: 'MEDIUM' as const,
+      category: 'HARDWARE' as const,
+      subcategoryId: null,
+      assignedToId: null,
+      createdById: 'reporter-1',
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      resolvedAt: null,
+      closedAt: null,
+      reopenedCount: 0,
+      firstResponseAt: null,
+    };
+
+    it('fija resolvedAt al pasar a RESOLVED', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(baseTicket);
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        status: 'RESOLVED',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { status: 'RESOLVED' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      expect(data.resolvedAt).toBeInstanceOf(Date);
+    });
+
+    it('limpia resolvedAt/closedAt e incrementa reopenedCount al reabrir un ticket RESOLVED', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...baseTicket,
+        status: 'RESOLVED',
+        resolvedAt: new Date(),
+      });
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        status: 'IN_PROGRESS',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { status: 'IN_PROGRESS' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      expect(data.resolvedAt).toBeNull();
+      expect(data.closedAt).toBeNull();
+      expect(data.reopenedCount).toBe(1);
+    });
+
+    it('recalcula dueAt a partir de createdAt cuando cambia la prioridad', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(baseTicket);
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        priority: 'CRITICAL',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { priority: 'CRITICAL' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      expect(data.dueAt).toEqual(
+        new Date(baseTicket.createdAt.getTime() + 4 * 60 * 60 * 1000),
+      );
+      expect(data.overdueNotifiedAt).toBeNull();
+    });
+
+    it('valida la subcategoría contra la categoría vigente al actualizar', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(baseTicket);
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'SOFTWARE',
+      });
+
+      await expect(
+        service.update(
+          'ticket-1',
+          { subcategoryId: 'sub-1' } as UpdateTicketDto,
+          staffUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('trazabilidad: primera respuesta en addComment', () => {
+    const ticketWithParties = {
+      id: 'ticket-1',
+      branchId,
+      createdById: 'reporter-1',
+      assignedToId: 'tech-1',
+      firstResponseAt: null,
+    };
+
+    it('fija firstResponseAt cuando alguien distinto al creador comenta por primera vez', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticketWithParties);
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+
+      await service.addComment(
+        'ticket-1',
+        { body: 'Ya voy en camino' },
+        staffUser,
+      );
+
+      expect(prisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: 'ticket-1' },
+        data: { firstResponseAt: expect.any(Date) },
+      });
+    });
+
+    it('no toca firstResponseAt cuando el propio creador comenta', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...ticketWithParties,
+        createdById: scopedUser.id,
+      });
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+
+      await service.addComment('ticket-1', { body: 'Aviso' }, scopedUser);
+
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+
+    it('no vuelve a tocar firstResponseAt si ya estaba fijo', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...ticketWithParties,
+        firstResponseAt: new Date('2026-01-01'),
+      });
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+
+      await service.addComment(
+        'ticket-1',
+        { body: 'Otro comentario' },
+        staffUser,
+      );
+
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notifyOverdueTickets', () => {
+    it('avisa al asignado, transmite a TI y marca overdueNotifiedAt por cada ticket vencido', async () => {
+      const overdueTicket = {
+        id: 'ticket-1',
+        code: 42,
+        title: 'No enciende el monitor',
+        assignedToId: 'tech-1',
+      };
+      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
+      prisma.ticket.update.mockResolvedValue(overdueTicket);
+
+      const result = await service.notifyOverdueTickets();
+
+      expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
+        data: [
+          {
+            userId: 'tech-1',
+            ticketId: 'ticket-1',
+            message: expect.stringContaining('#42'),
+          },
+        ],
+      });
+      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith(overdueTicket);
+      expect(prisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: 'ticket-1' },
+        data: { overdueNotifiedAt: expect.any(Date) },
+      });
+      expect(result).toEqual({ notified: 1 });
+    });
+
+    it('no crea TicketNotification para tickets vencidos sin asignar, pero sigue transmitiendo a TI', async () => {
+      const overdueTicket = {
+        id: 'ticket-1',
+        code: 42,
+        title: 'No enciende el monitor',
+        assignedToId: null,
+      };
+      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
+      prisma.ticket.update.mockResolvedValue(overdueTicket);
+
+      await service.notifyOverdueTickets();
+
+      expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
+      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith(overdueTicket);
+    });
+
+    it('no hace nada si no hay tickets vencidos', async () => {
+      prisma.ticket.findMany.mockResolvedValue([]);
+
+      const result = await service.notifyOverdueTickets();
+
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+      expect(result).toEqual({ notified: 0 });
     });
   });
 });

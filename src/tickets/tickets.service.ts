@@ -4,7 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, Ticket, TicketPriority, TicketStatus } from '@prisma/client';
+import {
+  Category,
+  Prisma,
+  Ticket,
+  TicketPriority,
+  TicketStatus,
+} from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import {
@@ -17,6 +23,7 @@ import {
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
+import { computeDueAt } from './constants/ticket-sla.const';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FindTicketNotificationsDto } from './dto/find-ticket-notifications.dto';
@@ -35,7 +42,7 @@ const TICKET_ALLOWED_FIELDS = [
 
 const TICKET_UPDATE_PERMISSION = 'tickets:update';
 
-const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
+export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   OPEN: 'Abierto',
   IN_PROGRESS: 'En progreso',
   ON_HOLD: 'En espera',
@@ -56,20 +63,34 @@ const TICKET_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   CANCELLED: [],
 };
 
-const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
+export const TICKET_PRIORITY_LABELS: Record<TicketPriority, string> = {
   LOW: 'Baja',
   MEDIUM: 'Media',
   HIGH: 'Alta',
   CRITICAL: 'Crítica',
 };
 
+export const CATEGORY_LABELS: Record<Category, string> = {
+  HARDWARE: 'Hardware',
+  SOFTWARE: 'Software',
+  NETWORK: 'Red',
+  ACCESS: 'Accesos',
+  COGNITI: 'CogniTI',
+  OTHER: 'Otro',
+};
+
 const COMMENT_PREVIEW_LENGTH = 140;
+
+// Estados desde los que "volver a IN_PROGRESS" cuenta como reapertura
+// (incrementa Ticket.reopenedCount y limpia resolvedAt/closedAt).
+const REOPENABLE_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED'];
 
 const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()({
   include: {
     branch: { select: { id: true, name: true } },
     createdBy: { select: { id: true, name: true, email: true } },
     assignedTo: { select: { id: true, name: true, email: true } },
+    subcategory: { select: { id: true, category: true, name: true } },
   },
 });
 
@@ -101,6 +122,22 @@ export type TicketWithFullRelations = Prisma.TicketGetPayload<
   typeof ticketWithFullRelations
 >;
 
+interface TraceabilityFields {
+  resolvedAt?: Date | null;
+  closedAt?: Date | null;
+  reopenedCount?: number;
+  dueAt?: Date | null;
+  overdueNotifiedAt?: Date | null;
+  firstResponseAt?: Date;
+}
+
+interface ChangeEntry {
+  type: Prisma.TicketEventCreateManyInput['type'];
+  fromValue: string | null;
+  toValue: string | null;
+  text: string;
+}
+
 @Injectable()
 export class TicketsService {
   constructor(
@@ -114,13 +151,28 @@ export class TicketsService {
   ) {
     assertBranchAccess(user, createTicketDto.branchId);
 
+    if (createTicketDto.subcategoryId) {
+      await this.assertSubcategoryBelongsToCategory(
+        createTicketDto.subcategoryId,
+        createTicketDto.category,
+      );
+    }
+
+    const now = new Date();
+    const priority = createTicketDto.priority ?? TicketPriority.MEDIUM;
+
     try {
       const ticket = await this.prisma.ticket.create({
         data: {
           ...createTicketDto,
           createdById: user.id,
+          dueAt: computeDueAt(priority, now),
         },
         ...ticketWithRelations,
+      });
+
+      await this.prisma.ticketEvent.create({
+        data: { type: 'CREATED', ticketId: ticket.id, actorId: user.id },
       });
 
       this.ticketsGateway.emitNewTicket(ticket);
@@ -182,6 +234,7 @@ export class TicketsService {
       ...(dto.category && { category: dto.category }),
       ...(dto.priority && { priority: dto.priority }),
       ...(dto.assignedToId && { assignedToId: dto.assignedToId }),
+      ...(dto.subcategoryId && { subcategoryId: dto.subcategoryId }),
       ...(!canSeeAllTickets && { createdById: user.id }),
     } as Prisma.TicketWhereInput;
 
@@ -240,6 +293,18 @@ export class TicketsService {
       );
     }
 
+    if (updateTicketDto.subcategoryId) {
+      await this.assertSubcategoryBelongsToCategory(
+        updateTicketDto.subcategoryId,
+        updateTicketDto.category ?? ticket.category,
+      );
+    }
+
+    const traceabilityData = this.computeTraceabilityFields(
+      ticket,
+      updateTicketDto,
+    );
+
     try {
       const updated = await this.prisma.ticket.update({
         where: { id },
@@ -248,9 +313,16 @@ export class TicketsService {
           ...(updateTicketDto.priority && {
             priority: updateTicketDto.priority,
           }),
+          ...(updateTicketDto.category && {
+            category: updateTicketDto.category,
+          }),
+          ...(updateTicketDto.subcategoryId !== undefined && {
+            subcategoryId: updateTicketDto.subcategoryId,
+          }),
           ...(updateTicketDto.assignedToId !== undefined && {
             assignedToId: updateTicketDto.assignedToId,
           }),
+          ...traceabilityData,
         },
         ...ticketWithRelations,
       });
@@ -295,6 +367,25 @@ export class TicketsService {
       ...commentWithAuthor,
     });
 
+    await this.prisma.ticketEvent.create({
+      data: {
+        type: 'COMMENTED',
+        ticketId,
+        actorId: user.id,
+        toValue: comment.isInternal ? 'internal' : 'public',
+      },
+    });
+
+    // "Primera respuesta" = primer comentario (interno o público) de
+    // alguien distinto a quien reportó el ticket. Si ya hubo una asignación
+    // antes, firstResponseAt ya estaba fijo y esto no lo toca.
+    if (!ticket.firstResponseAt && user.id !== ticket.createdById) {
+      await this.prisma.ticket.update({
+        where: { id: ticketId },
+        data: { firstResponseAt: new Date() },
+      });
+    }
+
     this.ticketsGateway.emitNewComment(ticketId, comment, [
       ticket.createdById,
       ticket.assignedToId,
@@ -321,24 +412,168 @@ export class TicketsService {
     return comment;
   }
 
+  // Calcula los campos de trazabilidad/SLA a fusionar en el `data` de
+  // prisma.ticket.update, a partir del ticket previo y lo que cambia en el
+  // dto. No hace ninguna escritura por sí solo.
+  private computeTraceabilityFields(
+    ticket: Ticket,
+    dto: UpdateTicketDto,
+  ): TraceabilityFields {
+    const data: TraceabilityFields = {};
+
+    if (dto.status && dto.status !== ticket.status) {
+      if (dto.status === 'RESOLVED') {
+        data.resolvedAt = new Date();
+      }
+      if (dto.status === 'CLOSED') {
+        data.closedAt = new Date();
+        if (!ticket.resolvedAt) data.resolvedAt = new Date();
+      }
+      if (
+        dto.status === 'IN_PROGRESS' &&
+        REOPENABLE_STATUSES.includes(ticket.status)
+      ) {
+        data.resolvedAt = null;
+        data.closedAt = null;
+        data.reopenedCount = ticket.reopenedCount + 1;
+        data.overdueNotifiedAt = null;
+      }
+    }
+
+    if (dto.priority && dto.priority !== ticket.priority) {
+      data.dueAt = computeDueAt(dto.priority, ticket.createdAt);
+      data.overdueNotifiedAt = null;
+    }
+
+    if (dto.assignedToId && !ticket.assignedToId && !ticket.firstResponseAt) {
+      data.firstResponseAt = new Date();
+    }
+
+    return data;
+  }
+
+  private buildChangeEntries(
+    previousTicket: Pick<
+      Ticket,
+      'status' | 'priority' | 'category' | 'subcategoryId' | 'assignedToId'
+    >,
+    updatedTicket: TicketWithRelations,
+    dto: UpdateTicketDto,
+    previousSubcategoryName: string | null,
+  ): ChangeEntry[] {
+    const entries: ChangeEntry[] = [];
+
+    if (dto.status && dto.status !== previousTicket.status) {
+      entries.push({
+        type: 'STATUS_CHANGED',
+        fromValue: previousTicket.status,
+        toValue: updatedTicket.status,
+        text: `cambió el estado de "${TICKET_STATUS_LABELS[previousTicket.status]}" a "${TICKET_STATUS_LABELS[updatedTicket.status]}"`,
+      });
+
+      if (
+        updatedTicket.status === 'IN_PROGRESS' &&
+        REOPENABLE_STATUSES.includes(previousTicket.status)
+      ) {
+        entries.push({
+          type: 'REOPENED',
+          fromValue: previousTicket.status,
+          toValue: updatedTicket.status,
+          text: 'reabrió el ticket',
+        });
+      }
+    }
+
+    if (dto.priority && dto.priority !== previousTicket.priority) {
+      entries.push({
+        type: 'PRIORITY_CHANGED',
+        fromValue: previousTicket.priority,
+        toValue: updatedTicket.priority,
+        text: `cambió la prioridad de "${TICKET_PRIORITY_LABELS[previousTicket.priority]}" a "${TICKET_PRIORITY_LABELS[updatedTicket.priority]}"`,
+      });
+    }
+
+    if (dto.category && dto.category !== previousTicket.category) {
+      entries.push({
+        type: 'CATEGORY_CHANGED',
+        fromValue: previousTicket.category,
+        toValue: updatedTicket.category,
+        text: `cambió la categoría de "${CATEGORY_LABELS[previousTicket.category]}" a "${CATEGORY_LABELS[updatedTicket.category]}"`,
+      });
+    }
+
+    if (
+      dto.subcategoryId !== undefined &&
+      dto.subcategoryId !== previousTicket.subcategoryId
+    ) {
+      const fromLabel = previousSubcategoryName ?? 'sin subcategoría';
+      const toLabel = updatedTicket.subcategory?.name ?? 'sin subcategoría';
+      entries.push({
+        type: 'SUBCATEGORY_CHANGED',
+        fromValue: previousTicket.subcategoryId,
+        toValue: updatedTicket.subcategoryId,
+        text: `cambió la subcategoría de "${fromLabel}" a "${toLabel}"`,
+      });
+    }
+
+    if (
+      dto.assignedToId !== undefined &&
+      dto.assignedToId !== previousTicket.assignedToId
+    ) {
+      entries.push({
+        type: dto.assignedToId ? 'ASSIGNED' : 'UNASSIGNED',
+        fromValue: previousTicket.assignedToId,
+        toValue: updatedTicket.assignedToId,
+        text: updatedTicket.assignedTo
+          ? `reasignó el ticket a ${updatedTicket.assignedTo.name}`
+          : 'quitó la asignación del ticket',
+      });
+    }
+
+    return entries;
+  }
+
   // Deja un comentario de sistema (isSystem:true) con lo que cambió en este
-  // update() — es el historial de auditoría: quién reasignó, quién cambió
-  // estado/prioridad y cuándo, sin depender de que además haya escrito un
-  // comentario. También avisa en vivo a quien reportó el ticket y a quien
-  // quedó asignado (si cambió) — no solo a ti_staff_room.
+  // update() — es el historial legible para la UI — y, por cada cambio, una
+  // fila estructurada en TicketEvent (la fuente de datos para analytics).
+  // También avisa en vivo a quien reportó el ticket y a quien quedó
+  // asignado (si cambió) — no solo a ti_staff_room.
   private async recordChangeAndNotify(
     previousTicket: Pick<
       Ticket,
-      'id' | 'status' | 'priority' | 'assignedToId' | 'createdById'
+      | 'id'
+      | 'status'
+      | 'priority'
+      | 'category'
+      | 'subcategoryId'
+      | 'assignedToId'
+      | 'createdById'
     >,
     updatedTicket: TicketWithRelations,
     dto: UpdateTicketDto,
     user: RequestUser,
   ) {
-    const summary = this.buildChangeSummary(previousTicket, updatedTicket, dto);
-    if (!summary) return;
+    const previousSubcategoryName =
+      dto.subcategoryId !== undefined &&
+      dto.subcategoryId !== previousTicket.subcategoryId &&
+      previousTicket.subcategoryId
+        ? ((
+            await this.prisma.ticketSubcategory.findUnique({
+              where: { id: previousTicket.subcategoryId },
+              select: { name: true },
+            })
+          )?.name ?? null)
+        : null;
 
-    const message = `${user.name} ${summary}`;
+    const entries = this.buildChangeEntries(
+      previousTicket,
+      updatedTicket,
+      dto,
+      previousSubcategoryName,
+    );
+    if (entries.length === 0) return;
+
+    const message = `${user.name} ${entries.map((e) => e.text).join(', ')}.`;
 
     const comment = await this.prisma.ticketComment.create({
       data: {
@@ -351,6 +586,16 @@ export class TicketsService {
       ...commentWithAuthor,
     });
 
+    await this.prisma.ticketEvent.createMany({
+      data: entries.map((entry) => ({
+        type: entry.type,
+        fromValue: entry.fromValue,
+        toValue: entry.toValue,
+        ticketId: previousTicket.id,
+        actorId: user.id,
+      })),
+    });
+
     this.ticketsGateway.emitNewComment(previousTicket.id, comment, [
       previousTicket.createdById,
       updatedTicket.assignedToId,
@@ -360,39 +605,6 @@ export class TicketsService {
       previousTicket.id,
       message,
     );
-  }
-
-  private buildChangeSummary(
-    previousTicket: Pick<Ticket, 'status' | 'priority' | 'assignedToId'>,
-    updatedTicket: TicketWithRelations,
-    dto: UpdateTicketDto,
-  ): string | null {
-    const parts: string[] = [];
-
-    if (dto.status && dto.status !== previousTicket.status) {
-      parts.push(
-        `cambió el estado de "${TICKET_STATUS_LABELS[previousTicket.status]}" a "${TICKET_STATUS_LABELS[updatedTicket.status]}"`,
-      );
-    }
-
-    if (dto.priority && dto.priority !== previousTicket.priority) {
-      parts.push(
-        `cambió la prioridad de "${TICKET_PRIORITY_LABELS[previousTicket.priority]}" a "${TICKET_PRIORITY_LABELS[updatedTicket.priority]}"`,
-      );
-    }
-
-    if (
-      dto.assignedToId !== undefined &&
-      dto.assignedToId !== previousTicket.assignedToId
-    ) {
-      parts.push(
-        updatedTicket.assignedTo
-          ? `reasignó el ticket a ${updatedTicket.assignedTo.name}`
-          : 'quitó la asignación del ticket',
-      );
-    }
-
-    return parts.length ? `${parts.join(', ')}.` : null;
   }
 
   private assertValidStatusTransition(from: TicketStatus, to: TicketStatus) {
@@ -439,6 +651,31 @@ export class TicketsService {
     ) {
       throw new BadRequestException(
         'El usuario asignado no tiene acceso a la sucursal de este ticket',
+      );
+    }
+  }
+
+  // La subcategoría, cuando se manda, debe pertenecer a la misma Category
+  // del ticket — mismo espíritu que assertServiceBelongsToBranch en
+  // studies.service.ts: relación cruzada validada en la capa de servicio,
+  // no a nivel DB.
+  private async assertSubcategoryBelongsToCategory(
+    subcategoryId: string,
+    category: Category,
+  ) {
+    const subcategory = await this.prisma.ticketSubcategory.findUnique({
+      where: { id: subcategoryId },
+      select: { category: true },
+    });
+
+    if (!subcategory) {
+      throw new NotFoundException(
+        `TicketSubcategory with ID '${subcategoryId}' not found`,
+      );
+    }
+    if (subcategory.category !== category) {
+      throw new BadRequestException(
+        `La subcategoría no pertenece a la categoría '${category}'`,
       );
     }
   }
@@ -515,5 +752,40 @@ export class TicketsService {
     });
 
     return { updated: count };
+  }
+
+  // Llamado por TicketsSlaCron (una vez por hora). Busca tickets con SLA
+  // vencido (dueAt < ahora) en un estado no terminal que todavía no se
+  // notificaron (overdueNotifiedAt null), avisa al técnico asignado (si
+  // hay) y transmite en vivo a ti_staff_room aunque no haya asignado, y
+  // marca overdueNotifiedAt para no repetir el mismo aviso en la próxima
+  // corrida. Se limpia (vuelve a null) cuando el ticket cambia de
+  // prioridad o se reabre — ver computeTraceabilityFields.
+  async notifyOverdueTickets(): Promise<{ notified: number }> {
+    const now = new Date();
+    const overdue = await this.prisma.ticket.findMany({
+      where: {
+        dueAt: { lt: now },
+        overdueNotifiedAt: null,
+        status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] },
+      },
+      select: { id: true, code: true, title: true, assignedToId: true },
+    });
+
+    for (const ticket of overdue) {
+      const message = `El ticket #${ticket.code} "${ticket.title}" venció su tiempo de atención (SLA).`;
+
+      if (ticket.assignedToId) {
+        await this.persistAndNotify([ticket.assignedToId], ticket.id, message);
+      }
+      this.ticketsGateway.emitOverdueTicket(ticket);
+
+      await this.prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { overdueNotifiedAt: now },
+      });
+    }
+
+    return { notified: overdue.length };
   }
 }

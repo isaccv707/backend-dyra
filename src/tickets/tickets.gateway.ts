@@ -158,6 +158,14 @@ export class TicketsGateway implements OnGatewayConnection {
     this.server.to(rooms).emit('ticket_notification', { ticketId, message });
   }
 
+  // Aviso en vivo de SLA vencido, transmitido a ti_staff_room sin importar
+  // si el ticket tiene asignado (a diferencia de notifyUsers, que requiere
+  // IDs de usuario concretos) — así un ticket vencido y sin asignar sigue
+  // siendo visible para cualquier técnico conectado.
+  emitOverdueTicket(ticket: { id: string; code: number; title: string }) {
+    this.server.to(TI_STAFF_ROOM).emit('ticket_overdue', ticket);
+  }
+
   private extractToken(client: Socket): string {
     const authToken = client.handshake.auth?.token as string | undefined;
     const headerToken = client.handshake.headers.authorization?.replace(
