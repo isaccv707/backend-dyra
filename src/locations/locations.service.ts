@@ -5,8 +5,15 @@ import { FindLocationsDto } from './dto/find-locations.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
-import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
+import {
+  assertBranchAccess,
+  BranchScopedUser,
+  userBranchFilter,
+} from 'src/common/utils/branch-access.util';
 
 const LOCATION_ALLOWED_FIELDS = ['name', 'createdAt'];
 
@@ -21,7 +28,9 @@ export class LocationsService {
       where: { id: createLocationDto.branchId },
     });
     if (!branch) {
-      throw new NotFoundException(`Branch with ID '${createLocationDto.branchId}' not found`);
+      throw new NotFoundException(
+        `Branch with ID '${createLocationDto.branchId}' not found`,
+      );
     }
 
     try {
@@ -61,7 +70,11 @@ export class LocationsService {
     return location;
   }
 
-  async update(id: string, updateLocationDto: UpdateLocationDto, user: BranchScopedUser) {
+  async update(
+    id: string,
+    updateLocationDto: UpdateLocationDto,
+    user: BranchScopedUser,
+  ) {
     const location = await this.findOne(id);
     assertBranchAccess(user, location.branchId);
 

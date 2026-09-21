@@ -4,7 +4,9 @@ import { ValidateNested, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 import { UpdateAddressDto } from './update-address.dto';
 
-export class UpdateBranchDto extends PartialType(OmitType(CreateBranchDto, ['address'] as const)) {
+export class UpdateBranchDto extends PartialType(
+  OmitType(CreateBranchDto, ['address'] as const),
+) {
   @IsOptional()
   @ValidateNested()
   @Type(() => UpdateAddressDto)

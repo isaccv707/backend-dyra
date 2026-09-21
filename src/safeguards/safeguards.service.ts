@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -9,8 +13,15 @@ import {
 } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
-import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
+import {
+  assertBranchAccess,
+  BranchScopedUser,
+  userBranchFilter,
+} from 'src/common/utils/branch-access.util';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { CreateSafeguardDto } from './dto/create-safeguard.dto';
 import { FindSafeguardsDto } from './dto/find-safeguards.dto';
@@ -25,15 +36,24 @@ import { SafeguardPdfRenderer } from './pdf/safeguard-pdf.renderer';
 const DOC_CODE = 'ADM.F.00';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
 
-const SAFEGUARD_ALLOWED_FIELDS = ['employeeName', 'area', 'usageType', 'createdAt'];
+const SAFEGUARD_ALLOWED_FIELDS = [
+  'employeeName',
+  'area',
+  'usageType',
+  'createdAt',
+];
 
 const SAFEGUARD_INCLUDE = {
-  employee: { select: { id: true, name: true, department: true, position: true } },
+  employee: {
+    select: { id: true, name: true, department: true, position: true },
+  },
   computer: { include: { accessoryDetails: true } },
   mobile: { include: { accessoryDetails: true } },
 } satisfies Prisma.SafeguardInclude;
 
-type SafeguardWithDetails = Prisma.SafeguardGetPayload<{ include: typeof SAFEGUARD_INCLUDE }>;
+type SafeguardWithDetails = Prisma.SafeguardGetPayload<{
+  include: typeof SAFEGUARD_INCLUDE;
+}>;
 
 // Todo lo que NO vive en DeviceItem: términos de la asignación (usageType/
 // fechas) y accesorios de celular sin identificador propio, capturados al
@@ -79,19 +99,29 @@ export class SafeguardsService {
     employeeId: string,
     input: CreateFromEmployeeDevicesInput,
   ): Promise<SafeguardWithDetails> {
-    const employee = await tx.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    const employee = await tx.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+    });
 
     const assignedDevices = await tx.deviceItem.findMany({
       where: {
         employeeId,
         status: DeviceStatus.ASSIGNED,
-        catalog: { type: { in: [SECTION_DEVICE_TYPE.computer, SECTION_DEVICE_TYPE.mobile] } },
+        catalog: {
+          type: {
+            in: [SECTION_DEVICE_TYPE.computer, SECTION_DEVICE_TYPE.mobile],
+          },
+        },
       },
       include: { catalog: true },
     });
 
-    const computerDevice = assignedDevices.find((d) => d.catalog.type === SECTION_DEVICE_TYPE.computer);
-    const mobileDevice = assignedDevices.find((d) => d.catalog.type === SECTION_DEVICE_TYPE.mobile);
+    const computerDevice = assignedDevices.find(
+      (d) => d.catalog.type === SECTION_DEVICE_TYPE.computer,
+    );
+    const mobileDevice = assignedDevices.find(
+      (d) => d.catalog.type === SECTION_DEVICE_TYPE.mobile,
+    );
 
     if (!computerDevice && !mobileDevice) {
       throw new BadRequestException(
@@ -106,7 +136,9 @@ export class SafeguardsService {
 
     const usageType = input.usageType ?? existing?.usageType;
     if (!usageType) {
-      throw new BadRequestException('usageType es obligatorio para generar la primera responsiva del empleado');
+      throw new BadRequestException(
+        'usageType es obligatorio para generar la primera responsiva del empleado',
+      );
     }
     const startDate = input.startDate ?? existing?.startDate ?? null;
     const endDate = input.endDate ?? existing?.endDate ?? null;
@@ -160,10 +192,17 @@ export class SafeguardsService {
     return safeguard;
   }
 
-  async create(dto: CreateSafeguardDto, user: BranchScopedUser & { id: string }) {
-    const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
+  async create(
+    dto: CreateSafeguardDto,
+    user: BranchScopedUser & { id: string },
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+    });
     if (!employee) {
-      throw new NotFoundException(`Employee with ID '${dto.employeeId}' not found`);
+      throw new NotFoundException(
+        `Employee with ID '${dto.employeeId}' not found`,
+      );
     }
     assertBranchAccess(user, employee.branchId);
 
@@ -197,15 +236,27 @@ export class SafeguardsService {
     } as Prisma.SafeguardWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.safeguard.findMany({ skip, take, where: finalWhere, orderBy, include: SAFEGUARD_INCLUDE }),
+      this.prisma.safeguard.findMany({
+        skip,
+        take,
+        where: finalWhere,
+        orderBy,
+        include: SAFEGUARD_INCLUDE,
+      }),
       this.prisma.safeguard.count({ where: finalWhere }),
     ]);
 
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string, user: BranchScopedUser): Promise<SafeguardWithDetails> {
-    const safeguard = await this.prisma.safeguard.findUnique({ where: { id }, include: SAFEGUARD_INCLUDE });
+  async findOne(
+    id: string,
+    user: BranchScopedUser,
+  ): Promise<SafeguardWithDetails> {
+    const safeguard = await this.prisma.safeguard.findUnique({
+      where: { id },
+      include: SAFEGUARD_INCLUDE,
+    });
     if (!safeguard) {
       throw new NotFoundException(`Safeguard with ID '${id}' not found`);
     }
@@ -233,7 +284,10 @@ export class SafeguardsService {
   // Cierra la responsiva vigente del empleado sin generar una nueva — se usa
   // al hacer offboard (el empleado ya no tiene equipo asignado, así que no
   // hay contenido para una versión nueva).
-  async closeCurrentForEmployee(tx: Prisma.TransactionClient, employeeId: string) {
+  async closeCurrentForEmployee(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+  ) {
     await tx.safeguard.updateMany({
       where: { employeeId, supersededAt: null },
       data: { supersededAt: new Date() },
@@ -243,11 +297,17 @@ export class SafeguardsService {
   // Confirma la firma de la versión VIGENTE de un resguardo, con o sin
   // documento adjunto (signedDocumentPublicId). Es la única forma soportada
   // de marcar Employee.hasSignedResponsibility en true.
-  async sign(id: string, dto: SignSafeguardDto, user: BranchScopedUser & { id: string }) {
+  async sign(
+    id: string,
+    dto: SignSafeguardDto,
+    user: BranchScopedUser & { id: string },
+  ) {
     const safeguard = await this.findOne(id, user);
 
     if (safeguard.supersededAt) {
-      throw new BadRequestException('No se puede firmar una versión histórica del resguardo');
+      throw new BadRequestException(
+        'No se puede firmar una versión histórica del resguardo',
+      );
     }
 
     try {
@@ -278,10 +338,14 @@ export class SafeguardsService {
     const safeguard = await this.findOne(id, user);
 
     if (!safeguard.signedDocumentPublicId) {
-      throw new NotFoundException('Este resguardo no tiene un documento firmado adjunto');
+      throw new NotFoundException(
+        'Este resguardo no tiene un documento firmado adjunto',
+      );
     }
 
-    return this.cloudinaryService.getSignedDownloadUrl(safeguard.signedDocumentPublicId);
+    return this.cloudinaryService.getSignedDownloadUrl(
+      safeguard.signedDocumentPublicId,
+    );
   }
 
   // Firma los parámetros para que el frontend suba el PDF firmado escaneado
@@ -292,14 +356,19 @@ export class SafeguardsService {
     const safeguard = await this.findOne(id, user);
 
     if (safeguard.supersededAt) {
-      throw new BadRequestException('No se puede adjuntar un documento a una versión histórica del resguardo');
+      throw new BadRequestException(
+        'No se puede adjuntar un documento a una versión histórica del resguardo',
+      );
     }
 
     const publicId = `safeguards/device-${safeguard.id}-${Date.now()}`;
     return this.cloudinaryService.generateSignedUploadParams(publicId);
   }
 
-  buildSafeguardPdf(doc: PDFKit.PDFDocument, safeguard: SafeguardWithDetails): void {
+  buildSafeguardPdf(
+    doc: PDFKit.PDFDocument,
+    safeguard: SafeguardWithDetails,
+  ): void {
     const data = this.buildPdfData(safeguard);
     this.pdfRenderer.render(doc, data);
   }
@@ -316,7 +385,10 @@ export class SafeguardsService {
     // por mainDeviceId (no por employeeId) — ver DevicesService (create/
     // update con mainDeviceId, y el cascade en assign/unassign/retire/traspaso).
     const accessoryDevices = await tx.deviceItem.findMany({
-      where: { mainDeviceId: device.id, catalog: { type: { in: ACCESSORY_DEVICE_TYPES } } },
+      where: {
+        mainDeviceId: device.id,
+        catalog: { type: { in: ACCESSORY_DEVICE_TYPES } },
+      },
       include: { catalog: true },
     });
 
@@ -371,7 +443,9 @@ export class SafeguardsService {
       condition: device.condition,
       observations: device.notes,
       ...(mobileAccessories.length && {
-        accessoryDetails: { create: mobileAccessories.map((name) => ({ name })) },
+        accessoryDetails: {
+          create: mobileAccessories.map((name) => ({ name })),
+        },
       }),
     };
   }
@@ -395,9 +469,16 @@ export class SafeguardsService {
       },
       usage: {
         usageType: safeguard.usageType,
-        usageLabel: safeguard.usageType === SafeguardUsageType.TEMPORARY ? 'Temporal' : 'Permanente',
-        formattedStartDate: safeguard.startDate ? safeguard.startDate.toLocaleDateString('es-MX') : null,
-        formattedEndDate: safeguard.endDate ? safeguard.endDate.toLocaleDateString('es-MX') : null,
+        usageLabel:
+          safeguard.usageType === SafeguardUsageType.TEMPORARY
+            ? 'Temporal'
+            : 'Permanente',
+        formattedStartDate: safeguard.startDate
+          ? safeguard.startDate.toLocaleDateString('es-MX')
+          : null,
+        formattedEndDate: safeguard.endDate
+          ? safeguard.endDate.toLocaleDateString('es-MX')
+          : null,
       },
       computer: safeguard.computer
         ? {
@@ -407,7 +488,9 @@ export class SafeguardsService {
             internalCode: safeguard.computer.internalCode ?? '',
             hardDrive: safeguard.computer.hardDrive ?? '',
             processor: safeguard.computer.processor ?? '',
-            accessories: this.composeAccessoriesLabel(safeguard.computer.accessoryDetails),
+            accessories: this.composeAccessoriesLabel(
+              safeguard.computer.accessoryDetails,
+            ),
             conditionLabel: this.conditionLabel(safeguard.computer.condition),
             observations: safeguard.computer.observations ?? '',
           }
@@ -418,7 +501,9 @@ export class SafeguardsService {
             model: safeguard.mobile.model,
             imei: safeguard.mobile.imei ?? '',
             phoneNumber: safeguard.mobile.phoneNumber ?? '',
-            accessories: this.composeAccessoriesLabel(safeguard.mobile.accessoryDetails),
+            accessories: this.composeAccessoriesLabel(
+              safeguard.mobile.accessoryDetails,
+            ),
             conditionLabel: this.conditionLabel(safeguard.mobile.condition),
             observations: safeguard.mobile.observations ?? '',
           }
@@ -427,13 +512,20 @@ export class SafeguardsService {
   }
 
   private composeAccessoriesLabel(
-    accessoryDetails: { name: string; serialNumber: string | null; internalCode: string | null }[],
+    accessoryDetails: {
+      name: string;
+      serialNumber: string | null;
+      internalCode: string | null;
+    }[],
   ): string {
     if (!accessoryDetails.length) return '';
 
     return accessoryDetails
       .map((a) => {
-        const codes = [a.serialNumber && `S/N ${a.serialNumber}`, a.internalCode].filter(Boolean);
+        const codes = [
+          a.serialNumber && `S/N ${a.serialNumber}`,
+          a.internalCode,
+        ].filter(Boolean);
         return codes.length ? `${a.name} (${codes.join(' — ')})` : a.name;
       })
       .join('; ');
@@ -457,7 +549,10 @@ export class SafeguardsService {
       }
     }
 
-    console.warn('No se pudo cargar el logo para el PDF de resguardo. Ninguna ruta encontrada:', candidatePaths);
+    console.warn(
+      'No se pudo cargar el logo para el PDF de resguardo. Ninguna ruta encontrada:',
+      candidatePaths,
+    );
 
     return null;
   }

@@ -19,7 +19,10 @@ import {
   BranchScopedUser,
   userBranchFilter,
 } from 'src/common/utils/branch-access.util';
-import { CreateQuotationDto, SelectedStudyDto } from './dto/create-quotation.dto';
+import {
+  CreateQuotationDto,
+  SelectedStudyDto,
+} from './dto/create-quotation.dto';
 import { FindQuotationsDto } from './dto/find-quotations.dto';
 import {
   CompanyInfo,
@@ -110,9 +113,7 @@ export class QuotationsService {
       select: QUOTATION_BRANCH_SELECT,
     });
     if (!branch) {
-      throw new NotFoundException(
-        `Branch with ID '${dto.branchId}' not found`,
-      );
+      throw new NotFoundException(`Branch with ID '${dto.branchId}' not found`);
     }
 
     const priceSheet = await this.prisma.priceSheets.findFirst({
@@ -184,14 +185,21 @@ export class QuotationsService {
 
     if (catalogStudyIds.length > 0) {
       const entries = await this.prisma.studyOnPriceSheet.findMany({
-        where: { studyId: { in: catalogStudyIds }, priceSheetId: dto.priceSheetId },
+        where: {
+          studyId: { in: catalogStudyIds },
+          priceSheetId: dto.priceSheetId,
+        },
         include: { study: { select: { name: true, code: true } } },
       });
 
       priceByStudyId = new Map(
         entries.map((entry) => [
           entry.studyId,
-          { name: entry.study.name, code: entry.study.code, price: entry.price },
+          {
+            name: entry.study.name,
+            code: entry.study.code,
+            price: entry.price,
+          },
         ]),
       );
 

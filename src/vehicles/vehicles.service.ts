@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateVehicleItemDto } from './dto/create-vehicle-item.dto';
 import { UpdateVehicleItemDto } from './dto/update-vehicle-item.dto';
 import { FindVehiclesDto } from './dto/find-vehicles.dto';
@@ -10,10 +14,22 @@ import { FindVehicleTransfersDto } from './dto/find-vehicle-transfers.dto';
 import { CancelVehicleTransferDto } from './dto/cancel-vehicle-transfer.dto';
 import { RejectVehicleTransferDto } from './dto/reject-vehicle-transfer.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { DeviceStatus, Prisma, SafeguardUsageType, TransferStatus } from '@prisma/client';
+import {
+  DeviceStatus,
+  Prisma,
+  SafeguardUsageType,
+  TransferStatus,
+} from '@prisma/client';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
-import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
+import {
+  assertBranchAccess,
+  BranchScopedUser,
+  userBranchFilter,
+} from 'src/common/utils/branch-access.util';
 import { VehicleSafeguardsService } from 'src/vehicle-safeguards/vehicle-safeguards.service';
 import { VehicleSafeguardInspectionItemDto } from 'src/vehicle-safeguards/dto/vehicle-safeguard-inspection-item.dto';
 
@@ -27,7 +43,12 @@ interface VehicleSafeguardAssignmentFields {
   inspectionItems?: VehicleSafeguardInspectionItemDto[];
 }
 
-const VEHICLE_ALLOWED_FIELDS = ['internalCode', 'status', 'condition', 'createdAt'];
+const VEHICLE_ALLOWED_FIELDS = [
+  'internalCode',
+  'status',
+  'condition',
+  'createdAt',
+];
 const VEHICLE_TRANSFER_ALLOWED_FIELDS = ['status', 'createdAt'];
 
 const VEHICLE_INCLUDE = {
@@ -40,7 +61,11 @@ const VEHICLE_INCLUDE = {
 const VEHICLE_TRANSFER_INCLUDE = {
   originBranch: { select: { id: true, name: true } },
   destinationBranch: { select: { id: true, name: true } },
-  items: { include: { vehicle: { select: { id: true, internalCode: true, status: true } } } },
+  items: {
+    include: {
+      vehicle: { select: { id: true, internalCode: true, status: true } },
+    },
+  },
 } satisfies Prisma.VehicleTransferRequestInclude;
 
 type AuthUser = BranchScopedUser & { id: string };
@@ -65,14 +90,22 @@ export class VehiclesService {
       );
     }
 
-    const catalog = await this.prisma.vehicleCatalog.findUnique({ where: { id: dto.catalogId } });
+    const catalog = await this.prisma.vehicleCatalog.findUnique({
+      where: { id: dto.catalogId },
+    });
     if (!catalog) {
-      throw new NotFoundException(`VehicleCatalog with ID '${dto.catalogId}' not found`);
+      throw new NotFoundException(
+        `VehicleCatalog with ID '${dto.catalogId}' not found`,
+      );
     }
 
-    const branch = await this.prisma.branch.findUnique({ where: { id: dto.currentBranchId } });
+    const branch = await this.prisma.branch.findUnique({
+      where: { id: dto.currentBranchId },
+    });
     if (!branch) {
-      throw new NotFoundException(`Branch with ID '${dto.currentBranchId}' not found`);
+      throw new NotFoundException(
+        `Branch with ID '${dto.currentBranchId}' not found`,
+      );
     }
 
     if (dto.employeeId) {
@@ -82,8 +115,12 @@ export class VehiclesService {
       await this.assertLocationInBranch(dto.locationId, dto.currentBranchId);
     }
 
-    const status = dto.employeeId || dto.locationId ? DeviceStatus.ASSIGNED : DeviceStatus.AVAILABLE;
-    const { usageType, startDate, endDate, inspectionItems, ...vehicleFields } = dto;
+    const status =
+      dto.employeeId || dto.locationId
+        ? DeviceStatus.ASSIGNED
+        : DeviceStatus.AVAILABLE;
+    const { usageType, startDate, endDate, inspectionItems, ...vehicleFields } =
+      dto;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -106,12 +143,17 @@ export class VehiclesService {
         });
 
         if (dto.employeeId) {
-          await this.triggerVehicleSafeguardForAssignment(tx, dto.employeeId, user.id, {
-            usageType,
-            startDate,
-            endDate,
-            inspectionItems,
-          });
+          await this.triggerVehicleSafeguardForAssignment(
+            tx,
+            dto.employeeId,
+            user.id,
+            {
+              usageType,
+              startDate,
+              endDate,
+              inspectionItems,
+            },
+          );
         }
 
         return vehicle;
@@ -138,7 +180,13 @@ export class VehiclesService {
     } as Prisma.VehicleItemWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.vehicleItem.findMany({ skip, take, where: finalWhere, orderBy, include: VEHICLE_INCLUDE }),
+      this.prisma.vehicleItem.findMany({
+        skip,
+        take,
+        where: finalWhere,
+        orderBy,
+        include: VEHICLE_INCLUDE,
+      }),
       this.prisma.vehicleItem.count({ where: finalWhere }),
     ]);
 
@@ -146,14 +194,20 @@ export class VehiclesService {
   }
 
   async findOne(id: string) {
-    const vehicle = await this.prisma.vehicleItem.findUnique({ where: { id }, include: VEHICLE_INCLUDE });
+    const vehicle = await this.prisma.vehicleItem.findUnique({
+      where: { id },
+      include: VEHICLE_INCLUDE,
+    });
     if (!vehicle) {
       throw new NotFoundException(`VehicleItem with ID '${id}' not found`);
     }
     return vehicle;
   }
 
-  async findMovementHistory(vehicleId: string, dto: FindVehicleMovementHistoryDto) {
+  async findMovementHistory(
+    vehicleId: string,
+    dto: FindVehicleMovementHistoryDto,
+  ) {
     await this.getVehicleOrThrow(vehicleId);
 
     const page = dto.page ?? 1;
@@ -179,13 +233,21 @@ export class VehiclesService {
     const effectiveOwnership = dto.ownershipType ?? vehicle.ownershipType;
     const effectiveFolio = dto.providerFolio ?? vehicle.providerFolio;
     if (effectiveOwnership === 'PROVIDER' && !effectiveFolio) {
-      throw new BadRequestException('providerFolio es obligatorio para vehículos con ownershipType PROVIDER');
+      throw new BadRequestException(
+        'providerFolio es obligatorio para vehículos con ownershipType PROVIDER',
+      );
     }
 
     // usageType/startDate/endDate/inspectionItems son términos de resguardo
     // heredados de CreateVehicleItemDto, no columnas de VehicleItem — se
     // descartan aquí; PATCH nunca toca employeeId ni regenera resguardos.
-    const { usageType: _usageType, startDate: _startDate, endDate: _endDate, inspectionItems: _inspectionItems, ...vehicleFields } = dto;
+    const {
+      usageType: _usageType,
+      startDate: _startDate,
+      endDate: _endDate,
+      inspectionItems: _inspectionItems,
+      ...vehicleFields
+    } = dto;
 
     try {
       return await this.prisma.vehicleItem.update({
@@ -217,19 +279,31 @@ export class VehiclesService {
       );
     }
     if (vehicle.status !== DeviceStatus.AVAILABLE) {
-      throw new BadRequestException(`No se puede asignar un vehículo en estado ${vehicle.status}`);
+      throw new BadRequestException(
+        `No se puede asignar un vehículo en estado ${vehicle.status}`,
+      );
     }
 
     if (dto.employeeId) {
-      await this.assertEmployeeInBranch(dto.employeeId, vehicle.currentBranchId);
+      await this.assertEmployeeInBranch(
+        dto.employeeId,
+        vehicle.currentBranchId,
+      );
     } else if (dto.locationId) {
-      await this.assertLocationInBranch(dto.locationId, vehicle.currentBranchId);
+      await this.assertLocationInBranch(
+        dto.locationId,
+        vehicle.currentBranchId,
+      );
     }
 
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (dto.employeeId) {
-          await this.assertEmployeeHasNoActiveVehicle(tx, dto.employeeId, vehicleId);
+          await this.assertEmployeeHasNoActiveVehicle(
+            tx,
+            dto.employeeId,
+            vehicleId,
+          );
         }
 
         const updated = await tx.vehicleItem.update({
@@ -253,7 +327,12 @@ export class VehiclesService {
         });
 
         if (dto.employeeId) {
-          await this.triggerVehicleSafeguardForAssignment(tx, dto.employeeId, user.id, dto);
+          await this.triggerVehicleSafeguardForAssignment(
+            tx,
+            dto.employeeId,
+            user.id,
+            dto,
+          );
         }
 
         return updated;
@@ -275,12 +354,20 @@ export class VehiclesService {
       return await this.prisma.$transaction(async (tx) => {
         const updated = await tx.vehicleItem.update({
           where: { id: vehicleId },
-          data: { employeeId: null, locationId: null, status: DeviceStatus.AVAILABLE },
+          data: {
+            employeeId: null,
+            locationId: null,
+            status: DeviceStatus.AVAILABLE,
+          },
           include: VEHICLE_INCLUDE,
         });
 
         await tx.vehicleMovementHistory.create({
-          data: { vehicleId, type: 'UNASSIGNMENT', details: 'Vehículo liberado' },
+          data: {
+            vehicleId,
+            type: 'UNASSIGNMENT',
+            details: 'Vehículo liberado',
+          },
         });
 
         return updated;
@@ -290,7 +377,11 @@ export class VehiclesService {
     }
   }
 
-  async retire(vehicleId: string, dto: RetireVehicleDto, user: BranchScopedUser) {
+  async retire(
+    vehicleId: string,
+    dto: RetireVehicleDto,
+    user: BranchScopedUser,
+  ) {
     const vehicle = await this.getVehicleOrThrow(vehicleId);
     assertBranchAccess(user, vehicle.currentBranchId);
 
@@ -326,13 +417,21 @@ export class VehiclesService {
   // actualmente asignado. Usado por EmployeesService.offboard — corre dentro
   // de la misma transacción que la baja del empleado y el cierre de su
   // resguardo vigente.
-  async releaseAllForEmployee(tx: Prisma.TransactionClient, employeeId: string, reason: string) {
+  async releaseAllForEmployee(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+    reason: string,
+  ) {
     const vehicles = await tx.vehicleItem.findMany({ where: { employeeId } });
 
     for (const vehicle of vehicles) {
       await tx.vehicleItem.update({
         where: { id: vehicle.id },
-        data: { employeeId: null, locationId: null, status: DeviceStatus.AVAILABLE },
+        data: {
+          employeeId: null,
+          locationId: null,
+          status: DeviceStatus.AVAILABLE,
+        },
       });
 
       await tx.vehicleMovementHistory.create({
@@ -347,7 +446,9 @@ export class VehiclesService {
 
   async createTransfer(dto: CreateVehicleTransferDto, user: BranchScopedUser) {
     if (dto.originBranchId === dto.destinationBranchId) {
-      throw new BadRequestException('La sucursal de origen y destino no pueden ser la misma');
+      throw new BadRequestException(
+        'La sucursal de origen y destino no pueden ser la misma',
+      );
     }
     assertBranchAccess(user, dto.originBranchId);
 
@@ -356,29 +457,41 @@ export class VehiclesService {
       this.prisma.branch.findUnique({ where: { id: dto.destinationBranchId } }),
     ]);
     if (!originBranch) {
-      throw new NotFoundException(`Branch with ID '${dto.originBranchId}' not found`);
+      throw new NotFoundException(
+        `Branch with ID '${dto.originBranchId}' not found`,
+      );
     }
     if (!destinationBranch) {
-      throw new NotFoundException(`Branch with ID '${dto.destinationBranchId}' not found`);
+      throw new NotFoundException(
+        `Branch with ID '${dto.destinationBranchId}' not found`,
+      );
     }
 
     const vehicleIds = dto.items.map((i) => i.vehicleId);
-    const vehicles = await this.prisma.vehicleItem.findMany({ where: { id: { in: vehicleIds } } });
+    const vehicles = await this.prisma.vehicleItem.findMany({
+      where: { id: { in: vehicleIds } },
+    });
 
     if (vehicles.length !== vehicleIds.length) {
       const foundIds = new Set(vehicles.map((v) => v.id));
       const missing = vehicleIds.filter((id) => !foundIds.has(id));
-      throw new NotFoundException(`VehicleItem(s) not found: ${missing.join(', ')}`);
+      throw new NotFoundException(
+        `VehicleItem(s) not found: ${missing.join(', ')}`,
+      );
     }
 
-    const wrongBranch = vehicles.filter((v) => v.currentBranchId !== dto.originBranchId);
+    const wrongBranch = vehicles.filter(
+      (v) => v.currentBranchId !== dto.originBranchId,
+    );
     if (wrongBranch.length) {
       throw new BadRequestException(
         `Los siguientes vehículos no pertenecen a la sucursal de origen: ${wrongBranch.map((v) => v.internalCode).join(', ')}`,
       );
     }
 
-    const notAvailable = vehicles.filter((v) => v.status !== DeviceStatus.AVAILABLE);
+    const notAvailable = vehicles.filter(
+      (v) => v.status !== DeviceStatus.AVAILABLE,
+    );
     if (notAvailable.length) {
       throw new BadRequestException(
         `Los siguientes vehículos no están disponibles para traspaso: ${notAvailable.map((v) => `${v.internalCode} (${v.status})`).join(', ')}`,
@@ -406,11 +519,15 @@ export class VehiclesService {
     assertBranchAccess(user, transfer.originBranchId);
 
     if (transfer.status !== TransferStatus.PENDING) {
-      throw new BadRequestException(`No se puede iniciar una transferencia en estado ${transfer.status}`);
+      throw new BadRequestException(
+        `No se puede iniciar una transferencia en estado ${transfer.status}`,
+      );
     }
 
     const vehicleIds = transfer.items.map((i) => i.vehicleId);
-    const notReady = transfer.items.filter((i) => i.vehicle.status !== DeviceStatus.AVAILABLE);
+    const notReady = transfer.items.filter(
+      (i) => i.vehicle.status !== DeviceStatus.AVAILABLE,
+    );
     if (notReady.length) {
       throw new BadRequestException(
         `Los siguientes vehículos ya no están disponibles: ${notReady.map((i) => i.vehicle.internalCode).join(', ')}`,
@@ -419,7 +536,10 @@ export class VehiclesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.vehicleTransferRequest.update({ where: { id }, data: { status: TransferStatus.IN_TRANSIT } });
+        await tx.vehicleTransferRequest.update({
+          where: { id },
+          data: { status: TransferStatus.IN_TRANSIT },
+        });
 
         await tx.vehicleItem.updateMany({
           where: { id: { in: vehicleIds } },
@@ -436,7 +556,10 @@ export class VehiclesService {
           })),
         });
 
-        return tx.vehicleTransferRequest.findUniqueOrThrow({ where: { id }, include: VEHICLE_TRANSFER_INCLUDE });
+        return tx.vehicleTransferRequest.findUniqueOrThrow({
+          where: { id },
+          include: VEHICLE_TRANSFER_INCLUDE,
+        });
       });
     } catch (error) {
       handleDatabaseErrors(error, 'VehicleTransferRequest');
@@ -448,18 +571,26 @@ export class VehiclesService {
     assertBranchAccess(user, transfer.destinationBranchId);
 
     if (transfer.status !== TransferStatus.IN_TRANSIT) {
-      throw new BadRequestException(`No se puede recibir una transferencia en estado ${transfer.status}`);
+      throw new BadRequestException(
+        `No se puede recibir una transferencia en estado ${transfer.status}`,
+      );
     }
 
     const vehicleIds = transfer.items.map((i) => i.vehicleId);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        await tx.vehicleTransferRequest.update({ where: { id }, data: { status: TransferStatus.COMPLETED } });
+        await tx.vehicleTransferRequest.update({
+          where: { id },
+          data: { status: TransferStatus.COMPLETED },
+        });
 
         await tx.vehicleItem.updateMany({
           where: { id: { in: vehicleIds } },
-          data: { currentBranchId: transfer.destinationBranchId, status: DeviceStatus.AVAILABLE },
+          data: {
+            currentBranchId: transfer.destinationBranchId,
+            status: DeviceStatus.AVAILABLE,
+          },
         });
 
         await tx.vehicleMovementHistory.createMany({
@@ -472,25 +603,37 @@ export class VehiclesService {
           })),
         });
 
-        return tx.vehicleTransferRequest.findUniqueOrThrow({ where: { id }, include: VEHICLE_TRANSFER_INCLUDE });
+        return tx.vehicleTransferRequest.findUniqueOrThrow({
+          where: { id },
+          include: VEHICLE_TRANSFER_INCLUDE,
+        });
       });
     } catch (error) {
       handleDatabaseErrors(error, 'VehicleTransferRequest');
     }
   }
 
-  async cancelTransfer(id: string, dto: CancelVehicleTransferDto, user: BranchScopedUser) {
+  async cancelTransfer(
+    id: string,
+    dto: CancelVehicleTransferDto,
+    user: BranchScopedUser,
+  ) {
     const transfer = await this.getTransferOrThrow(id);
     assertBranchAccess(user, transfer.originBranchId);
 
     if (transfer.status !== TransferStatus.PENDING) {
-      throw new BadRequestException(`Solo se pueden cancelar transferencias en estado PENDING (actual: ${transfer.status})`);
+      throw new BadRequestException(
+        `Solo se pueden cancelar transferencias en estado PENDING (actual: ${transfer.status})`,
+      );
     }
 
     try {
       return await this.prisma.vehicleTransferRequest.update({
         where: { id },
-        data: { status: TransferStatus.CANCELLED, notes: dto.reason ?? transfer.notes },
+        data: {
+          status: TransferStatus.CANCELLED,
+          notes: dto.reason ?? transfer.notes,
+        },
         include: VEHICLE_TRANSFER_INCLUDE,
       });
     } catch (error) {
@@ -498,12 +641,18 @@ export class VehiclesService {
     }
   }
 
-  async rejectTransfer(id: string, dto: RejectVehicleTransferDto, user: BranchScopedUser) {
+  async rejectTransfer(
+    id: string,
+    dto: RejectVehicleTransferDto,
+    user: BranchScopedUser,
+  ) {
     const transfer = await this.getTransferOrThrow(id);
     assertBranchAccess(user, transfer.destinationBranchId);
 
     if (transfer.status !== TransferStatus.IN_TRANSIT) {
-      throw new BadRequestException(`Solo se pueden rechazar transferencias en estado IN_TRANSIT (actual: ${transfer.status})`);
+      throw new BadRequestException(
+        `Solo se pueden rechazar transferencias en estado IN_TRANSIT (actual: ${transfer.status})`,
+      );
     }
 
     const vehicleIds = transfer.items.map((i) => i.vehicleId);
@@ -512,7 +661,10 @@ export class VehiclesService {
       return await this.prisma.$transaction(async (tx) => {
         await tx.vehicleTransferRequest.update({
           where: { id },
-          data: { status: TransferStatus.REJECTED, notes: dto.reason ?? transfer.notes },
+          data: {
+            status: TransferStatus.REJECTED,
+            notes: dto.reason ?? transfer.notes,
+          },
         });
 
         await tx.vehicleItem.updateMany({
@@ -520,7 +672,10 @@ export class VehiclesService {
           data: { status: DeviceStatus.AVAILABLE },
         });
 
-        return tx.vehicleTransferRequest.findUniqueOrThrow({ where: { id }, include: VEHICLE_TRANSFER_INCLUDE });
+        return tx.vehicleTransferRequest.findUniqueOrThrow({
+          where: { id },
+          include: VEHICLE_TRANSFER_INCLUDE,
+        });
       });
     } catch (error) {
       handleDatabaseErrors(error, 'VehicleTransferRequest');
@@ -541,7 +696,13 @@ export class VehiclesService {
     } as Prisma.VehicleTransferRequestWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.vehicleTransferRequest.findMany({ skip, take, where: finalWhere, orderBy, include: VEHICLE_TRANSFER_INCLUDE }),
+      this.prisma.vehicleTransferRequest.findMany({
+        skip,
+        take,
+        where: finalWhere,
+        orderBy,
+        include: VEHICLE_TRANSFER_INCLUDE,
+      }),
       this.prisma.vehicleTransferRequest.count({ where: finalWhere }),
     ]);
 
@@ -562,13 +723,17 @@ export class VehiclesService {
     createdByUserId: string,
     fields: VehicleSafeguardAssignmentFields,
   ) {
-    await this.vehicleSafeguardsService.createFromEmployeeVehicle(tx, employeeId, {
-      usageType: fields.usageType,
-      startDate: fields.startDate ? new Date(fields.startDate) : undefined,
-      endDate: fields.endDate ? new Date(fields.endDate) : undefined,
-      createdByUserId,
-      inspectionItems: fields.inspectionItems,
-    });
+    await this.vehicleSafeguardsService.createFromEmployeeVehicle(
+      tx,
+      employeeId,
+      {
+        usageType: fields.usageType,
+        startDate: fields.startDate ? new Date(fields.startDate) : undefined,
+        endDate: fields.endDate ? new Date(fields.endDate) : undefined,
+        createdByUserId,
+        inspectionItems: fields.inspectionItems,
+      },
+    );
   }
 
   private async assertEmployeeHasNoActiveVehicle(
@@ -591,7 +756,10 @@ export class VehiclesService {
   }
 
   private async getVehicleOrThrow(id: string) {
-    const vehicle = await this.prisma.vehicleItem.findUnique({ where: { id }, include: { catalog: true } });
+    const vehicle = await this.prisma.vehicleItem.findUnique({
+      where: { id },
+      include: { catalog: true },
+    });
     if (!vehicle) {
       throw new NotFoundException(`VehicleItem with ID '${id}' not found`);
     }
@@ -599,15 +767,22 @@ export class VehiclesService {
   }
 
   private async getTransferOrThrow(id: string) {
-    const transfer = await this.prisma.vehicleTransferRequest.findUnique({ where: { id }, include: VEHICLE_TRANSFER_INCLUDE });
+    const transfer = await this.prisma.vehicleTransferRequest.findUnique({
+      where: { id },
+      include: VEHICLE_TRANSFER_INCLUDE,
+    });
     if (!transfer) {
-      throw new NotFoundException(`VehicleTransferRequest with ID '${id}' not found`);
+      throw new NotFoundException(
+        `VehicleTransferRequest with ID '${id}' not found`,
+      );
     }
     return transfer;
   }
 
   private async assertEmployeeInBranch(employeeId: string, branchId: string) {
-    const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+    });
     if (!employee) {
       throw new NotFoundException(`Employee with ID '${employeeId}' not found`);
     }
@@ -615,12 +790,16 @@ export class VehiclesService {
       throw new BadRequestException('El empleado pertenece a otra sucursal');
     }
     if (!employee.isActive) {
-      throw new BadRequestException('No se puede asignar un vehículo a un empleado dado de baja');
+      throw new BadRequestException(
+        'No se puede asignar un vehículo a un empleado dado de baja',
+      );
     }
   }
 
   private async assertLocationInBranch(locationId: string, branchId: string) {
-    const location = await this.prisma.location.findUnique({ where: { id: locationId } });
+    const location = await this.prisma.location.findUnique({
+      where: { id: locationId },
+    });
     if (!location) {
       throw new NotFoundException(`Location with ID '${locationId}' not found`);
     }
@@ -630,13 +809,25 @@ export class VehiclesService {
   }
 
   private branchScopedWhere(user: BranchScopedUser, branchId?: string) {
-    const { branchId: condition } = userBranchFilter(user, branchId) as { branchId?: unknown };
+    const { branchId: condition } = userBranchFilter(user, branchId) as {
+      branchId?: unknown;
+    };
     return condition !== undefined ? { currentBranchId: condition } : {};
   }
 
-  private transferBranchScopedWhere(user: BranchScopedUser, branchId?: string): Prisma.VehicleTransferRequestWhereInput {
-    const { branchId: condition } = userBranchFilter(user, branchId) as { branchId?: unknown };
+  private transferBranchScopedWhere(
+    user: BranchScopedUser,
+    branchId?: string,
+  ): Prisma.VehicleTransferRequestWhereInput {
+    const { branchId: condition } = userBranchFilter(user, branchId) as {
+      branchId?: unknown;
+    };
     if (condition === undefined) return {};
-    return { OR: [{ originBranchId: condition as string }, { destinationBranchId: condition as string }] };
+    return {
+      OR: [
+        { originBranchId: condition as string },
+        { destinationBranchId: condition as string },
+      ],
+    };
   }
 }

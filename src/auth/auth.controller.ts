@@ -20,6 +20,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Public } from './decorators/public.decorator';
+import type { RequestUser } from './interfaces/request-user.interface';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -28,9 +29,13 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'Iniciar sesión',
-    description: 'Autentica a un usuario con email y contraseña y devuelve un token JWT.',
+    description:
+      'Autentica a un usuario con email y contraseña y devuelve un token JWT.',
   })
-  @ApiResponse({ status: 200, description: 'Inicio de sesión exitoso, devuelve el token de acceso.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Inicio de sesión exitoso, devuelve el token de acceso.',
+  })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas.' })
   @Public()
   @Post('login')
@@ -41,19 +46,24 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'Obtener usuario autenticado',
-    description: 'Devuelve la información del usuario asociado al token JWT enviado en la petición.',
+    description:
+      'Devuelve la información del usuario asociado al token JWT enviado en la petición.',
   })
-  @ApiResponse({ status: 200, description: 'Información del usuario autenticado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Información del usuario autenticado.',
+  })
   @ApiResponse({ status: 401, description: 'No autenticado.' })
   @ApiBearerAuth()
   @Get('me')
-  me(@CurrentUser() user: any) {
+  me(@CurrentUser() user: RequestUser) {
     return user;
   }
 
   @ApiOperation({
     summary: 'Solicitar recuperación de contraseña',
-    description: 'Genera y envía un código OTP al correo del usuario para restablecer su contraseña.',
+    description:
+      'Genera y envía un código OTP al correo del usuario para restablecer su contraseña.',
   })
   @ApiResponse({ status: 200, description: 'Código de recuperación enviado.' })
   @Public()
@@ -65,7 +75,8 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'Verificar código OTP',
-    description: 'Valida el código OTP enviado al correo del usuario como parte del flujo de recuperación de contraseña.',
+    description:
+      'Valida el código OTP enviado al correo del usuario como parte del flujo de recuperación de contraseña.',
   })
   @ApiResponse({ status: 200, description: 'Código OTP válido.' })
   @ApiResponse({ status: 400, description: 'Código OTP inválido o expirado.' })
@@ -78,9 +89,13 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'Restablecer contraseña',
-    description: 'Establece una nueva contraseña para el usuario tras validar el código OTP.',
+    description:
+      'Establece una nueva contraseña para el usuario tras validar el código OTP.',
   })
-  @ApiResponse({ status: 200, description: 'Contraseña restablecida exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña restablecida exitosamente.',
+  })
   @ApiResponse({ status: 400, description: 'Código OTP inválido o expirado.' })
   @Public()
   @Post('reset-password')
@@ -91,14 +106,24 @@ export class AuthController {
 
   @ApiOperation({
     summary: 'Cambiar contraseña',
-    description: 'Permite a un usuario autenticado cambiar su contraseña actual.',
+    description:
+      'Permite a un usuario autenticado cambiar su contraseña actual.',
   })
-  @ApiResponse({ status: 200, description: 'Contraseña actualizada exitosamente.' })
-  @ApiResponse({ status: 401, description: 'La contraseña actual es incorrecta.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña actualizada exitosamente.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'La contraseña actual es incorrecta.',
+  })
   @ApiBearerAuth()
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
-  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+  changePassword(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ChangePasswordDto,
+  ) {
     return this.authService.changePassword(user.id, dto);
   }
 }

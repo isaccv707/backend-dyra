@@ -8,7 +8,10 @@ export interface VehicleInspectionItemDefinition {
 
 // Renglones fijos de la tabla "Revisión" del formato ADM.F.00, en el orden
 // impreso en el formato.
-export const VEHICLE_REVISION_ITEMS: Omit<VehicleInspectionItemDefinition, 'section'>[] = [
+export const VEHICLE_REVISION_ITEMS: Omit<
+  VehicleInspectionItemDefinition,
+  'section'
+>[] = [
   { key: 'carnet_servicio', label: 'Carnet de servicio' },
   { key: 'manuales', label: 'Manuales' },
   { key: 'poliza_seguro_vigente', label: 'Póliza de seguro vigente' },
@@ -22,7 +25,10 @@ export const VEHICLE_REVISION_ITEMS: Omit<VehicleInspectionItemDefinition, 'sect
 // Renglones fijos de la tabla "Inspección" del formato ADM.F.00. El formato
 // los distribuye en dos columnas visuales; aquí se aplanan a una sola lista
 // ordenada.
-export const VEHICLE_BODY_INSPECTION_ITEMS: Omit<VehicleInspectionItemDefinition, 'section'>[] = [
+export const VEHICLE_BODY_INSPECTION_ITEMS: Omit<
+  VehicleInspectionItemDefinition,
+  'section'
+>[] = [
   { key: 'capote', label: 'Capote' },
   { key: 'techo', label: 'Techo' },
   { key: 'lateral_izquierdo', label: 'Lateral Izquierdo' },
@@ -46,13 +52,22 @@ export const VEHICLE_BODY_INSPECTION_ITEMS: Omit<VehicleInspectionItemDefinition
 ];
 
 export const VEHICLE_INSPECTION_ITEMS: VehicleInspectionItemDefinition[] = [
-  ...VEHICLE_REVISION_ITEMS.map((item) => ({ ...item, section: SafeguardVehicleInspectionSection.DOCUMENTS })),
-  ...VEHICLE_BODY_INSPECTION_ITEMS.map((item) => ({ ...item, section: SafeguardVehicleInspectionSection.BODY })),
+  ...VEHICLE_REVISION_ITEMS.map((item) => ({
+    ...item,
+    section: SafeguardVehicleInspectionSection.DOCUMENTS,
+  })),
+  ...VEHICLE_BODY_INSPECTION_ITEMS.map((item) => ({
+    ...item,
+    section: SafeguardVehicleInspectionSection.BODY,
+  })),
 ];
 
-export const VEHICLE_INSPECTION_ITEM_KEYS: string[] = VEHICLE_INSPECTION_ITEMS.map((item) => item.key);
+export const VEHICLE_INSPECTION_ITEM_KEYS: string[] =
+  VEHICLE_INSPECTION_ITEMS.map((item) => item.key);
 
-export function getVehicleInspectionItemSection(key: string): SafeguardVehicleInspectionSection {
+export function getVehicleInspectionItemSection(
+  key: string,
+): SafeguardVehicleInspectionSection {
   const item = VEHICLE_INSPECTION_ITEMS.find((i) => i.key === key);
   if (!item) {
     throw new Error(`Unknown vehicle inspection item key: ${key}`);

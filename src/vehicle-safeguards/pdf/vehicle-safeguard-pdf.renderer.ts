@@ -36,7 +36,11 @@ export class VehicleSafeguardPdfRenderer {
   // ===========================
   // ENCABEZADO
   // ===========================
-  private drawHeader(doc: PDFKit.PDFDocument, layout: PdfLayout, data: VehicleSafeguardPdfData): number {
+  private drawHeader(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    data: VehicleSafeguardPdfData,
+  ): number {
     return this.kit.drawFormHeader(doc, layout, {
       logoPath: data.meta.logoPath,
       companyName: data.meta.companyName,
@@ -50,7 +54,12 @@ export class VehicleSafeguardPdfRenderer {
   // ===========================
   // GRILLA: datos del empleado + uso + resumen del vehículo (PÁGINA 1)
   // ===========================
-  private drawInfoGrid(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, data: VehicleSafeguardPdfData): number {
+  private drawInfoGrid(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    data: VehicleSafeguardPdfData,
+  ): number {
     const { marginLeft, pageWidth, marginRight } = layout;
     const width = pageWidth - marginLeft - marginRight;
 
@@ -76,15 +85,46 @@ export class VehicleSafeguardPdfRenderer {
       { width: value2W, text: data.employee.area },
     ]);
 
-    cursor = this.kit.drawToolsRow(doc, layout, cursor, [{ label: 'Automóvil', checked: true }]);
+    cursor = this.kit.drawToolsRow(doc, layout, cursor, [
+      { label: 'Automóvil', checked: true },
+    ]);
     cursor = this.kit.drawUsageRow(doc, layout, cursor, data.usage);
     cursor += 10;
 
     cursor = this.kit.drawSectionHeader(doc, layout, cursor, 'Vehículo');
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Marca', data.vehicle.brand, 'Modelo', data.vehicle.model);
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Kilometraje', data.vehicle.mileage, 'Núm. de placa', data.vehicle.plateNumber);
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Tipo de combustible', data.vehicle.fuelType, 'Transmisión', data.vehicle.transmission);
-    cursor = this.kit.drawConditionRow(doc, layout, cursor, data.vehicle.conditionLabel);
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Marca',
+      data.vehicle.brand,
+      'Modelo',
+      data.vehicle.model,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Kilometraje',
+      data.vehicle.mileage,
+      'Núm. de placa',
+      data.vehicle.plateNumber,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Tipo de combustible',
+      data.vehicle.fuelType,
+      'Transmisión',
+      data.vehicle.transmission,
+    );
+    cursor = this.kit.drawConditionRow(
+      doc,
+      layout,
+      cursor,
+      data.vehicle.conditionLabel,
+    );
 
     return cursor + 10;
   }
@@ -108,18 +148,40 @@ export class VehicleSafeguardPdfRenderer {
       });
 
     const tableY = doc.y + 15;
-    return this.kit.drawInspectionTable(doc, layout, tableY, 'Revisión', data.vehicle.revisionRows);
+    return this.kit.drawInspectionTable(
+      doc,
+      layout,
+      tableY,
+      'Revisión',
+      data.vehicle.revisionRows,
+    );
   }
 
   // ===========================
   // PÁGINA 2: INSPECCIÓN VEHICULAR + FIRMAS
   // ===========================
-  private drawInspectionPage(doc: PDFKit.PDFDocument, layout: PdfLayout, data: VehicleSafeguardPdfData): void {
+  private drawInspectionPage(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    data: VehicleSafeguardPdfData,
+  ): void {
     let y = this.drawHeader(doc, layout, data);
 
-    y = this.kit.drawTwoColumnInspectionTable(doc, layout, y, data.vehicle.inspectionRows);
+    y = this.kit.drawTwoColumnInspectionTable(
+      doc,
+      layout,
+      y,
+      data.vehicle.inspectionRows,
+    );
     y += 25;
 
-    this.kit.drawAcknowledgementFooter(doc, layout, y, LEGAL_TEXT, ELABORATED_LABEL, NEXT_REVISION_LABEL);
+    this.kit.drawAcknowledgementFooter(
+      doc,
+      layout,
+      y,
+      LEGAL_TEXT,
+      ELABORATED_LABEL,
+      NEXT_REVISION_LABEL,
+    );
   }
 }

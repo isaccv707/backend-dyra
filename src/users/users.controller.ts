@@ -8,7 +8,13 @@ import {
   Delete,
   HttpCode,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -21,7 +27,10 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @ApiOperation({ summary: 'Crear usuario', description: 'Crea un nuevo usuario del sistema.' })
+  @ApiOperation({
+    summary: 'Crear usuario',
+    description: 'Crea un nuevo usuario del sistema.',
+  })
   @ApiResponse({ status: 201, description: 'Usuario creado exitosamente.' })
   @Permissions('users:create')
   @Post()
@@ -29,7 +38,11 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
-  @ApiOperation({ summary: 'Listar usuarios (paginado)', description: 'Devuelve el listado de usuarios de forma paginada mediante filtros enviados en el cuerpo de la petición.' })
+  @ApiOperation({
+    summary: 'Listar usuarios (paginado)',
+    description:
+      'Devuelve el listado de usuarios de forma paginada mediante filtros enviados en el cuerpo de la petición.',
+  })
   @ApiResponse({ status: 200, description: 'Listado paginado de usuarios.' })
   @Permissions('users:read')
   @Post('query')
@@ -38,7 +51,10 @@ export class UsersController {
     return this.usersService.findAllPaginated(dto);
   }
 
-  @ApiOperation({ summary: 'Listar usuarios', description: 'Devuelve todos los usuarios del sistema.' })
+  @ApiOperation({
+    summary: 'Listar usuarios',
+    description: 'Devuelve todos los usuarios del sistema.',
+  })
   @ApiResponse({ status: 200, description: 'Listado de usuarios.' })
   @Permissions('users:read')
   @Get()
@@ -46,7 +62,10 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
-  @ApiOperation({ summary: 'Obtener usuario', description: 'Devuelve un usuario por su identificador.' })
+  @ApiOperation({
+    summary: 'Obtener usuario',
+    description: 'Devuelve un usuario por su identificador.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del usuario.' })
   @ApiResponse({ status: 200, description: 'Usuario encontrado.' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
@@ -56,9 +75,15 @@ export class UsersController {
     return this.usersService.findOne(id);
   }
 
-  @ApiOperation({ summary: 'Actualizar usuario', description: 'Actualiza los datos de un usuario existente.' })
+  @ApiOperation({
+    summary: 'Actualizar usuario',
+    description: 'Actualiza los datos de un usuario existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del usuario.' })
-  @ApiResponse({ status: 200, description: 'Usuario actualizado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario actualizado exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   @Permissions('users:update')
   @Patch(':id')
@@ -66,7 +91,10 @@ export class UsersController {
     return this.usersService.update(id, updateUserDto);
   }
 
-  @ApiOperation({ summary: 'Eliminar usuario', description: 'Elimina un usuario existente.' })
+  @ApiOperation({
+    summary: 'Eliminar usuario',
+    description: 'Elimina un usuario existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del usuario.' })
   @ApiResponse({ status: 200, description: 'Usuario eliminado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })

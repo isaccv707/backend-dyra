@@ -1,5 +1,5 @@
-import { BlockType } from "@prisma/client";
-import { IsEnum, IsInt, IsOptional, IsString } from "class-validator";
+import { BlockType } from '@prisma/client';
+import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class CreateContentBlockDto {
   @IsEnum(BlockType)

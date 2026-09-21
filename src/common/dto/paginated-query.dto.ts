@@ -12,8 +12,16 @@ import {
 } from 'class-validator';
 
 const ALLOWED_OPERATORS = [
-  'eq', 'ne', 'contains', 'startsWith', 'endsWith',
-  'gt', 'gte', 'lt', 'lte', 'in',
+  'eq',
+  'ne',
+  'contains',
+  'startsWith',
+  'endsWith',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'in',
 ] as const;
 
 export type FilterOperator = (typeof ALLOWED_OPERATORS)[number];

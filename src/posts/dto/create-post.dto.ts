@@ -1,54 +1,62 @@
-import { IsString, IsOptional, IsArray, ValidateNested, IsInt, IsUUID, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsInt,
+  IsUUID,
+  IsEnum,
+} from 'class-validator';
 import { Type } from 'class-transformer';
-import { PostStatus, BlockType } from '@prisma/client';
+import { PostStatus } from '@prisma/client';
 import { CreateContentBlockDto } from './create-content-block.dto';
 
 export class CreatePostDto {
-    @IsString()
-    title: string;
+  @IsString()
+  title: string;
 
-    @IsString()
-    description: string;
+  @IsString()
+  description: string;
 
-    @IsString()
-    excerpt: string;
+  @IsString()
+  excerpt: string;
 
-    @IsOptional()
-    @IsString()
-    image?: string;
+  @IsOptional()
+  @IsString()
+  image?: string;
 
-    @IsOptional()
-    @IsString()
-    imageMobile?: string;
+  @IsOptional()
+  @IsString()
+  imageMobile?: string;
 
-    @IsOptional()
-    @IsInt()
-    readingTime?: number;
+  @IsOptional()
+  @IsInt()
+  readingTime?: number;
 
-    @IsOptional()
-    @IsString()
-    metaDescription?: string;
+  @IsOptional()
+  @IsString()
+  metaDescription?: string;
 
-    @IsOptional()
-    @IsEnum(PostStatus)
-    status?: PostStatus;
+  @IsOptional()
+  @IsEnum(PostStatus)
+  status?: PostStatus;
 
-    @IsArray()
-    @IsString({ each: true })
-    tags: string[];
+  @IsArray()
+  @IsString({ each: true })
+  tags: string[];
 
-    @IsString()
-    category: string;
+  @IsString()
+  category: string;
 
-    @IsOptional()
-    @IsUUID()
-    authorId?: string;
+  @IsOptional()
+  @IsUUID()
+  authorId?: string;
 
-    @IsArray()
-    @ValidateNested({ each: true })
-    @Type(() => CreateContentBlockDto)
-    contentBlocks: CreateContentBlockDto[];
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateContentBlockDto)
+  contentBlocks: CreateContentBlockDto[];
 
-    @IsUUID()
-    branchId!: string;
+  @IsUUID()
+  branchId!: string;
 }

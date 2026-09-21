@@ -1,5 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, ParseUUIDPipe } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  Query,
+  ParseUUIDPipe,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PostsService } from './posts.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -10,9 +27,12 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 @ApiTags('posts')
 @Controller('posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService) { }
+  constructor(private readonly postsService: PostsService) {}
 
-  @ApiOperation({ summary: 'Crear publicación', description: 'Crea una nueva publicación de blog.' })
+  @ApiOperation({
+    summary: 'Crear publicación',
+    description: 'Crea una nueva publicación de blog.',
+  })
   @ApiResponse({ status: 201, description: 'Publicación creada exitosamente.' })
   @ApiBearerAuth()
   @Permissions('posts:create')
@@ -21,18 +41,40 @@ export class PostsController {
     return this.postsService.create(createPostDto);
   }
 
-  @ApiOperation({ summary: 'Listar publicaciones', description: 'Devuelve el listado paginado de publicaciones del blog de una sucursal.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal para filtrar publicaciones.' })
-  @ApiResponse({ status: 200, description: 'Listado paginado de publicaciones.' })
+  @ApiOperation({
+    summary: 'Listar publicaciones',
+    description:
+      'Devuelve el listado paginado de publicaciones del blog de una sucursal.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal para filtrar publicaciones.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado de publicaciones.',
+  })
   @Public()
   @Get()
   findAll(@Query() PaginationPostDto: PaginationPostDto) {
     return this.postsService.findAll(PaginationPostDto);
   }
 
-  @ApiOperation({ summary: 'Obtener publicación', description: 'Devuelve una publicación por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.' })
-  @ApiParam({ name: 'id', description: 'Identificador o slug de la publicación.' })
-  @ApiQuery({ name: 'branchId', required: false, description: 'Identificador de sucursal, recomendado al buscar por slug.' })
+  @ApiOperation({
+    summary: 'Obtener publicación',
+    description:
+      'Devuelve una publicación por su identificador o slug. Al buscar por slug, envía branchId para evitar coincidencias de otra sucursal.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador o slug de la publicación.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal, recomendado al buscar por slug.',
+  })
   @ApiResponse({ status: 200, description: 'Publicación encontrada.' })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada.' })
   @Public()
@@ -41,23 +83,41 @@ export class PostsController {
     return this.postsService.findOne(id, branchId);
   }
 
-  @ApiOperation({ summary: 'Actualizar publicación', description: 'Actualiza los datos de una publicación existente.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) de la publicación.' })
-  @ApiResponse({ status: 200, description: 'Publicación actualizada exitosamente.' })
+  @ApiOperation({
+    summary: 'Actualizar publicación',
+    description: 'Actualiza los datos de una publicación existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador (UUID) de la publicación.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Publicación actualizada exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada.' })
   @ApiBearerAuth()
   @Permissions('posts:update')
   @Patch(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() updatePostDto: UpdatePostDto
+    @Body() updatePostDto: UpdatePostDto,
   ) {
     return this.postsService.update(id, updatePostDto);
   }
 
-  @ApiOperation({ summary: 'Eliminar publicación', description: 'Elimina una publicación existente.' })
-  @ApiParam({ name: 'id', description: 'Identificador (UUID) de la publicación.' })
-  @ApiResponse({ status: 200, description: 'Publicación eliminada exitosamente.' })
+  @ApiOperation({
+    summary: 'Eliminar publicación',
+    description: 'Elimina una publicación existente.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Identificador (UUID) de la publicación.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Publicación eliminada exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada.' })
   @ApiBearerAuth()
   @Permissions('posts:delete')

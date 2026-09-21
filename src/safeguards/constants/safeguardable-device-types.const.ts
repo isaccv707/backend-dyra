@@ -10,7 +10,9 @@ export const SECTION_DEVICE_TYPE: Record<SafeguardSectionKey, DeviceType> = {
   mobile: DeviceType.MOBILE,
 };
 
-export const SECTION_KEY_BY_DEVICE_TYPE: Partial<Record<DeviceType, SafeguardSectionKey>> = {
+export const SECTION_KEY_BY_DEVICE_TYPE: Partial<
+  Record<DeviceType, SafeguardSectionKey>
+> = {
   [DeviceType.COMPUTER]: 'computer',
   [DeviceType.MOBILE]: 'mobile',
 };
@@ -23,6 +25,8 @@ export const ACCESSORY_DEVICE_TYPES: DeviceType[] = [
   DeviceType.MOUSE,
 ];
 
-export function getSafeguardSectionForType(type: DeviceType): SafeguardSectionKey | null {
+export function getSafeguardSectionForType(
+  type: DeviceType,
+): SafeguardSectionKey | null {
   return SECTION_KEY_BY_DEVICE_TYPE[type] ?? null;
 }

@@ -1,5 +1,21 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, ParseUUIDPipe, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  ParseUUIDPipe,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ServicesService } from './services.service';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
@@ -10,9 +26,12 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 @ApiTags('services')
 @Controller('services')
 export class ServicesController {
-  constructor(private readonly servicesService: ServicesService) { }
+  constructor(private readonly servicesService: ServicesService) {}
 
-  @ApiOperation({ summary: 'Crear servicio', description: 'Crea un nuevo servicio de laboratorio.' })
+  @ApiOperation({
+    summary: 'Crear servicio',
+    description: 'Crea un nuevo servicio de laboratorio.',
+  })
   @ApiResponse({ status: 201, description: 'Servicio creado exitosamente.' })
   @ApiBearerAuth()
   @Permissions('services:create')
@@ -21,7 +40,11 @@ export class ServicesController {
     return this.servicesService.create(createServiceDto);
   }
 
-  @ApiOperation({ summary: 'Listar servicios', description: 'Devuelve los servicios disponibles, opcionalmente filtrados por sucursal.' })
+  @ApiOperation({
+    summary: 'Listar servicios',
+    description:
+      'Devuelve los servicios disponibles, opcionalmente filtrados por sucursal.',
+  })
   @ApiResponse({ status: 200, description: 'Listado de servicios.' })
   @Public()
   @Get()
@@ -29,7 +52,11 @@ export class ServicesController {
     return this.servicesService.findAll(dto);
   }
 
-  @ApiOperation({ summary: 'Obtener servicio', description: 'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit) y se pueden filtrar por nombre o código con "search".' })
+  @ApiOperation({
+    summary: 'Obtener servicio',
+    description:
+      'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit) y se pueden filtrar por nombre o código con "search".',
+  })
   @ApiParam({ name: 'id', description: 'Identificador del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio encontrado.' })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
@@ -39,18 +66,30 @@ export class ServicesController {
     return this.servicesService.findOne(id, dto);
   }
 
-  @ApiOperation({ summary: 'Actualizar servicio', description: 'Actualiza los datos de un servicio existente.' })
+  @ApiOperation({
+    summary: 'Actualizar servicio',
+    description: 'Actualiza los datos de un servicio existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del servicio.' })
-  @ApiResponse({ status: 200, description: 'Servicio actualizado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Servicio actualizado exitosamente.',
+  })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
   @ApiBearerAuth()
   @Permissions('services:update')
   @Patch(':id')
-  update(@Param('id', ParseUUIDPipe) id: string, @Body() updateServiceDto: UpdateServiceDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateServiceDto: UpdateServiceDto,
+  ) {
     return this.servicesService.update(id, updateServiceDto);
   }
 
-  @ApiOperation({ summary: 'Eliminar servicio', description: 'Elimina un servicio existente.' })
+  @ApiOperation({
+    summary: 'Eliminar servicio',
+    description: 'Elimina un servicio existente.',
+  })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio eliminado exitosamente.' })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })

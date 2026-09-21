@@ -39,13 +39,24 @@ export class SafeguardPdfRenderer {
       y = this.drawMobileSection(doc, layout, y, data.mobile);
     }
 
-    this.kit.drawAcknowledgementFooter(doc, layout, y, LEGAL_TEXT, ELABORATED_LABEL, NEXT_REVISION_LABEL);
+    this.kit.drawAcknowledgementFooter(
+      doc,
+      layout,
+      y,
+      LEGAL_TEXT,
+      ELABORATED_LABEL,
+      NEXT_REVISION_LABEL,
+    );
   }
 
   // ===========================
   // ENCABEZADO
   // ===========================
-  private drawHeader(doc: PDFKit.PDFDocument, layout: PdfLayout, data: SafeguardPdfData): number {
+  private drawHeader(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    data: SafeguardPdfData,
+  ): number {
     return this.kit.drawFormHeader(doc, layout, {
       logoPath: data.meta.logoPath,
       companyName: data.meta.companyName,
@@ -59,7 +70,12 @@ export class SafeguardPdfRenderer {
   // ===========================
   // GRILLA: datos del empleado + herramientas a asignar + uso
   // ===========================
-  private drawInfoGrid(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, data: SafeguardPdfData): number {
+  private drawInfoGrid(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    data: SafeguardPdfData,
+  ): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const width = pageWidth - marginLeft - marginRight;
 
@@ -97,27 +113,116 @@ export class SafeguardPdfRenderer {
   // ===========================
   // SECCIONES DE EQUIPO
   // ===========================
-  private drawComputerSection(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, computer: SafeguardComputerInfo): number {
-    let cursor = this.kit.drawSectionHeader(doc, layout, y, 'Equipo de cómputo');
+  private drawComputerSection(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    computer: SafeguardComputerInfo,
+  ): number {
+    let cursor = this.kit.drawSectionHeader(
+      doc,
+      layout,
+      y,
+      'Equipo de cómputo',
+    );
 
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Marca', computer.brand, 'Modelo', computer.model);
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'No. serie', computer.serialNumber, 'Código interno', computer.internalCode);
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Disco duro', computer.hardDrive, 'Procesador', computer.processor);
-    cursor = this.kit.drawFullRow(doc, layout, cursor, 'Accesorios incluidos', computer.accessories);
-    cursor = this.kit.drawConditionRow(doc, layout, cursor, computer.conditionLabel);
-    cursor = this.kit.drawFullRow(doc, layout, cursor, 'Observaciones', computer.observations);
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Marca',
+      computer.brand,
+      'Modelo',
+      computer.model,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'No. serie',
+      computer.serialNumber,
+      'Código interno',
+      computer.internalCode,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Disco duro',
+      computer.hardDrive,
+      'Procesador',
+      computer.processor,
+    );
+    cursor = this.kit.drawFullRow(
+      doc,
+      layout,
+      cursor,
+      'Accesorios incluidos',
+      computer.accessories,
+    );
+    cursor = this.kit.drawConditionRow(
+      doc,
+      layout,
+      cursor,
+      computer.conditionLabel,
+    );
+    cursor = this.kit.drawFullRow(
+      doc,
+      layout,
+      cursor,
+      'Observaciones',
+      computer.observations,
+    );
 
     return cursor + 10;
   }
 
-  private drawMobileSection(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, mobile: SafeguardMobileInfo): number {
+  private drawMobileSection(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    mobile: SafeguardMobileInfo,
+  ): number {
     let cursor = this.kit.drawSectionHeader(doc, layout, y, 'Equipo celular');
 
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'Marca', mobile.brand, 'Modelo', mobile.model);
-    cursor = this.kit.drawTwoColumnRow(doc, layout, cursor, 'IMEI', mobile.imei, 'Número', mobile.phoneNumber);
-    cursor = this.kit.drawFullRow(doc, layout, cursor, 'Accesorios incluidos', mobile.accessories);
-    cursor = this.kit.drawConditionRow(doc, layout, cursor, mobile.conditionLabel);
-    cursor = this.kit.drawFullRow(doc, layout, cursor, 'Observaciones', mobile.observations);
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'Marca',
+      mobile.brand,
+      'Modelo',
+      mobile.model,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
+      'IMEI',
+      mobile.imei,
+      'Número',
+      mobile.phoneNumber,
+    );
+    cursor = this.kit.drawFullRow(
+      doc,
+      layout,
+      cursor,
+      'Accesorios incluidos',
+      mobile.accessories,
+    );
+    cursor = this.kit.drawConditionRow(
+      doc,
+      layout,
+      cursor,
+      mobile.conditionLabel,
+    );
+    cursor = this.kit.drawFullRow(
+      doc,
+      layout,
+      cursor,
+      'Observaciones',
+      mobile.observations,
+    );
 
     return cursor + 10;
   }

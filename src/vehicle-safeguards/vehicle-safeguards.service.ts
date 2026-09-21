@@ -1,11 +1,27 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DeviceStatus, Prisma, SafeguardConditionState, SafeguardUsageType } from '@prisma/client';
+import {
+  DeviceStatus,
+  Prisma,
+  SafeguardConditionState,
+  SafeguardUsageType,
+} from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import { buildPaginatedQuery, paginatedResponse } from 'src/common/utils/paginate.util';
-import { assertBranchAccess, BranchScopedUser, userBranchFilter } from 'src/common/utils/branch-access.util';
+import {
+  buildPaginatedQuery,
+  paginatedResponse,
+} from 'src/common/utils/paginate.util';
+import {
+  assertBranchAccess,
+  BranchScopedUser,
+  userBranchFilter,
+} from 'src/common/utils/branch-access.util';
 import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { CreateVehicleSafeguardDto } from './dto/create-vehicle-safeguard.dto';
 import { FindVehicleSafeguardsDto } from './dto/find-vehicle-safeguards.dto';
@@ -23,14 +39,23 @@ import { VehicleSafeguardPdfRenderer } from './pdf/vehicle-safeguard-pdf.rendere
 const DOC_CODE = 'ADM.F.01';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
 
-const VEHICLE_SAFEGUARD_ALLOWED_FIELDS = ['employeeName', 'area', 'usageType', 'createdAt'];
+const VEHICLE_SAFEGUARD_ALLOWED_FIELDS = [
+  'employeeName',
+  'area',
+  'usageType',
+  'createdAt',
+];
 
 const VEHICLE_SAFEGUARD_INCLUDE = {
-  employee: { select: { id: true, name: true, department: true, position: true } },
+  employee: {
+    select: { id: true, name: true, department: true, position: true },
+  },
   inspectionItems: true,
 } satisfies Prisma.VehicleSafeguardInclude;
 
-type VehicleSafeguardWithDetails = Prisma.VehicleSafeguardGetPayload<{ include: typeof VEHICLE_SAFEGUARD_INCLUDE }>;
+type VehicleSafeguardWithDetails = Prisma.VehicleSafeguardGetPayload<{
+  include: typeof VEHICLE_SAFEGUARD_INCLUDE;
+}>;
 
 interface InspectionItemCreateInput {
   itemKey: string;
@@ -72,7 +97,9 @@ export class VehicleSafeguardsService {
     employeeId: string,
     input: CreateFromEmployeeVehicleInput,
   ): Promise<VehicleSafeguardWithDetails> {
-    const employee = await tx.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    const employee = await tx.employee.findUniqueOrThrow({
+      where: { id: employeeId },
+    });
 
     const vehicle = await tx.vehicleItem.findFirst({
       where: { employeeId, status: DeviceStatus.ASSIGNED },
@@ -80,7 +107,9 @@ export class VehicleSafeguardsService {
     });
 
     if (!vehicle) {
-      throw new BadRequestException('El empleado no tiene ningún vehículo asignado actualmente');
+      throw new BadRequestException(
+        'El empleado no tiene ningún vehículo asignado actualmente',
+      );
     }
 
     const existing = await tx.vehicleSafeguard.findFirst({
@@ -90,7 +119,9 @@ export class VehicleSafeguardsService {
 
     const usageType = input.usageType ?? existing?.usageType;
     if (!usageType) {
-      throw new BadRequestException('usageType es obligatorio para generar la primera responsiva del empleado');
+      throw new BadRequestException(
+        'usageType es obligatorio para generar la primera responsiva del empleado',
+      );
     }
     const startDate = input.startDate ?? existing?.startDate ?? null;
     const endDate = input.endDate ?? existing?.endDate ?? null;
@@ -137,16 +168,25 @@ export class VehicleSafeguardsService {
         startDate,
         endDate,
         createdByUserId: input.createdByUserId,
-        ...(inspectionItemsData.length && { inspectionItems: { create: inspectionItemsData } }),
+        ...(inspectionItemsData.length && {
+          inspectionItems: { create: inspectionItemsData },
+        }),
       },
       include: VEHICLE_SAFEGUARD_INCLUDE,
     });
   }
 
-  async create(dto: CreateVehicleSafeguardDto, user: BranchScopedUser & { id: string }) {
-    const employee = await this.prisma.employee.findUnique({ where: { id: dto.employeeId } });
+  async create(
+    dto: CreateVehicleSafeguardDto,
+    user: BranchScopedUser & { id: string },
+  ) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: dto.employeeId },
+    });
     if (!employee) {
-      throw new NotFoundException(`Employee with ID '${dto.employeeId}' not found`);
+      throw new NotFoundException(
+        `Employee with ID '${dto.employeeId}' not found`,
+      );
     }
     assertBranchAccess(user, employee.branchId);
 
@@ -180,15 +220,27 @@ export class VehicleSafeguardsService {
     } as Prisma.VehicleSafeguardWhereInput;
 
     const [data, total] = await this.prisma.$transaction([
-      this.prisma.vehicleSafeguard.findMany({ skip, take, where: finalWhere, orderBy, include: VEHICLE_SAFEGUARD_INCLUDE }),
+      this.prisma.vehicleSafeguard.findMany({
+        skip,
+        take,
+        where: finalWhere,
+        orderBy,
+        include: VEHICLE_SAFEGUARD_INCLUDE,
+      }),
       this.prisma.vehicleSafeguard.count({ where: finalWhere }),
     ]);
 
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  async findOne(id: string, user: BranchScopedUser): Promise<VehicleSafeguardWithDetails> {
-    const safeguard = await this.prisma.vehicleSafeguard.findUnique({ where: { id }, include: VEHICLE_SAFEGUARD_INCLUDE });
+  async findOne(
+    id: string,
+    user: BranchScopedUser,
+  ): Promise<VehicleSafeguardWithDetails> {
+    const safeguard = await this.prisma.vehicleSafeguard.findUnique({
+      where: { id },
+      include: VEHICLE_SAFEGUARD_INCLUDE,
+    });
     if (!safeguard) {
       throw new NotFoundException(`VehicleSafeguard with ID '${id}' not found`);
     }
@@ -215,7 +267,10 @@ export class VehicleSafeguardsService {
 
   // Cierra la responsiva vigente del empleado sin generar una nueva — se usa
   // al hacer offboard (el empleado ya no tiene vehículo asignado).
-  async closeCurrentForEmployee(tx: Prisma.TransactionClient, employeeId: string) {
+  async closeCurrentForEmployee(
+    tx: Prisma.TransactionClient,
+    employeeId: string,
+  ) {
     await tx.vehicleSafeguard.updateMany({
       where: { employeeId, supersededAt: null },
       data: { supersededAt: new Date() },
@@ -225,11 +280,17 @@ export class VehicleSafeguardsService {
   // Confirma la firma de la versión VIGENTE, con o sin documento adjunto.
   // A diferencia de Safeguard (IT), esto NO toca Employee.hasSignedResponsibility
   // — es un documento totalmente independiente, con su propia evidencia.
-  async sign(id: string, dto: SignVehicleSafeguardDto, user: BranchScopedUser & { id: string }) {
+  async sign(
+    id: string,
+    dto: SignVehicleSafeguardDto,
+    user: BranchScopedUser & { id: string },
+  ) {
     const safeguard = await this.findOne(id, user);
 
     if (safeguard.supersededAt) {
-      throw new BadRequestException('No se puede firmar una versión histórica del resguardo');
+      throw new BadRequestException(
+        'No se puede firmar una versión histórica del resguardo',
+      );
     }
 
     try {
@@ -251,10 +312,14 @@ export class VehicleSafeguardsService {
     const safeguard = await this.findOne(id, user);
 
     if (!safeguard.signedDocumentPublicId) {
-      throw new NotFoundException('Este resguardo no tiene un documento firmado adjunto');
+      throw new NotFoundException(
+        'Este resguardo no tiene un documento firmado adjunto',
+      );
     }
 
-    return this.cloudinaryService.getSignedDownloadUrl(safeguard.signedDocumentPublicId);
+    return this.cloudinaryService.getSignedDownloadUrl(
+      safeguard.signedDocumentPublicId,
+    );
   }
 
   // Firma los parámetros para que el frontend suba el PDF firmado escaneado
@@ -265,14 +330,19 @@ export class VehicleSafeguardsService {
     const safeguard = await this.findOne(id, user);
 
     if (safeguard.supersededAt) {
-      throw new BadRequestException('No se puede adjuntar un documento a una versión histórica del resguardo');
+      throw new BadRequestException(
+        'No se puede adjuntar un documento a una versión histórica del resguardo',
+      );
     }
 
     const publicId = `safeguards/vehicle-${safeguard.id}-${Date.now()}`;
     return this.cloudinaryService.generateSignedUploadParams(publicId);
   }
 
-  buildSafeguardPdf(doc: PDFKit.PDFDocument, safeguard: VehicleSafeguardWithDetails): void {
+  buildSafeguardPdf(
+    doc: PDFKit.PDFDocument,
+    safeguard: VehicleSafeguardWithDetails,
+  ): void {
     const data = this.buildPdfData(safeguard);
     this.pdfRenderer.render(doc, data);
   }
@@ -287,7 +357,9 @@ export class VehicleSafeguardsService {
     const keys = items.map((item) => item.itemKey);
     const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
     if (duplicates.length) {
-      throw new BadRequestException(`itemKey duplicado(s) en inspectionItems: ${[...new Set(duplicates)].join(', ')}`);
+      throw new BadRequestException(
+        `itemKey duplicado(s) en inspectionItems: ${[...new Set(duplicates)].join(', ')}`,
+      );
     }
 
     return items.map((item) => ({
@@ -298,7 +370,9 @@ export class VehicleSafeguardsService {
     }));
   }
 
-  private buildPdfData(safeguard: VehicleSafeguardWithDetails): VehicleSafeguardPdfData {
+  private buildPdfData(
+    safeguard: VehicleSafeguardWithDetails,
+  ): VehicleSafeguardPdfData {
     return {
       meta: {
         formattedDate: safeguard.createdAt.toLocaleDateString('es-MX'),
@@ -313,8 +387,12 @@ export class VehicleSafeguardsService {
       },
       usage: {
         usageType: safeguard.usageType,
-        formattedStartDate: safeguard.startDate ? safeguard.startDate.toLocaleDateString('es-MX') : null,
-        formattedEndDate: safeguard.endDate ? safeguard.endDate.toLocaleDateString('es-MX') : null,
+        formattedStartDate: safeguard.startDate
+          ? safeguard.startDate.toLocaleDateString('es-MX')
+          : null,
+        formattedEndDate: safeguard.endDate
+          ? safeguard.endDate.toLocaleDateString('es-MX')
+          : null,
       },
       vehicle: {
         brand: safeguard.brand,
@@ -324,15 +402,25 @@ export class VehicleSafeguardsService {
         fuelType: safeguard.fuelType ?? '',
         transmission: safeguard.transmission ?? '',
         conditionLabel: this.conditionLabel(safeguard.condition),
-        revisionRows: this.buildInspectionRows(VEHICLE_REVISION_ITEMS, safeguard.inspectionItems),
-        inspectionRows: this.buildInspectionRows(VEHICLE_BODY_INSPECTION_ITEMS, safeguard.inspectionItems),
+        revisionRows: this.buildInspectionRows(
+          VEHICLE_REVISION_ITEMS,
+          safeguard.inspectionItems,
+        ),
+        inspectionRows: this.buildInspectionRows(
+          VEHICLE_BODY_INSPECTION_ITEMS,
+          safeguard.inspectionItems,
+        ),
       },
     };
   }
 
   private buildInspectionRows(
     canonicalItems: { key: string; label: string }[],
-    submitted: { itemKey: string; state: string | null; observations: string | null }[],
+    submitted: {
+      itemKey: string;
+      state: string | null;
+      observations: string | null;
+    }[],
   ) {
     const byKey = new Map(submitted.map((item) => [item.itemKey, item]));
 
@@ -364,7 +452,10 @@ export class VehicleSafeguardsService {
       }
     }
 
-    console.warn('No se pudo cargar el logo para el PDF de resguardo de vehículo. Ninguna ruta encontrada:', candidatePaths);
+    console.warn(
+      'No se pudo cargar el logo para el PDF de resguardo de vehículo. Ninguna ruta encontrada:',
+      candidatePaths,
+    );
 
     return null;
   }

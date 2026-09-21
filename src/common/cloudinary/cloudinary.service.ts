@@ -6,14 +6,22 @@ export interface SignedDownloadUrl {
   expiresAt: Date;
 }
 
+export type SignedUploadResourceType = 'raw' | 'auto' | 'image' | 'video';
+export type SignedUploadType = 'authenticated' | 'upload';
+
 export interface SignedUploadParams {
   cloudName: string;
   apiKey: string;
   timestamp: number;
   signature: string;
   publicId: string;
-  type: 'authenticated';
-  resourceType: 'raw';
+  type: SignedUploadType;
+  resourceType: SignedUploadResourceType;
+}
+
+export interface SignedUploadOptions {
+  resourceType?: SignedUploadResourceType;
+  type?: SignedUploadType;
 }
 
 // Genera URLs de descarga firmadas y con expiración para recursos privados
@@ -47,13 +55,32 @@ export class CloudinaryService {
   // Firma los parámetros de un upload directo a Cloudinary (frontend -> Cloudinary,
   // el binario nunca pasa por este backend) fijando type/resource_type desde el
   // servidor — el cliente no puede alterarlos sin invalidar la firma. El upload
-  // resultante debe hacerse a POST https://api.cloudinary.com/v1_1/{cloudName}/raw/upload
+  // resultante debe hacerse a POST https://api.cloudinary.com/v1_1/{cloudName}/{resourceType}/upload
   // con estos mismos valores (más el archivo) como multipart/form-data.
-  generateSignedUploadParams(publicId: string): SignedUploadParams {
-    const timestamp = Math.floor(Date.now() / 1000);
-    const paramsToSign = { timestamp, public_id: publicId, type: 'authenticated' };
+  //
+  // Por defecto firma type: 'authenticated' + resource_type: 'raw' (documentos
+  // privados con expiración, p.ej. PDFs firmados de resguardos — ver
+  // getSignedDownloadUrl). Para adjuntos que sí pueden vivir en una URL pública
+  // sin expirar (p.ej. fotos de tickets de soporte), pasa
+  // { type: 'upload', resourceType: 'auto' }.
+  generateSignedUploadParams(
+    publicId: string,
+    options: SignedUploadOptions = {},
+  ): SignedUploadParams {
+    const resourceType = options.resourceType ?? 'raw';
+    const type = options.type ?? 'authenticated';
 
-    const signature = cloudinary.utils.api_sign_request(paramsToSign, process.env.CLOUDINARY_API_SECRET as string);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const paramsToSign = {
+      timestamp,
+      public_id: publicId,
+      type,
+    };
+
+    const signature = cloudinary.utils.api_sign_request(
+      paramsToSign,
+      process.env.CLOUDINARY_API_SECRET as string,
+    );
 
     return {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME as string,
@@ -61,8 +88,8 @@ export class CloudinaryService {
       timestamp,
       signature,
       publicId,
-      type: 'authenticated',
-      resourceType: 'raw',
+      type,
+      resourceType,
     };
   }
 }

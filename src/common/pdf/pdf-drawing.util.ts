@@ -42,7 +42,12 @@ export class PdfDrawingKit {
     };
   }
 
-  drawSectionHeader(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, title: string): number {
+  drawSectionHeader(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    title: string,
+  ): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const width = pageWidth - marginLeft - marginRight;
 
@@ -69,36 +74,94 @@ export class PdfDrawingKit {
     const width = pageWidth - marginLeft - marginRight;
     const halfWidth = width / 2;
 
-    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, ROW_HEIGHT, { text: label1, bold: true, fill: true });
-    this.drawCell(doc, marginLeft + LABEL_WIDTH, y, halfWidth - LABEL_WIDTH, ROW_HEIGHT, { text: value1 });
-    this.drawCell(doc, marginLeft + halfWidth, y, LABEL_WIDTH, ROW_HEIGHT, { text: label2, bold: true, fill: true });
-    this.drawCell(doc, marginLeft + halfWidth + LABEL_WIDTH, y, width - halfWidth - LABEL_WIDTH, ROW_HEIGHT, { text: value2 });
+    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, ROW_HEIGHT, {
+      text: label1,
+      bold: true,
+      fill: true,
+    });
+    this.drawCell(
+      doc,
+      marginLeft + LABEL_WIDTH,
+      y,
+      halfWidth - LABEL_WIDTH,
+      ROW_HEIGHT,
+      { text: value1 },
+    );
+    this.drawCell(doc, marginLeft + halfWidth, y, LABEL_WIDTH, ROW_HEIGHT, {
+      text: label2,
+      bold: true,
+      fill: true,
+    });
+    this.drawCell(
+      doc,
+      marginLeft + halfWidth + LABEL_WIDTH,
+      y,
+      width - halfWidth - LABEL_WIDTH,
+      ROW_HEIGHT,
+      { text: value2 },
+    );
 
     return y + ROW_HEIGHT;
   }
 
-  drawFullRow(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, label: string, value: string): number {
+  drawFullRow(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    label: string,
+    value: string,
+  ): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const width = pageWidth - marginLeft - marginRight;
     const valueWidth = width - LABEL_WIDTH;
-    const height = Math.max(ROW_HEIGHT, doc.heightOfString(value || ' ', { width: valueWidth - 8 }) + 8);
+    const height = Math.max(
+      ROW_HEIGHT,
+      doc.heightOfString(value || ' ', { width: valueWidth - 8 }) + 8,
+    );
 
-    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, height, { text: label, bold: true, fill: true });
-    this.drawCell(doc, marginLeft + LABEL_WIDTH, y, valueWidth, height, { text: value });
+    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, height, {
+      text: label,
+      bold: true,
+      fill: true,
+    });
+    this.drawCell(doc, marginLeft + LABEL_WIDTH, y, valueWidth, height, {
+      text: value,
+    });
 
     return y + height;
   }
 
-  drawConditionRow(doc: PDFKit.PDFDocument, layout: PdfLayout, y: number, conditionLabel: string): number {
+  drawConditionRow(
+    doc: PDFKit.PDFDocument,
+    layout: PdfLayout,
+    y: number,
+    conditionLabel: string,
+  ): number {
     const { marginLeft, marginRight, pageWidth } = layout;
     const width = pageWidth - marginLeft - marginRight;
     const valueWidth = width - LABEL_WIDTH;
 
-    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, ROW_HEIGHT, { text: 'Estado físico', bold: true, fill: true });
+    this.drawCell(doc, marginLeft, y, LABEL_WIDTH, ROW_HEIGHT, {
+      text: 'Estado físico',
+      bold: true,
+      fill: true,
+    });
     this.drawCell(doc, marginLeft + LABEL_WIDTH, y, valueWidth, ROW_HEIGHT, {});
 
-    this.drawCheckboxLabel(doc, marginLeft + LABEL_WIDTH + 10, y + 4, 'Nuevo', conditionLabel === 'Nuevo');
-    this.drawCheckboxLabel(doc, marginLeft + LABEL_WIDTH + 110, y + 4, 'Seminuevo', conditionLabel === 'Seminuevo');
+    this.drawCheckboxLabel(
+      doc,
+      marginLeft + LABEL_WIDTH + 10,
+      y + 4,
+      'Nuevo',
+      conditionLabel === 'Nuevo',
+    );
+    this.drawCheckboxLabel(
+      doc,
+      marginLeft + LABEL_WIDTH + 110,
+      y + 4,
+      'Seminuevo',
+      conditionLabel === 'Seminuevo',
+    );
 
     return y + ROW_HEIGHT;
   }
@@ -111,12 +174,22 @@ export class PdfDrawingKit {
     y: number,
     width: number,
     height: number,
-    opts: { text?: string; lines?: string[]; bold?: boolean; fill?: boolean; align?: 'left' | 'center' },
+    opts: {
+      text?: string;
+      lines?: string[];
+      bold?: boolean;
+      fill?: boolean;
+      align?: 'left' | 'center';
+    },
   ): void {
     if (opts.fill) {
       doc.rect(x, y, width, height).fill(LABEL_FILL_COLOR);
     }
-    doc.rect(x, y, width, height).strokeColor(BORDER_COLOR).lineWidth(0.5).stroke();
+    doc
+      .rect(x, y, width, height)
+      .strokeColor(BORDER_COLOR)
+      .lineWidth(0.5)
+      .stroke();
 
     const lines = opts.lines ?? (opts.text ? [opts.text] : []);
     if (!lines.length) return;
@@ -127,7 +200,10 @@ export class PdfDrawingKit {
       .fillColor('#000000');
 
     lines.forEach((line, i) => {
-      doc.text(line, x + 4, y + 5 + i * 11, { width: width - 8, align: opts.align ?? 'left' });
+      doc.text(line, x + 4, y + 5 + i * 11, {
+        width: width - 8,
+        align: opts.align ?? 'left',
+      });
     });
   }
 
@@ -152,10 +228,20 @@ export class PdfDrawingKit {
     return y + height;
   }
 
-  drawCheckboxLabel(doc: PDFKit.PDFDocument, x: number, y: number, label: string, checked: boolean): void {
+  drawCheckboxLabel(
+    doc: PDFKit.PDFDocument,
+    x: number,
+    y: number,
+    label: string,
+    checked: boolean,
+  ): void {
     const boxSize = 10;
 
-    doc.rect(x, y, boxSize, boxSize).strokeColor(CHECKBOX_COLOR).lineWidth(1).stroke();
+    doc
+      .rect(x, y, boxSize, boxSize)
+      .strokeColor(CHECKBOX_COLOR)
+      .lineWidth(1)
+      .stroke();
     if (checked) {
       doc
         .moveTo(x + 1.5, y + 1.5)
@@ -199,7 +285,13 @@ export class PdfDrawingKit {
 
     const slotWidth = contentW / options.length;
     options.forEach((option, i) => {
-      this.drawCheckboxLabel(doc, marginLeft + labelW + slotWidth * i + 10, y + 7, option.label, option.checked);
+      this.drawCheckboxLabel(
+        doc,
+        marginLeft + labelW + slotWidth * i + 10,
+        y + 7,
+        option.label,
+        option.checked,
+      );
     });
 
     return y + rowHeight;
@@ -241,23 +333,50 @@ export class PdfDrawingKit {
     this.drawCell(doc, dateX, y, dateColW, rowHeight, {});
     this.drawCell(doc, permX, y, permColW, rowHeight, {});
 
-    this.drawCheckboxLabel(doc, tempX + 8, y + 7, 'Temporal', usage.usageType === 'TEMPORARY');
-    this.drawCheckboxLabel(doc, permX + 8, y + 7, 'Permanente', usage.usageType === 'PERMANENT');
+    this.drawCheckboxLabel(
+      doc,
+      tempX + 8,
+      y + 7,
+      'Temporal',
+      usage.usageType === 'TEMPORARY',
+    );
+    this.drawCheckboxLabel(
+      doc,
+      permX + 8,
+      y + 7,
+      'Permanente',
+      usage.usageType === 'PERMANENT',
+    );
 
     const dateTextWidth = dateColW - 10;
     const startLine = `Fecha de inicio: ${usage.formattedStartDate ?? ''}`;
     const endLine = `Fecha de término: ${usage.formattedEndDate ?? ''}`;
     doc.font('Helvetica').fontSize(8).fillColor('#333333');
-    const startLineHeight = doc.heightOfString(startLine, { width: dateTextWidth });
+    const startLineHeight = doc.heightOfString(startLine, {
+      width: dateTextWidth,
+    });
     doc
       .text(startLine, dateX + 5, y + 3, { width: dateTextWidth })
-      .text(endLine, dateX + 5, y + 3 + startLineHeight + 1, { width: dateTextWidth });
+      .text(endLine, dateX + 5, y + 3 + startLineHeight + 1, {
+        width: dateTextWidth,
+      });
 
     return y + rowHeight;
   }
 
-  drawSignatureLine(doc: PDFKit.PDFDocument, x: number, y: number, width: number, label: string): void {
-    doc.moveTo(x, y).lineTo(x + width, y).strokeColor('#000000').lineWidth(0.7).stroke();
+  drawSignatureLine(
+    doc: PDFKit.PDFDocument,
+    x: number,
+    y: number,
+    width: number,
+    label: string,
+  ): void {
+    doc
+      .moveTo(x, y)
+      .lineTo(x + width, y)
+      .strokeColor('#000000')
+      .lineWidth(0.7)
+      .stroke();
     doc
       .font('Helvetica')
       .fontSize(9)
@@ -295,11 +414,19 @@ export class PdfDrawingKit {
       .font('Helvetica')
       .fontSize(8)
       .fillColor('#000000')
-      .text(`Elaborado: ${elaboratedLabel}`, marginLeft + leftWidth, y, { width: rightWidth, align: 'right' })
-      .text(`Próxima revisión: ${nextRevisionLabel}`, marginLeft + leftWidth, y + 10, {
+      .text(`Elaborado: ${elaboratedLabel}`, marginLeft + leftWidth, y, {
         width: rightWidth,
         align: 'right',
-      });
+      })
+      .text(
+        `Próxima revisión: ${nextRevisionLabel}`,
+        marginLeft + leftWidth,
+        y + 10,
+        {
+          width: rightWidth,
+          align: 'right',
+        },
+      );
 
     return Math.max(doc.y, y + 20);
   }
@@ -316,7 +443,8 @@ export class PdfDrawingKit {
     elaboratedLabel: string,
     nextRevisionLabel: string,
   ): void {
-    const { marginLeft, marginRight, pageWidth, pageHeight, marginBottom } = layout;
+    const { marginLeft, marginRight, pageWidth, pageHeight, marginBottom } =
+      layout;
     const contentWidth = pageWidth - marginLeft - marginRight;
 
     const SIGNATURE_GAP = 40;
@@ -324,8 +452,16 @@ export class PdfDrawingKit {
     const FOOTER_GAP = 30;
     const DOC_FOOTER_HEIGHT = 24;
 
-    const legalTextHeight = doc.heightOfString(legalText, { width: contentWidth, align: 'justify' });
-    const blockHeight = legalTextHeight + SIGNATURE_GAP + SIGNATURE_HEIGHT + FOOTER_GAP + DOC_FOOTER_HEIGHT;
+    const legalTextHeight = doc.heightOfString(legalText, {
+      width: contentWidth,
+      align: 'justify',
+    });
+    const blockHeight =
+      legalTextHeight +
+      SIGNATURE_GAP +
+      SIGNATURE_HEIGHT +
+      FOOTER_GAP +
+      DOC_FOOTER_HEIGHT;
 
     let footerY = pageHeight - marginBottom - blockHeight;
     if (contentY > footerY) {
@@ -337,13 +473,34 @@ export class PdfDrawingKit {
       .font('Helvetica')
       .fontSize(10)
       .fillColor('#000000')
-      .text(legalText, marginLeft, footerY, { width: contentWidth, align: 'justify' });
+      .text(legalText, marginLeft, footerY, {
+        width: contentWidth,
+        align: 'justify',
+      });
 
     const signatureY = footerY + legalTextHeight + SIGNATURE_GAP;
-    this.drawSignatureLine(doc, marginLeft, signatureY, 200, 'Nombre y firma de quién recibe');
-    this.drawSignatureLine(doc, pageWidth - marginRight - 200, signatureY, 200, 'Nombre y firma de quién entrega');
+    this.drawSignatureLine(
+      doc,
+      marginLeft,
+      signatureY,
+      200,
+      'Nombre y firma de quién recibe',
+    );
+    this.drawSignatureLine(
+      doc,
+      pageWidth - marginRight - 200,
+      signatureY,
+      200,
+      'Nombre y firma de quién entrega',
+    );
 
-    this.drawDocumentFooter(doc, layout, signatureY + FOOTER_GAP, elaboratedLabel, nextRevisionLabel);
+    this.drawDocumentFooter(
+      doc,
+      layout,
+      signatureY + FOOTER_GAP,
+      elaboratedLabel,
+      nextRevisionLabel,
+    );
   }
 
   // Encabezado del formato físico: logo | razón social + FORMATOS + subtítulo
@@ -372,7 +529,11 @@ export class PdfDrawingKit {
     const headerHeight = 70;
     const codeRowHeight = headerHeight / 3;
 
-    doc.rect(marginLeft, topY, width, headerHeight).lineWidth(0.7).strokeColor('#000000').stroke();
+    doc
+      .rect(marginLeft, topY, width, headerHeight)
+      .lineWidth(0.7)
+      .strokeColor('#000000')
+      .stroke();
 
     const infoX = marginLeft + logoColWidth;
     const codeX = infoX + infoColWidth;
@@ -401,13 +562,22 @@ export class PdfDrawingKit {
       .font('Helvetica-Bold')
       .fontSize(12)
       .fillColor('#000000')
-      .text(opts.companyName, infoX + 6, topY + 12, { width: infoColWidth - 12, align: 'center' });
+      .text(opts.companyName, infoX + 6, topY + 12, {
+        width: infoColWidth - 12,
+        align: 'center',
+      });
     doc
       .font('Helvetica')
       .fontSize(9)
       .fillColor('#333333')
-      .text('FORMATOS', infoX + 6, topY + 32, { width: infoColWidth - 12, align: 'center' })
-      .text(opts.subtitle, infoX + 6, topY + 45, { width: infoColWidth - 12, align: 'center' });
+      .text('FORMATOS', infoX + 6, topY + 32, {
+        width: infoColWidth - 12,
+        align: 'center',
+      })
+      .text(opts.subtitle, infoX + 6, topY + 45, {
+        width: infoColWidth - 12,
+        align: 'center',
+      });
 
     for (let i = 1; i < 3; i++) {
       doc
@@ -435,14 +605,21 @@ export class PdfDrawingKit {
         .font('Helvetica-Bold')
         .fontSize(9)
         .fillColor('#000000')
-        .text(label, codeX + 4, rowY + codeRowHeight / 2 - 5, { width: codeLabelColWidth - 6 });
+        .text(label, codeX + 4, rowY + codeRowHeight / 2 - 5, {
+          width: codeLabelColWidth - 6,
+        });
       doc
         .font('Helvetica')
         .fontSize(9)
         .fillColor('#000000')
-        .text(value, codeX + codeLabelColWidth + 4, rowY + codeRowHeight / 2 - 5, {
-          width: codeColWidth - codeLabelColWidth - 8,
-        });
+        .text(
+          value,
+          codeX + codeLabelColWidth + 4,
+          rowY + codeRowHeight / 2 - 5,
+          {
+            width: codeColWidth - codeLabelColWidth - 8,
+          },
+        );
     });
 
     return topY + headerHeight + 15;
@@ -456,7 +633,8 @@ export class PdfDrawingKit {
     title: string,
     rows: PdfInspectionRow[],
   ): number {
-    const { marginLeft, pageWidth, marginRight, pageHeight, marginBottom } = layout;
+    const { marginLeft, pageWidth, marginRight, pageHeight, marginBottom } =
+      layout;
     const tableWidth = pageWidth - marginLeft - marginRight;
     const colLabelWidth = tableWidth * 0.4;
     const colStateWidth = tableWidth * 0.25;
@@ -469,9 +647,27 @@ export class PdfDrawingKit {
     }
 
     const drawHeaderRow = (headerY: number) => {
-      this.drawCell(doc, marginLeft, headerY, colLabelWidth, ROW_HEIGHT, { text: title, bold: true, fill: true });
-      this.drawCell(doc, marginLeft + colLabelWidth, headerY, colStateWidth, ROW_HEIGHT, { text: 'Estado', bold: true, fill: true, align: 'center' });
-      this.drawCell(doc, marginLeft + colLabelWidth + colStateWidth, headerY, colObsWidth, ROW_HEIGHT, { text: 'Observaciones', bold: true, fill: true, align: 'center' });
+      this.drawCell(doc, marginLeft, headerY, colLabelWidth, ROW_HEIGHT, {
+        text: title,
+        bold: true,
+        fill: true,
+      });
+      this.drawCell(
+        doc,
+        marginLeft + colLabelWidth,
+        headerY,
+        colStateWidth,
+        ROW_HEIGHT,
+        { text: 'Estado', bold: true, fill: true, align: 'center' },
+      );
+      this.drawCell(
+        doc,
+        marginLeft + colLabelWidth + colStateWidth,
+        headerY,
+        colObsWidth,
+        ROW_HEIGHT,
+        { text: 'Observaciones', bold: true, fill: true, align: 'center' },
+      );
     };
 
     drawHeaderRow(y);
@@ -485,9 +681,27 @@ export class PdfDrawingKit {
         y += ROW_HEIGHT;
       }
 
-      this.drawCell(doc, marginLeft, y, colLabelWidth, ROW_HEIGHT, { text: row.label, bold: true, fill: true });
-      this.drawCell(doc, marginLeft + colLabelWidth, y, colStateWidth, ROW_HEIGHT, { text: row.state });
-      this.drawCell(doc, marginLeft + colLabelWidth + colStateWidth, y, colObsWidth, ROW_HEIGHT, { text: row.observations });
+      this.drawCell(doc, marginLeft, y, colLabelWidth, ROW_HEIGHT, {
+        text: row.label,
+        bold: true,
+        fill: true,
+      });
+      this.drawCell(
+        doc,
+        marginLeft + colLabelWidth,
+        y,
+        colStateWidth,
+        ROW_HEIGHT,
+        { text: row.state },
+      );
+      this.drawCell(
+        doc,
+        marginLeft + colLabelWidth + colStateWidth,
+        y,
+        colObsWidth,
+        ROW_HEIGHT,
+        { text: row.observations },
+      );
 
       y += ROW_HEIGHT;
     }
@@ -503,7 +717,8 @@ export class PdfDrawingKit {
     startY: number,
     rows: PdfInspectionRow[],
   ): number {
-    const { marginLeft, pageWidth, marginRight, pageHeight, marginBottom } = layout;
+    const { marginLeft, pageWidth, marginRight, pageHeight, marginBottom } =
+      layout;
     const tableWidth = pageWidth - marginLeft - marginRight;
     const halfWidth = tableWidth / 2;
     const colLabelWidth = halfWidth * 0.4;
@@ -523,9 +738,27 @@ export class PdfDrawingKit {
     }
 
     const drawSide = (x: number, headerY: number) => {
-      this.drawCell(doc, x, headerY, colLabelWidth, ROW_HEIGHT, { text: 'Inspección', bold: true, fill: true });
-      this.drawCell(doc, x + colLabelWidth, headerY, colStateWidth, ROW_HEIGHT, { text: 'Estado', bold: true, fill: true, align: 'center' });
-      this.drawCell(doc, x + colLabelWidth + colStateWidth, headerY, colObsWidth, ROW_HEIGHT, { text: 'Observaciones', bold: true, fill: true, align: 'center' });
+      this.drawCell(doc, x, headerY, colLabelWidth, ROW_HEIGHT, {
+        text: 'Inspección',
+        bold: true,
+        fill: true,
+      });
+      this.drawCell(
+        doc,
+        x + colLabelWidth,
+        headerY,
+        colStateWidth,
+        ROW_HEIGHT,
+        { text: 'Estado', bold: true, fill: true, align: 'center' },
+      );
+      this.drawCell(
+        doc,
+        x + colLabelWidth + colStateWidth,
+        headerY,
+        colObsWidth,
+        ROW_HEIGHT,
+        { text: 'Observaciones', bold: true, fill: true, align: 'center' },
+      );
     };
 
     drawSide(marginLeft, y);
@@ -545,14 +778,50 @@ export class PdfDrawingKit {
       const right = rightRows[i];
 
       if (left) {
-        this.drawCell(doc, marginLeft, y, colLabelWidth, ROW_HEIGHT, { text: left.label, bold: true, fill: true });
-        this.drawCell(doc, marginLeft + colLabelWidth, y, colStateWidth, ROW_HEIGHT, { text: left.state });
-        this.drawCell(doc, marginLeft + colLabelWidth + colStateWidth, y, colObsWidth, ROW_HEIGHT, { text: left.observations });
+        this.drawCell(doc, marginLeft, y, colLabelWidth, ROW_HEIGHT, {
+          text: left.label,
+          bold: true,
+          fill: true,
+        });
+        this.drawCell(
+          doc,
+          marginLeft + colLabelWidth,
+          y,
+          colStateWidth,
+          ROW_HEIGHT,
+          { text: left.state },
+        );
+        this.drawCell(
+          doc,
+          marginLeft + colLabelWidth + colStateWidth,
+          y,
+          colObsWidth,
+          ROW_HEIGHT,
+          { text: left.observations },
+        );
       }
       if (right) {
-        this.drawCell(doc, rightX, y, colLabelWidth, ROW_HEIGHT, { text: right.label, bold: true, fill: true });
-        this.drawCell(doc, rightX + colLabelWidth, y, colStateWidth, ROW_HEIGHT, { text: right.state });
-        this.drawCell(doc, rightX + colLabelWidth + colStateWidth, y, colObsWidth, ROW_HEIGHT, { text: right.observations });
+        this.drawCell(doc, rightX, y, colLabelWidth, ROW_HEIGHT, {
+          text: right.label,
+          bold: true,
+          fill: true,
+        });
+        this.drawCell(
+          doc,
+          rightX + colLabelWidth,
+          y,
+          colStateWidth,
+          ROW_HEIGHT,
+          { text: right.state },
+        );
+        this.drawCell(
+          doc,
+          rightX + colLabelWidth + colStateWidth,
+          y,
+          colObsWidth,
+          ROW_HEIGHT,
+          { text: right.observations },
+        );
       }
 
       y += ROW_HEIGHT;

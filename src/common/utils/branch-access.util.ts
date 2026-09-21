@@ -12,7 +12,10 @@ function getUserBranchIds(user: BranchScopedUser): string[] {
  * Throws if the user has restricted branches assigned and `branchId` isn't
  * one of them. A user with no branches assigned is global (unrestricted).
  */
-export function assertBranchAccess(user: BranchScopedUser, branchId?: string | null) {
+export function assertBranchAccess(
+  user: BranchScopedUser,
+  branchId?: string | null,
+) {
   const allowedIds = getUserBranchIds(user);
   if (allowedIds.length === 0) return;
 

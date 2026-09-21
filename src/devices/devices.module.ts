@@ -9,7 +9,11 @@ import { SafeguardsModule } from 'src/safeguards/safeguards.module';
 
 @Module({
   imports: [PrismaModule, SafeguardsModule],
-  controllers: [DeviceCatalogController, DevicesController, TransfersController],
+  controllers: [
+    DeviceCatalogController,
+    DevicesController,
+    TransfersController,
+  ],
   providers: [DeviceCatalogService, DevicesService],
   exports: [DevicesService],
 })

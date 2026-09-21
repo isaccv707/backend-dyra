@@ -24,6 +24,12 @@ model User {
 
   createdVehicleSafeguards VehicleSafeguard[] @relation("VehicleSafeguardCreatedBy")
   signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
+
+  createdTickets      Ticket[]             @relation("TicketCreatedBy")
+  assignedTickets     Ticket[]             @relation("TicketAssignedTo")
+  ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
+  ticketNotifications TicketNotification[]
+  ticketEvents        TicketEvent[]        @relation("TicketEventActor")
 }
 
 model Role {
@@ -99,12 +105,14 @@ model Branch {
   movementHistoryOrigin       DeviceMovementHistory[] @relation("MovementOrigin")
   movementHistoryDestination  DeviceMovementHistory[] @relation("MovementDestination")
 
-  vehicleItems                       VehicleItem[]             @relation("VehicleCurrentBranch")
-  vehicleTransferRequestsOrigin      VehicleTransferRequest[]  @relation("VehicleTransferOrigin")
-  vehicleTransferRequestsDestination VehicleTransferRequest[]  @relation("VehicleTransferDestination")
-  vehicleMovementHistoryOrigin       VehicleMovementHistory[]  @relation("VehicleMovementOrigin")
-  vehicleMovementHistoryDestination  VehicleMovementHistory[]  @relation("VehicleMovementDestination")
-  vehicleSafeguards                  VehicleSafeguard[]        @relation("VehicleSafeguardBranch")
+  vehicleItems                       VehicleItem[]            @relation("VehicleCurrentBranch")
+  vehicleTransferRequestsOrigin      VehicleTransferRequest[] @relation("VehicleTransferOrigin")
+  vehicleTransferRequestsDestination VehicleTransferRequest[] @relation("VehicleTransferDestination")
+  vehicleMovementHistoryOrigin       VehicleMovementHistory[] @relation("VehicleMovementOrigin")
+  vehicleMovementHistoryDestination  VehicleMovementHistory[] @relation("VehicleMovementDestination")
+  vehicleSafeguards                  VehicleSafeguard[]       @relation("VehicleSafeguardBranch")
+
+  tickets Ticket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -536,16 +544,16 @@ model Employee {
 }
 
 model DeviceCatalog {
-  id    String     @id @default(uuid())
-  name  String
-  type  DeviceType
-  brand String
-  model String
+  id       String     @id @default(uuid())
+  name     String
+  type     DeviceType
+  brand    String
+  model    String
   // Archivado en vez de borrado: un modelo con equipos dados de alta (incluso
   // retirados) nunca se puede eliminar por integridad referencial, así que
   // isActive=false es la forma de sacarlo del listado sin perder el historial
   // de los DeviceItem que lo referencian.
-  isActive Boolean @default(true) @map("is_active")
+  isActive Boolean    @default(true) @map("is_active")
 
   items DeviceItem[]
 
@@ -616,7 +624,6 @@ model DeviceItem {
   @@index([mainDeviceId])
   @@map("device_items")
 }
-
 
 model TransferRequest {
   id     String         @id @default(uuid())
@@ -793,7 +800,7 @@ model SafeguardAccessoryDetail {
   id String @id @default(uuid())
 
   computerDetailId String?                  @map("computer_detail_id")
-  computerDetail   SafeguardComputerDetail?  @relation(fields: [computerDetailId], references: [id], onDelete: Cascade)
+  computerDetail   SafeguardComputerDetail? @relation(fields: [computerDetailId], references: [id], onDelete: Cascade)
 
   mobileDetailId String?                @map("mobile_detail_id")
   mobileDetail   SafeguardMobileDetail? @relation(fields: [mobileDetailId], references: [id], onDelete: Cascade)
@@ -822,10 +829,10 @@ model SafeguardAccessoryDetail {
 // ============================================================================
 
 model VehicleCatalog {
-  id    String @id @default(uuid())
-  name  String
-  brand String
-  model String
+  id       String  @id @default(uuid())
+  name     String
+  brand    String
+  model    String
   // Archivado en vez de borrado — mismo patrón que DeviceCatalog.isActive.
   isActive Boolean @default(true) @map("is_active")
 
@@ -963,8 +970,8 @@ model VehicleSafeguard {
   brand        String
   model        String
   mileage      String?
-  plateNumber  String? @map("plate_number")
-  fuelType     String? @map("fuel_type")
+  plateNumber  String?                 @map("plate_number")
+  fuelType     String?                 @map("fuel_type")
   transmission String?
   condition    SafeguardConditionState
 
@@ -1006,4 +1013,207 @@ model VehicleSafeguardInspectionItem {
 
   @@unique([vehicleSafeguardId, itemKey])
   @@map("vehicle_safeguard_inspection_items")
+}
+
+// ============================================================================
+// Tickets — soporte de TI general y soporte especializado para COGNITI
+// (sistema del laboratorio). Cada ticket pertenece a una única sucursal
+// (branchId requerido, misma convención que Service/Author/Post/Study) — la
+// que reporta el problema, no necesariamente la del personal de TI que lo
+// atiende. TicketsService.create valida con assertBranchAccess que el
+// usuario autenticado tenga acceso a esa sucursal, igual que en quotations/
+// price-sheets/reviews.
+// ============================================================================
+
+enum Category {
+  HARDWARE
+  SOFTWARE
+  NETWORK
+  ACCESS
+  COGNITI
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Catálogo de subcategorías, agrupado por Category — p. ej. dentro de
+// COGNITI: "Crear cliente", "Crear parámetro", "Actualizar parámetro",
+// "Actualizar precio de parámetro". Es una tabla (no un enum) para que
+// tickets:update pueda ampliar el catálogo sin un deploy, igual que otros
+// catálogos del sistema. Ticket.subcategoryId es opcional — no todas las
+// categorías tienen subcategorías definidas todavía — pero cuando se manda,
+// TicketsService valida que pertenezca a la misma Category del ticket
+// (assertSubcategoryBelongsToCategory, en la capa de servicio, no en la DB).
+model TicketSubcategory {
+  id       String   @id @default(uuid())
+  category Category
+  name     String
+  isActive Boolean  @default(true) @map("is_active")
+
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, name])
+  @@map("ticket_subcategories")
+}
+
+// Trazabilidad estructurada: una fila por cada hecho relevante del ciclo de
+// vida de un ticket (creación, cambio de estado/prioridad/categoría/
+// subcategoría, asignación, comentario). Es la fuente de datos para
+// analytics — a diferencia de TicketComment(isSystem:true), que es el texto
+// legible para el timeline de la UI. TicketsService escribe ambos a la vez
+// desde el mismo punto (recordChangeAndNotify) para no duplicar la lógica de
+// diffing.
+enum TicketEventType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  CATEGORY_CHANGED
+  SUBCATEGORY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COMMENTED
+  REOPENED
+}
+
+model TicketEvent {
+  id   String          @id @default(uuid())
+  type TicketEventType
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  actorId String @map("actor_id")
+  actor   User   @relation("TicketEventActor", fields: [actorId], references: [id])
+
+  fromValue String? @map("from_value")
+  toValue   String? @map("to_value")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([type, createdAt])
+  @@index([actorId])
+  @@map("ticket_events")
+}
+
+model Ticket {
+  id          String @id @default(uuid())
+  code        Int    @unique @default(autoincrement())
+  title       String
+  description String @db.Text
+
+  status   TicketStatus   @default(OPEN)
+  priority TicketPriority @default(MEDIUM)
+  category Category
+
+  subcategoryId String?            @map("subcategory_id")
+  subcategory   TicketSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
+
+  assignedToId String? @map("assigned_to_id")
+  assignedTo   User?   @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  comments      TicketComment[]
+  notifications TicketNotification[]
+  events        TicketEvent[]
+
+  // Trazabilidad/analytics — ver TicketsService para cómo se calculan:
+  // firstResponseAt: primera asignación o primer comentario público de
+  // alguien distinto al creador (lo que ocurra primero).
+  // resolvedAt/closedAt: se fijan al entrar a RESOLVED/CLOSED y se limpian
+  // si el ticket se reabre (por eso son nullable, no basta con updatedAt).
+  // reopenedCount: cuántas veces salió de RESOLVED/CLOSED de vuelta a
+  // IN_PROGRESS.
+  // dueAt: vencimiento de SLA según la prioridad vigente (ver
+  // SLA_HOURS_BY_PRIORITY) — se recalcula si la prioridad cambia.
+  // overdueNotifiedAt: evita que el cron de SLA reenvíe el mismo aviso de
+  // vencido en cada corrida; se limpia cuando dueAt se recalcula o el
+  // ticket se reabre.
+  firstResponseAt   DateTime? @map("first_response_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  closedAt          DateTime? @map("closed_at")
+  reopenedCount     Int       @default(0) @map("reopened_count")
+  dueAt             DateTime? @map("due_at")
+  overdueNotifiedAt DateTime? @map("overdue_notified_at")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([createdById])
+  @@index([assignedToId])
+  @@index([status])
+  @@index([subcategoryId])
+  @@index([branchId, createdAt])
+  @@index([createdById, createdAt])
+  @@index([category, createdAt])
+  @@index([resolvedAt])
+  @@index([dueAt])
+  @@map("tickets")
+}
+
+model TicketComment {
+  id         String  @id @default(uuid())
+  body       String  @db.Text
+  isInternal Boolean @default(false) @map("is_internal")
+  // true para el registro automático de auditoría (cambios de estado/
+  // prioridad/asignación hechos por update()) — false para comentarios
+  // escritos por una persona.
+  isSystem   Boolean @default(false) @map("is_system")
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId String @map("author_id")
+  author   User   @relation("TicketCommentAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([authorId])
+  @@map("ticket_comments")
+}
+
+// Copia persistida de lo que TicketsGateway.notifyUsers emite por socket —
+// sin esto, un usuario desconectado en el momento del evento se pierde el
+// aviso para siempre. El socket sigue siendo el canal "en vivo"; esta tabla
+// es el respaldo que el frontend puede listar al reconectarse.
+model TicketNotification {
+  id      String  @id @default(uuid())
+  message String  @db.Text
+  read    Boolean @default(false)
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([ticketId])
+  @@map("ticket_notifications")
 }

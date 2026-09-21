@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateDeviceCatalogDto } from './dto/create-device-catalog.dto';
 import { UpdateDeviceCatalogDto } from './dto/update-device-catalog.dto';
 import { FindDeviceCatalogDto } from './dto/find-device-catalog.dto';
@@ -90,7 +94,9 @@ export class DeviceCatalogService {
     // Chequeo explícito (con mensaje claro para la UI) en vez de dejar que
     // truene el FK constraint: un modelo de catálogo solo se puede eliminar
     // si ningún DeviceItem lo referencia.
-    const itemCount = await this.prisma.deviceItem.count({ where: { catalogId: id } });
+    const itemCount = await this.prisma.deviceItem.count({
+      where: { catalogId: id },
+    });
     if (itemCount > 0) {
       throw new BadRequestException(
         `No se puede eliminar: existen ${itemCount} equipo(s) dado(s) de alta con este modelo de catálogo. ` +

@@ -20,6 +20,7 @@ import { DevicesModule } from './devices/devices.module';
 import { SafeguardsModule } from './safeguards/safeguards.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { VehicleSafeguardsModule } from './vehicle-safeguards/vehicle-safeguards.module';
+import { TicketsModule } from './tickets/tickets.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { VehicleSafeguardsModule } from './vehicle-safeguards/vehicle-safeguards
     SafeguardsModule,
     VehiclesModule,
     VehicleSafeguardsModule,
+    TicketsModule,
   ],
   controllers: [],
   providers: [],

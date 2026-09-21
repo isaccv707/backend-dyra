@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -69,7 +73,9 @@ export class RolesService {
     const role = await this.findOne(id);
 
     if (role.name === 'Administrador') {
-      throw new ForbiddenException('El rol Administrador no puede ser eliminado');
+      throw new ForbiddenException(
+        'El rol Administrador no puede ser eliminado',
+      );
     }
 
     try {

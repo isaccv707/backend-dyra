@@ -1,4 +1,7 @@
-export const toRequiredNumber = (v: any): number => {
+export type ExcelCellValue =
+  string | number | boolean | Date | null | undefined;
+
+export const toRequiredNumber = (v: ExcelCellValue): number => {
   // 1. Si es null o undefined, directo a 0
   if (v === null || v === undefined) return 0;
 
@@ -6,7 +9,7 @@ export const toRequiredNumber = (v: any): number => {
   if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
 
   // 3. Si es un string, removemos TODO lo que no sea un número, un punto o un signo menos
-  // Esto elimina comas (,), signos de pesos ($), espacios normales y espacios invisibles ( )
+  // Esto elimina comas (,), signos de pesos ($), espacios normales y espacios invisibles (nbsp)
   const cleanString = String(v)
     .replace(/[^\d.-]/g, '') // 🔥 Conserva solo dígitos, puntos y guiones. Adiós comas y espacios.
     .trim();
@@ -17,16 +20,16 @@ export const toRequiredNumber = (v: any): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export const toOptionalInt = (v: any): number | undefined => {
+export const toOptionalInt = (v: ExcelCellValue): number | undefined => {
   if (v === null || v === undefined || v === '') return undefined;
   const n = Number(String(v).replace(/,/g, ''));
-  return Number.isFinite(n) ? Math.trunc(n) : v;
+  return Number.isFinite(n) ? Math.trunc(n) : (v as number | undefined);
 };
 
-export const toOptionalBool = (v: any): boolean | undefined => {
+export const toOptionalBool = (v: ExcelCellValue): boolean | undefined => {
   if (v === null || v === undefined || v === '') return undefined;
   const s = String(v).trim().toLowerCase();
   if (['true', '1', 'si', 'sí', 'yes'].includes(s)) return true;
   if (['false', '0', 'no'].includes(s)) return false;
-  return v;
+  return v as boolean | undefined;
 };

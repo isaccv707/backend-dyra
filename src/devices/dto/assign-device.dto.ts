@@ -1,4 +1,11 @@
-import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+} from 'class-validator';
 import { SafeguardUsageType } from '@prisma/client';
 
 // Exactamente uno de los dos debe llegar; la exclusividad (nunca ambos, y
