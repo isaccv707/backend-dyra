@@ -1,3 +1,4 @@
+import type { Response } from 'express';
 import {
   Controller,
   Get,
@@ -8,11 +9,13 @@ import {
   Delete,
   Query,
   ParseUUIDPipe,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiQuery,
   ApiResponse,
   ApiTags,
@@ -24,6 +27,7 @@ import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { PaginationDto } from './dto/pagination-study.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { generateSlug } from 'src/common/utils/slugger.util';
 
 @ApiTags('studies')
 @Controller('studies')
@@ -58,6 +62,43 @@ export class StudiesController {
   @Get()
   findAll(@Query() pagination: PaginationDto) {
     return this.studiesService.findAll(pagination);
+  }
+
+  @ApiOperation({
+    summary: 'Exportar estudios de una sucursal',
+    description:
+      'Genera y descarga un Excel con código, nombre y tipo de muestra de todos los estudios cargados en una sucursal.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: true,
+    description: 'Identificador de la sucursal a exportar.',
+  })
+  @ApiProduces(
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  @ApiResponse({ status: 200, description: 'Archivo Excel de estudios.' })
+  @ApiResponse({ status: 404, description: 'Sucursal no encontrada.' })
+  @ApiBearerAuth()
+  @Permissions('studies:read')
+  @Get('export')
+  async exportByBranch(
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @Res() res: Response,
+  ) {
+    const { buffer, branchName } =
+      await this.studiesService.exportByBranch(branchId);
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="estudios-${generateSlug(branchName)}.xlsx"`,
+    );
+
+    res.send(buffer);
   }
 
   @ApiOperation({

@@ -29,6 +29,7 @@ model User {
   assignedTickets     Ticket[]             @relation("TicketAssignedTo")
   ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
   ticketNotifications TicketNotification[]
+  ticketEvents        TicketEvent[]        @relation("TicketEventActor")
 }
 
 model Role {
@@ -1049,6 +1050,69 @@ enum TicketPriority {
   CRITICAL
 }
 
+// Catálogo de subcategorías, agrupado por Category — p. ej. dentro de
+// COGNITI: "Crear cliente", "Crear parámetro", "Actualizar parámetro",
+// "Actualizar precio de parámetro". Es una tabla (no un enum) para que
+// tickets:update pueda ampliar el catálogo sin un deploy, igual que otros
+// catálogos del sistema. Ticket.subcategoryId es opcional — no todas las
+// categorías tienen subcategorías definidas todavía — pero cuando se manda,
+// TicketsService valida que pertenezca a la misma Category del ticket
+// (assertSubcategoryBelongsToCategory, en la capa de servicio, no en la DB).
+model TicketSubcategory {
+  id       String   @id @default(uuid())
+  category Category
+  name     String
+  isActive Boolean  @default(true) @map("is_active")
+
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, name])
+  @@map("ticket_subcategories")
+}
+
+// Trazabilidad estructurada: una fila por cada hecho relevante del ciclo de
+// vida de un ticket (creación, cambio de estado/prioridad/categoría/
+// subcategoría, asignación, comentario). Es la fuente de datos para
+// analytics — a diferencia de TicketComment(isSystem:true), que es el texto
+// legible para el timeline de la UI. TicketsService escribe ambos a la vez
+// desde el mismo punto (recordChangeAndNotify) para no duplicar la lógica de
+// diffing.
+enum TicketEventType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  CATEGORY_CHANGED
+  SUBCATEGORY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COMMENTED
+  REOPENED
+}
+
+model TicketEvent {
+  id   String          @id @default(uuid())
+  type TicketEventType
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  actorId String @map("actor_id")
+  actor   User   @relation("TicketEventActor", fields: [actorId], references: [id])
+
+  fromValue String? @map("from_value")
+  toValue   String? @map("to_value")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([type, createdAt])
+  @@index([actorId])
+  @@map("ticket_events")
+}
+
 model Ticket {
   id          String @id @default(uuid())
   code        Int    @unique @default(autoincrement())
@@ -1058,6 +1122,9 @@ model Ticket {
   status   TicketStatus   @default(OPEN)
   priority TicketPriority @default(MEDIUM)
   category Category
+
+  subcategoryId String?            @map("subcategory_id")
+  subcategory   TicketSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
@@ -1070,6 +1137,26 @@ model Ticket {
 
   comments      TicketComment[]
   notifications TicketNotification[]
+  events        TicketEvent[]
+
+  // Trazabilidad/analytics — ver TicketsService para cómo se calculan:
+  // firstResponseAt: primera asignación o primer comentario público de
+  // alguien distinto al creador (lo que ocurra primero).
+  // resolvedAt/closedAt: se fijan al entrar a RESOLVED/CLOSED y se limpian
+  // si el ticket se reabre (por eso son nullable, no basta con updatedAt).
+  // reopenedCount: cuántas veces salió de RESOLVED/CLOSED de vuelta a
+  // IN_PROGRESS.
+  // dueAt: vencimiento de SLA según la prioridad vigente (ver
+  // SLA_HOURS_BY_PRIORITY) — se recalcula si la prioridad cambia.
+  // overdueNotifiedAt: evita que el cron de SLA reenvíe el mismo aviso de
+  // vencido en cada corrida; se limpia cuando dueAt se recalcula o el
+  // ticket se reabre.
+  firstResponseAt   DateTime? @map("first_response_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  closedAt          DateTime? @map("closed_at")
+  reopenedCount     Int       @default(0) @map("reopened_count")
+  dueAt             DateTime? @map("due_at")
+  overdueNotifiedAt DateTime? @map("overdue_notified_at")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1078,6 +1165,12 @@ model Ticket {
   @@index([createdById])
   @@index([assignedToId])
   @@index([status])
+  @@index([subcategoryId])
+  @@index([branchId, createdAt])
+  @@index([createdById, createdAt])
+  @@index([category, createdAt])
+  @@index([resolvedAt])
+  @@index([dueAt])
   @@map("tickets")
 }
 

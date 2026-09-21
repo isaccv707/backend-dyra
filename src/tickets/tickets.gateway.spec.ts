@@ -242,4 +242,18 @@ describe('TicketsGateway', () => {
       expect(to).toHaveBeenCalledWith(['ti_staff_room', 'user:reporter-1']);
     });
   });
+
+  describe('emitOverdueTicket', () => {
+    it('transmite el ticket vencido a la sala de TI', () => {
+      const emit = jest.fn();
+      const to = jest.fn().mockReturnValue({ emit });
+      gateway.server = { to } as any;
+
+      const ticket = { id: 'ticket-1', code: 42, title: 'No enciende' };
+      gateway.emitOverdueTicket(ticket);
+
+      expect(to).toHaveBeenCalledWith('ti_staff_room');
+      expect(emit).toHaveBeenCalledWith('ticket_overdue', ticket);
+    });
+  });
 });
