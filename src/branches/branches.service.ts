@@ -49,8 +49,9 @@ export class BranchesService {
     });
   }
 
-  async findAll() {
+  async findAll(isVisible?: boolean) {
     return this.prisma.branch.findMany({
+      where: isVisible !== undefined ? { isVisible } : undefined,
       include: {
         address: true,
         priceSheets: true,
