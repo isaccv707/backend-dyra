@@ -122,9 +122,9 @@ export class DevicesService {
         'hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER',
       );
     }
-    if (dto.phoneNumber && catalog.type !== DeviceType.MOBILE) {
+    if ((dto.imei || dto.phoneNumber) && catalog.type !== DeviceType.MOBILE) {
       throw new BadRequestException(
-        'phoneNumber solo aplica a equipos de catálogo tipo MOBILE',
+        'imei/phoneNumber solo aplican a equipos de catálogo tipo MOBILE',
       );
     }
 
@@ -252,7 +252,7 @@ export class DevicesService {
 
   async findAll(dto: FindDevicesDto, user: BranchScopedUser) {
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
-      searchFields: ['internalCode', 'serialNumber'],
+      searchFields: ['internalCode', 'serialNumber', 'imei'],
       defaultSort: { createdAt: 'desc' },
       allowedFields: DEVICE_ALLOWED_FIELDS,
     });
@@ -335,9 +335,12 @@ export class DevicesService {
         'hardDrive/processor solo aplican a equipos de catálogo tipo COMPUTER',
       );
     }
-    if (dto.phoneNumber && device.catalog.type !== DeviceType.MOBILE) {
+    if (
+      (dto.imei || dto.phoneNumber) &&
+      device.catalog.type !== DeviceType.MOBILE
+    ) {
       throw new BadRequestException(
-        'phoneNumber solo aplica a equipos de catálogo tipo MOBILE',
+        'imei/phoneNumber solo aplican a equipos de catálogo tipo MOBILE',
       );
     }
     if (

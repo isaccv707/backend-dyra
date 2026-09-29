@@ -567,8 +567,7 @@ model DeviceCatalog {
 model DeviceItem {
   id            String                  @id @default(uuid())
   internalCode  String                  @unique @map("internal_code")
-  // Serie del equipo; para MOBILE se usa como IMEI (mismo campo, sin
-  // duplicar columna — ver SafeguardsService.buildMobileSection).
+  // Número de serie del equipo, para cualquier DeviceType (incluido MOBILE).
   serialNumber  String?                 @unique @map("serial_number")
   ownershipType OwnershipType           @default(INTERNAL) @map("ownership_type")
   providerFolio String?                 @map("provider_folio")
@@ -584,7 +583,8 @@ model DeviceItem {
   hardDrive String? @map("hard_drive")
   processor String?
 
-  // Solo aplica cuando catalog.type = MOBILE (validado en DevicesService).
+  // Solo aplican cuando catalog.type = MOBILE (validado en DevicesService).
+  imei        String? @unique
   phoneNumber String? @map("phone_number")
 
   catalogId String        @map("catalog_id")
@@ -779,10 +779,12 @@ model SafeguardMobileDetail {
   deviceId String     @map("device_id")
   device   DeviceItem @relation(fields: [deviceId], references: [id])
 
-  brand       String
-  model       String
-  imei        String?
-  phoneNumber String? @map("phone_number")
+  brand        String
+  model        String
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+  imei         String?
+  phoneNumber  String? @map("phone_number")
 
   condition    SafeguardConditionState
   observations String?                 @db.Text

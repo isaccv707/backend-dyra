@@ -24,7 +24,7 @@ export class CreateDeviceItemDto {
   })
   internalCode!: string;
 
-  // Serie del equipo (COMPUTER) o IMEI (MOBILE) — mismo campo, según catalogId.type.
+  // Número de serie del equipo, para cualquier catalogId.type (incluido MOBILE).
   @IsOptional()
   @IsString()
   serialNumber?: string;
@@ -76,7 +76,11 @@ export class CreateDeviceItemDto {
   @IsString()
   processor?: string;
 
-  // Solo aplica cuando catalogId.type = MOBILE; se valida en DevicesService.
+  // Solo aplican cuando catalogId.type = MOBILE; se valida en DevicesService.
+  @IsOptional()
+  @IsString()
+  imei?: string;
+
   @IsOptional()
   @IsString()
   phoneNumber?: string;
