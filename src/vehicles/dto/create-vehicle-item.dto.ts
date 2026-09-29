@@ -20,9 +20,10 @@ import { VehicleSafeguardInspectionItemDto } from 'src/vehicle-safeguards/dto/ve
 
 export class CreateVehicleItemDto {
   @IsString()
-  @Matches(/^DYRA\d{8}$/, {
+  @IsNotEmpty()
+  @Matches(/^\S(?:.*\S)?$/, {
     message:
-      'internalCode debe tener el formato DYRA seguido de 8 dígitos (ej. DYRA12345678)',
+      'internalCode no puede estar vacío ni empezar o terminar con espacios',
   })
   internalCode!: string;
 
