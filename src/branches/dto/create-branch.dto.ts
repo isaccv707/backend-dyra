@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsEmail,
   IsInt,
   IsNotEmpty,
@@ -28,6 +29,11 @@ export class CreateBranchDto {
   @IsUrl()
   @IsString()
   urlResults!: string;
+
+  // Controla si la sucursal se muestra en el listado de la página web.
+  @IsBoolean()
+  @IsOptional()
+  isVisible?: boolean;
 
   @IsInt()
   @IsNotEmpty()
