@@ -76,6 +76,7 @@ model Branch {
   phone      String?
   email      String?
   isActive   Boolean @default(true)
+  isVisible  Boolean @default(true)
   urlResults String
 
   stateId Int   @map("state_id")

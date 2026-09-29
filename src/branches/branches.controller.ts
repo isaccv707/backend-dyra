@@ -6,11 +6,14 @@ import {
   Patch,
   Param,
   Delete,
+  Query,
+  ParseBoolPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -39,13 +42,23 @@ export class BranchesController {
 
   @ApiOperation({
     summary: 'Listar sucursales',
-    description: 'Devuelve todas las sucursales disponibles.',
+    description:
+      'Devuelve las sucursales. Sin `isVisible` devuelve todas (panel admin); la página web debe enviar `isVisible=true`.',
+  })
+  @ApiQuery({
+    name: 'isVisible',
+    required: false,
+    type: Boolean,
+    description: 'Filtra por visibilidad en la página web.',
   })
   @ApiResponse({ status: 200, description: 'Listado de sucursales.' })
   @Public()
   @Get()
-  findAll() {
-    return this.branchesService.findAll();
+  findAll(
+    @Query('isVisible', new ParseBoolPipe({ optional: true }))
+    isVisible?: boolean,
+  ) {
+    return this.branchesService.findAll(isVisible);
   }
 
   @ApiOperation({
