@@ -33,7 +33,7 @@ import {
 import { SafeguardPdfData } from './interfaces/safeguard-pdf-interfaces';
 import { SafeguardPdfRenderer } from './pdf/safeguard-pdf.renderer';
 
-const DOC_CODE = 'ADM.F.00';
+const DOC_CODE = 'ADM.F.18';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
 
 const SAFEGUARD_ALLOWED_FIELDS = [
