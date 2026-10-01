@@ -254,6 +254,19 @@ model Study {
   preparation  String?
   isActive     Boolean @default(true)
 
+  abbreviation String?
+  title        String?
+  section      String  @default("General")
+  technique    String?
+  isPanel      Boolean @default(false)
+  // M = masculino, F = femenino, A = ambos (ver src/studies/constants/study-fields.const.ts)
+  gender       String  @default("A")
+  // Unidad de minAge/maxAge: "DIAS" o "AÑOS"
+  ageFormat    String  @default("AÑOS")
+  minAge       Int     @default(0)
+  maxAge       Int     @default(120)
+  decimals     Int     @default(0)
+
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 

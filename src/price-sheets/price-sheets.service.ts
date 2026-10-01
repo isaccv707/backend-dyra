@@ -30,6 +30,10 @@ import {
   toOptionalInt,
   toRequiredNumber,
 } from 'src/common/utils/excel-normalizers';
+import {
+  normalizeAgeFormat,
+  normalizeGender,
+} from 'src/studies/constants/study-fields.const';
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
@@ -206,6 +210,16 @@ export class PriceSheetsService {
       'isActive',
       'price',
       'showPrice',
+      'abbreviation',
+      'title',
+      'section',
+      'technique',
+      'isPanel',
+      'gender',
+      'ageFormat',
+      'minAge',
+      'maxAge',
+      'decimals',
     ];
 
     const exampleRow: Record<string, string | number> = {
@@ -219,6 +233,16 @@ export class PriceSheetsService {
       isActive: 'true',
       price: 150,
       showPrice: 'true',
+      abbreviation: 'BH',
+      title: 'Biometría Hemática Completa',
+      section: 'Hematología',
+      technique: 'Citometría de flujo',
+      isPanel: 'false',
+      gender: 'A',
+      ageFormat: 'AÑOS',
+      minAge: 0,
+      maxAge: 120,
+      decimals: 2,
     };
 
     const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], {
@@ -315,6 +339,16 @@ export class PriceSheetsService {
       price: number;
       showPrice?: boolean;
       serviceId: string;
+      abbreviation?: string;
+      title?: string;
+      section?: string;
+      technique?: string;
+      isPanel?: boolean;
+      gender?: string;
+      ageFormat?: string;
+      minAge?: number;
+      maxAge?: number;
+      decimals?: number;
     };
 
     const valid: ValidRow[] = [];
@@ -360,7 +394,31 @@ export class PriceSheetsService {
         isActive: toOptionalBool(row.isActive) ?? true,
         price: toRequiredNumber(getPriceValue(row.price)),
         showPrice: toOptionalBool(row.showPrice) ?? true,
+        abbreviation: cellToString(row.abbreviation),
+        title: cellToString(row.title),
+        section: cellToString(row.section),
+        technique: cellToString(row.technique),
+        isPanel: toOptionalBool(row.isPanel),
+        gender: normalizeGender(cellToString(row.gender)),
+        ageFormat: normalizeAgeFormat(cellToString(row.ageFormat)),
+        minAge: toOptionalInt(row.minAge),
+        maxAge: toOptionalInt(row.maxAge),
+        decimals: toOptionalInt(row.decimals),
       };
+
+      // minAge/maxAge van juntos: con solo uno no se puede validar el rango
+      // contra el valor ya guardado (o el default) sin consultar cada fila.
+      const hasMinAge = normalizedData.minAge !== undefined;
+      const hasMaxAge = normalizedData.maxAge !== undefined;
+      if (hasMinAge !== hasMaxAge) {
+        rowErrors.push('minAge y maxAge deben capturarse juntos');
+      } else if (
+        typeof normalizedData.minAge === 'number' &&
+        typeof normalizedData.maxAge === 'number' &&
+        normalizedData.minAge > normalizedData.maxAge
+      ) {
+        rowErrors.push('minAge no puede ser mayor que maxAge');
+      }
 
       const dto = plainToInstance(ImportStudyRowDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
@@ -384,6 +442,16 @@ export class PriceSheetsService {
           price: dto.price,
           showPrice: dto.showPrice,
           serviceId,
+          abbreviation: dto.abbreviation,
+          title: dto.title,
+          section: dto.section || undefined,
+          technique: dto.technique,
+          isPanel: dto.isPanel,
+          gender: dto.gender,
+          ageFormat: dto.ageFormat,
+          minAge: dto.minAge,
+          maxAge: dto.maxAge,
+          decimals: dto.decimals,
         });
       }
     }
@@ -403,6 +471,16 @@ export class PriceSheetsService {
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive,
+            abbreviation: item.abbreviation,
+            title: item.title,
+            section: item.section,
+            technique: item.technique,
+            isPanel: item.isPanel,
+            gender: item.gender,
+            ageFormat: item.ageFormat,
+            minAge: item.minAge,
+            maxAge: item.maxAge,
+            decimals: item.decimals,
             service: { connect: { id: item.serviceId } },
           },
           create: {
@@ -414,6 +492,16 @@ export class PriceSheetsService {
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive ?? true,
+            abbreviation: item.abbreviation,
+            title: item.title,
+            section: item.section,
+            technique: item.technique,
+            isPanel: item.isPanel,
+            gender: item.gender,
+            ageFormat: item.ageFormat,
+            minAge: item.minAge,
+            maxAge: item.maxAge,
+            decimals: item.decimals,
             service: { connect: { id: item.serviceId } },
             branch: { connect: { id: branchId } },
           },

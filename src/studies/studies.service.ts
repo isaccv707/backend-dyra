@@ -20,10 +20,19 @@ import {
 const STUDY_ALLOWED_FIELDS = [
   'name',
   'code',
+  'abbreviation',
+  'section',
   'isActive',
+  'isPanel',
+  'gender',
+  'ageFormat',
   'deliveryTime',
   'createdAt',
 ];
+
+// Deben coincidir con los @default de Study.minAge/maxAge en schema.prisma
+const DEFAULT_MIN_AGE = 0;
+const DEFAULT_MAX_AGE = 120;
 
 @Injectable()
 export class StudiesService {
@@ -43,6 +52,16 @@ export class StudiesService {
     if (service.branchId !== branchId) {
       throw new BadRequestException(
         'El servicio seleccionado pertenece a otra sucursal',
+      );
+    }
+  }
+
+  // minAge/maxAge tienen default en DB, así que en un update parcial se
+  // compara contra el valor ya guardado del campo que no viene en el body.
+  private assertValidAgeRange(minAge?: number, maxAge?: number) {
+    if (minAge !== undefined && maxAge !== undefined && minAge > maxAge) {
+      throw new BadRequestException(
+        'La edad mínima no puede ser mayor que la edad máxima',
       );
     }
   }
@@ -71,6 +90,10 @@ export class StudiesService {
       createStudyDto;
     const slug = generateSlug(name);
 
+    this.assertValidAgeRange(
+      studyData.minAge ?? DEFAULT_MIN_AGE,
+      studyData.maxAge ?? DEFAULT_MAX_AGE,
+    );
     await this.assertServiceBelongsToBranch(serviceId, branchId);
     if (studyPrices?.length) {
       await this.assertPriceSheetsBelongToBranch(
@@ -117,7 +140,7 @@ export class StudiesService {
   async findAll(dto: PaginationDto) {
     const { priceSheetId, branchId } = dto;
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
-      searchFields: ['name', 'code'],
+      searchFields: ['name', 'code', 'abbreviation', 'title'],
       defaultSort: { name: 'asc' },
       allowedFields: STUDY_ALLOWED_FIELDS,
       minSearchLength: 2,
@@ -230,6 +253,11 @@ export class StudiesService {
       throw new NotFoundException(`Study with id ${id} not found`);
     }
 
+    this.assertValidAgeRange(
+      studyData.minAge ?? existingStudy.minAge,
+      studyData.maxAge ?? existingStudy.maxAge,
+    );
+
     const effectiveBranchId = branchId ?? existingStudy.branchId;
     const effectiveServiceId = serviceId ?? existingStudy.serviceId;
     if (branchId || serviceId) {
@@ -339,24 +367,51 @@ export class StudiesService {
 
     const studies = await this.prisma.study.findMany({
       where: { branchId },
-      select: { code: true, name: true, sampleType: true },
+      select: {
+        code: true,
+        abbreviation: true,
+        name: true,
+        title: true,
+        section: true,
+        sampleType: true,
+        technique: true,
+        isPanel: true,
+        gender: true,
+        ageFormat: true,
+        minAge: true,
+        maxAge: true,
+        decimals: true,
+        deliveryTime: true,
+      },
       orderBy: { name: 'asc' },
     });
 
-    const rows = studies.map((s) => ({
-      codigo: s.code,
-      nombre: s.name,
-      tipoDeMuestra: s.sampleType ?? '',
-    }));
+    // Una sola lista de columnas para que encabezado y valores no se
+    // desalineen al agregar o reordenar campos.
+    const columns: Array<{
+      header: string;
+      value: (s: (typeof studies)[number]) => string | number;
+    }> = [
+      { header: 'Código', value: (s) => s.code },
+      { header: 'Abreviatura', value: (s) => s.abbreviation ?? '' },
+      { header: 'Nombre', value: (s) => s.name },
+      { header: 'Título', value: (s) => s.title ?? '' },
+      { header: 'Sección', value: (s) => s.section },
+      { header: 'Tipo de muestra', value: (s) => s.sampleType ?? '' },
+      { header: 'Técnica', value: (s) => s.technique ?? '' },
+      { header: 'Es perfil', value: (s) => (s.isPanel ? 'Sí' : 'No') },
+      { header: 'Género', value: (s) => s.gender },
+      { header: 'Formato de edad', value: (s) => s.ageFormat },
+      { header: 'Edad mínima', value: (s) => s.minAge },
+      { header: 'Edad máxima', value: (s) => s.maxAge },
+      { header: 'Decimales', value: (s) => s.decimals },
+      { header: 'Tiempo de entrega', value: (s) => s.deliveryTime ?? '' },
+    ];
 
-    const sheet = XLSX.utils.json_to_sheet(rows, {
-      header: ['codigo', 'nombre', 'tipoDeMuestra'],
-    });
-    XLSX.utils.sheet_add_aoa(
-      sheet,
-      [['Código', 'Nombre', 'Tipo de muestra']],
-      { origin: 'A1' },
-    );
+    const sheet = XLSX.utils.aoa_to_sheet([
+      columns.map((c) => c.header),
+      ...studies.map((s) => columns.map((c) => c.value(s))),
+    ]);
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, sheet, 'Estudios');

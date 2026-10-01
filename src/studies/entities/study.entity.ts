@@ -1,3 +1,8 @@
+import type {
+  StudyAgeFormat,
+  StudyGender,
+} from '../constants/study-fields.const';
+
 export class Study {
   id?: string;
   name!: string;
@@ -8,6 +13,16 @@ export class Study {
   deliveryTime?: number;
   preparation?: string;
   isActive?: boolean;
+  abbreviation?: string;
+  title?: string;
+  section!: string;
+  technique?: string;
+  isPanel!: boolean;
+  gender!: StudyGender;
+  ageFormat!: StudyAgeFormat;
+  minAge!: number;
+  maxAge!: number;
+  decimals!: number;
   priceSheets?: StudyOnPriceSheet[];
 }
 
