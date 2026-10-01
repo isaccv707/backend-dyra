@@ -99,6 +99,10 @@ export class ImportStudyRowDto {
   isPanel?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  isOrderable?: boolean;
+
+  @IsOptional()
   @IsIn(STUDY_GENDERS, {
     message: `gender debe ser uno de: ${STUDY_GENDERS.join(', ')}`,
   })

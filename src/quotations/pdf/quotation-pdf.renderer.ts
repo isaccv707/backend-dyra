@@ -291,6 +291,33 @@ export class QuotationPdfRenderer {
       });
 
       rowY += 18;
+
+      // Desglose del perfil: solo nombres, sin importes (el precio es el
+      // del perfil completo), con sangría según el nivel de anidamiento.
+      if (study.components.length) {
+        doc.fontSize(8.5).fillColor('#777777');
+        for (const component of study.components) {
+          if (rowY > MAX_TABLE_Y) {
+            doc.addPage();
+            rowY = TABLE_START_Y;
+          }
+          const indent = 14 * component.level;
+          const width = studyColumnWidth - indent;
+          doc.text(
+            this.truncateToWidth(
+              doc,
+              `• ${component.code} - ${component.name}`,
+              width,
+            ),
+            colStudyX + indent,
+            rowY,
+            { width, lineBreak: false },
+          );
+          rowY += 12;
+        }
+        doc.fontSize(10).fillColor('#333333');
+        rowY += 4;
+      }
     });
 
     doc

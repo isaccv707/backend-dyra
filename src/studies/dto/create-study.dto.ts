@@ -131,6 +131,11 @@ export class CreateStudyDto {
   @IsBoolean()
   isPanel?: boolean;
 
+  // false = solo se puede cotizar como parte de un perfil
+  @IsOptional()
+  @IsBoolean()
+  isOrderable?: boolean;
+
   @IsOptional()
   @IsIn(STUDY_GENDERS, {
     message: `gender debe ser uno de: ${STUDY_GENDERS.join(', ')}`,

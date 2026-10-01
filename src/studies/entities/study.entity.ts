@@ -18,6 +18,7 @@ export class Study {
   section!: string;
   technique?: string;
   isPanel!: boolean;
+  isOrderable!: boolean;
   gender!: StudyGender;
   ageFormat!: StudyAgeFormat;
   minAge!: number;

@@ -34,6 +34,10 @@ import {
   normalizeAgeFormat,
   normalizeGender,
 } from 'src/studies/constants/study-fields.const';
+import {
+  findPanelsInCycle,
+  loadPanelGraph,
+} from 'src/studies/utils/panel-tree.util';
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
@@ -215,6 +219,8 @@ export class PriceSheetsService {
       'section',
       'technique',
       'isPanel',
+      'parametros',
+      'isOrderable',
       'gender',
       'ageFormat',
       'minAge',
@@ -238,6 +244,9 @@ export class PriceSheetsService {
       section: 'Hematología',
       technique: 'Citometría de flujo',
       isPanel: 'false',
+      // Solo con isPanel = true: códigos de los estudios hijos separados por coma
+      parametros: '',
+      isOrderable: 'true',
       gender: 'A',
       ageFormat: 'AÑOS',
       minAge: 0,
@@ -344,6 +353,8 @@ export class PriceSheetsService {
       section?: string;
       technique?: string;
       isPanel?: boolean;
+      isOrderable?: boolean;
+      panelCodes?: string[];
       gender?: string;
       ageFormat?: string;
       minAge?: number;
@@ -373,6 +384,28 @@ export class PriceSheetsService {
         seenCodes.add(code);
       }
 
+      // Códigos de los hijos del perfil; se resuelven después de importar
+      // todas las filas para que un perfil pueda referir estudios del mismo
+      // archivo.
+      const panelCodes = (cellToString(row.parametros) ?? '')
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+      const rowIsPanel = toOptionalBool(row.isPanel);
+      if (panelCodes.length) {
+        if (rowIsPanel !== true) {
+          rowErrors.push(
+            'La columna parametros solo aplica a filas con isPanel = true',
+          );
+        }
+        if (new Set(panelCodes).size !== panelCodes.length) {
+          rowErrors.push('La columna parametros tiene códigos repetidos');
+        }
+        if (code && panelCodes.includes(code)) {
+          rowErrors.push('Un perfil no puede contenerse a sí mismo');
+        }
+      }
+
       const serviceName = cellToString(row.serviceName);
       const serviceId = serviceName
         ? serviceIdByName.get(serviceName.toLowerCase())
@@ -398,7 +431,8 @@ export class PriceSheetsService {
         title: cellToString(row.title),
         section: cellToString(row.section),
         technique: cellToString(row.technique),
-        isPanel: toOptionalBool(row.isPanel),
+        isPanel: rowIsPanel,
+        isOrderable: toOptionalBool(row.isOrderable),
         gender: normalizeGender(cellToString(row.gender)),
         ageFormat: normalizeAgeFormat(cellToString(row.ageFormat)),
         minAge: toOptionalInt(row.minAge),
@@ -447,6 +481,8 @@ export class PriceSheetsService {
           section: dto.section || undefined,
           technique: dto.technique,
           isPanel: dto.isPanel,
+          isOrderable: dto.isOrderable,
+          panelCodes: panelCodes.length ? panelCodes : undefined,
           gender: dto.gender,
           ageFormat: dto.ageFormat,
           minAge: dto.minAge,
@@ -458,8 +494,35 @@ export class PriceSheetsService {
 
     let processed = 0;
     const importErrors: Array<{ code: string; error: string }> = [];
+    const processedCodes = new Set<string>();
+
+    // Un perfil con hijos no se puede desmarcar (isPanel = false) hasta
+    // quitarle todos sus estudios.
+    const panelsWithChildren = new Set(
+      (
+        await this.prisma.study.findMany({
+          where: {
+            branchId,
+            code: {
+              in: valid.filter((v) => v.isPanel === false).map((v) => v.code),
+            },
+            panelItems: { some: {} },
+          },
+          select: { code: true },
+        })
+      ).map((s) => s.code),
+    );
 
     for (const item of valid) {
+      if (panelsWithChildren.has(item.code)) {
+        importErrors.push({
+          code: item.code,
+          error:
+            'No se puede desmarcar como perfil: aún tiene estudios hijos. Elimínalos primero.',
+        });
+        continue;
+      }
+
       try {
         const study = await this.prisma.study.upsert({
           where: { branchId_code: { branchId, code: item.code } },
@@ -476,6 +539,7 @@ export class PriceSheetsService {
             section: item.section,
             technique: item.technique,
             isPanel: item.isPanel,
+            isOrderable: item.isOrderable,
             gender: item.gender,
             ageFormat: item.ageFormat,
             minAge: item.minAge,
@@ -497,6 +561,7 @@ export class PriceSheetsService {
             section: item.section,
             technique: item.technique,
             isPanel: item.isPanel,
+            isOrderable: item.isOrderable,
             gender: item.gender,
             ageFormat: item.ageFormat,
             minAge: item.minAge,
@@ -524,17 +589,100 @@ export class PriceSheetsService {
         });
 
         processed++;
+        processedCodes.add(item.code);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         importErrors.push({ code: item.code, error: message });
       }
     }
 
+    const { panelsUpdated, panelErrors } = await this.importPanelItems(
+      branchId,
+      valid.flatMap((v) =>
+        v.panelCodes && processedCodes.has(v.code)
+          ? [{ code: v.code, panelCodes: v.panelCodes }]
+          : [],
+      ),
+    );
+
     return {
       totalRows: rows.length,
       processed,
+      panelsUpdated,
       invalid,
       importErrors: importErrors.length > 0 ? importErrors : undefined,
+      panelErrors: panelErrors.length > 0 ? panelErrors : undefined,
     };
+  }
+
+  // Reemplaza los hijos de cada perfil importado. Se valida contra el grafo
+  // completo de la sucursal (con todos los cambios del archivo aplicados) para
+  // rechazar ciclos entre perfiles, incluso si están en filas distintas.
+  private async importPanelItems(
+    branchId: string,
+    panelRows: Array<{ code: string; panelCodes: string[] }>,
+  ) {
+    const panelErrors: Array<{ code: string; error: string }> = [];
+    if (!panelRows.length) return { panelsUpdated: 0, panelErrors };
+
+    const neededCodes = new Set(
+      panelRows.flatMap((r) => [r.code, ...r.panelCodes]),
+    );
+    const studies = await this.prisma.study.findMany({
+      where: { branchId, code: { in: [...neededCodes] } },
+      select: { id: true, code: true },
+    });
+    const idByCode = new Map(studies.map((s) => [s.code, s.id]));
+
+    const graph = await loadPanelGraph(this.prisma, branchId);
+    const pending = new Map<string, { code: string; childIds: string[] }>();
+
+    for (const row of panelRows) {
+      const missing = row.panelCodes.filter((c) => !idByCode.has(c));
+      if (missing.length) {
+        panelErrors.push({
+          code: row.code,
+          error: `Parámetros no encontrados en la sucursal: ${missing.join(', ')}`,
+        });
+        continue;
+      }
+      const panelId = idByCode.get(row.code)!;
+      const childIds = row.panelCodes.map((c) => idByCode.get(c)!);
+      graph.set(panelId, childIds);
+      pending.set(panelId, { code: row.code, childIds });
+    }
+
+    const cyclic = new Set(findPanelsInCycle(graph, pending.keys()));
+    let panelsUpdated = 0;
+
+    for (const [panelId, { code, childIds }] of pending) {
+      if (cyclic.has(panelId)) {
+        panelErrors.push({
+          code,
+          error:
+            'Los parámetros forman un ciclo: algún perfil hijo contiene (directa o indirectamente) a este perfil',
+        });
+        continue;
+      }
+
+      try {
+        await this.prisma.$transaction([
+          this.prisma.studyPanelItem.deleteMany({ where: { panelId } }),
+          this.prisma.studyPanelItem.createMany({
+            data: childIds.map((childId, order) => ({
+              panelId,
+              childId,
+              order,
+            })),
+          }),
+        ]);
+        panelsUpdated++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        panelErrors.push({ code, error: message });
+      }
+    }
+
+    return { panelsUpdated, panelErrors };
   }
 }
