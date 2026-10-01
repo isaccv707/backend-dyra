@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { StudiesModule } from './studies/studies.module';
+import { StudyCatalogsModule } from './study-catalogs/study-catalogs.module';
 import { BannersModule } from './banners/banners.module';
 import { AuthorsModule } from './authors/authors.module';
 import { PostsModule } from './posts/posts.module';
@@ -30,6 +31,7 @@ import { TicketsModule } from './tickets/tickets.module';
     PrismaModule,
     QuotationsModule,
     StudiesModule,
+    StudyCatalogsModule,
     BannersModule,
     AuthorsModule,
     PostsModule,

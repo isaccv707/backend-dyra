@@ -113,6 +113,38 @@ export const PERMISSIONS = [
   { action: 'studies:update', description: 'Actualizar estudios' },
   { action: 'studies:delete', description: 'Eliminar estudios' },
 
+  // Study catalogs (por sucursal)
+  {
+    action: 'study-sections:create',
+    description: 'Crear secciones de estudio',
+  },
+  { action: 'study-sections:read', description: 'Leer secciones de estudio' },
+  {
+    action: 'study-sections:update',
+    description: 'Actualizar secciones de estudio',
+  },
+  {
+    action: 'study-sections:delete',
+    description: 'Eliminar secciones de estudio',
+  },
+  { action: 'sample-types:create', description: 'Crear tipos de muestra' },
+  { action: 'sample-types:read', description: 'Leer tipos de muestra' },
+  { action: 'sample-types:update', description: 'Actualizar tipos de muestra' },
+  { action: 'sample-types:delete', description: 'Eliminar tipos de muestra' },
+  {
+    action: 'study-techniques:create',
+    description: 'Crear técnicas de estudio',
+  },
+  { action: 'study-techniques:read', description: 'Leer técnicas de estudio' },
+  {
+    action: 'study-techniques:update',
+    description: 'Actualizar técnicas de estudio',
+  },
+  {
+    action: 'study-techniques:delete',
+    description: 'Eliminar técnicas de estudio',
+  },
+
   // Tickets
   {
     action: 'tickets:create',

@@ -38,6 +38,10 @@ import {
   findPanelsInCycle,
   loadPanelGraph,
 } from 'src/studies/utils/panel-tree.util';
+import {
+  catalogNameKey,
+  resolveStudyCatalogIds,
+} from 'src/study-catalogs/utils/study-catalog.util';
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
@@ -513,6 +517,38 @@ export class PriceSheetsService {
       ).map((s) => s.code),
     );
 
+    // Sección, tipo de muestra y técnica llegan como nombre: se resuelven en
+    // el catálogo de la sucursal y los que no existen se dan de alta.
+    const catalogNames = (field: 'section' | 'sampleType' | 'technique') =>
+      valid.flatMap((v) => (v[field] ? [v[field]] : []));
+    const [sectionIds, sampleTypeIds, techniqueIds] = await Promise.all([
+      resolveStudyCatalogIds(
+        this.prisma,
+        'section',
+        branchId,
+        catalogNames('section'),
+        { createMissing: true },
+      ),
+      resolveStudyCatalogIds(
+        this.prisma,
+        'sampleType',
+        branchId,
+        catalogNames('sampleType'),
+        { createMissing: true },
+      ),
+      resolveStudyCatalogIds(
+        this.prisma,
+        'technique',
+        branchId,
+        catalogNames('technique'),
+        { createMissing: true },
+      ),
+    ]);
+    const connectCatalog = (ids: Map<string, number>, name?: string) => {
+      const id = name ? ids.get(catalogNameKey(name)) : undefined;
+      return id ? { connect: { id } } : undefined;
+    };
+
     for (const item of valid) {
       if (panelsWithChildren.has(item.code)) {
         importErrors.push({
@@ -530,14 +566,14 @@ export class PriceSheetsService {
             name: item.name,
             slug: item.slug,
             description: item.description,
-            sampleType: item.sampleType,
+            sampleType: connectCatalog(sampleTypeIds, item.sampleType),
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive,
             abbreviation: item.abbreviation,
             title: item.title,
-            section: item.section,
-            technique: item.technique,
+            section: connectCatalog(sectionIds, item.section),
+            technique: connectCatalog(techniqueIds, item.technique),
             isPanel: item.isPanel,
             isOrderable: item.isOrderable,
             gender: item.gender,
@@ -552,14 +588,14 @@ export class PriceSheetsService {
             slug: item.slug,
             code: item.code,
             description: item.description,
-            sampleType: item.sampleType,
+            sampleType: connectCatalog(sampleTypeIds, item.sampleType),
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive ?? true,
             abbreviation: item.abbreviation,
             title: item.title,
-            section: item.section,
-            technique: item.technique,
+            section: connectCatalog(sectionIds, item.section),
+            technique: connectCatalog(techniqueIds, item.technique),
             isPanel: item.isPanel,
             isOrderable: item.isOrderable,
             gender: item.gender,

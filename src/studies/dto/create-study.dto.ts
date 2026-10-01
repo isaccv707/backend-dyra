@@ -71,12 +71,25 @@ export class CreateStudyDto {
   @Type(() => StudyPriceDto)
   studyPrices?: StudyPriceDto[];
 
-  @IsString()
+  // Catálogos (src/study-catalogs): ids de la misma sucursal del estudio.
+  // En un PATCH, null quita el valor.
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
-  @MaxLength(500, {
-    message: 'El tipo de muestra es demasiado largo (máximo 500 caracteres).',
-  })
-  sampleType?: string;
+  sampleTypeId?: number | null;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  sectionId?: number | null;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  techniqueId?: number | null;
 
   @Type(() => Number)
   @IsInt()
@@ -114,18 +127,6 @@ export class CreateStudyDto {
   @IsOptional()
   @MaxLength(300)
   title?: string;
-
-  // Requerido en DB, pero con default "General" si no se envía
-  @IsString()
-  @IsOptional()
-  @IsNotEmpty()
-  @MaxLength(150)
-  section?: string;
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(300)
-  technique?: string;
 
   @IsOptional()
   @IsBoolean()

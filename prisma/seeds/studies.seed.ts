@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { STUDIES } from '../constants/studies';
+import {
+  catalogNameKey,
+  resolveStudyCatalogIds,
+} from '../../src/study-catalogs/utils/study-catalog.util';
 
 export async function seedStudies(prisma: PrismaClient) {
   // Get a default service (Análisis Clínicos) to use if the hardcoded one fails.
@@ -19,7 +23,7 @@ export async function seedStudies(prisma: PrismaClient) {
   // resto de sucursales, incluso si otra sucursal tiene un estudio con el
   // mismo código.
   for (const study of STUDIES) {
-    const { price, serviceId, ...studyData } = study;
+    const { price, serviceId, sampleType, ...studyData } = study;
 
     const existingService = await prisma.service.findUnique({
       where: { id: serviceId },
@@ -35,18 +39,31 @@ export async function seedStudies(prisma: PrismaClient) {
       );
     }
 
+    // El tipo de muestra es un catálogo por sucursal: se crea si no existe.
+    const sampleTypeIds = await resolveStudyCatalogIds(
+      prisma,
+      'sampleType',
+      effectiveService.branchId,
+      [sampleType],
+      { createMissing: true },
+    );
+    const sampleTypeId = sampleTypeIds.get(catalogNameKey(sampleType));
+
     const priceSheetEntries = [
       { price, priceSheetId: branchPriceSheet.id, showPrice: true },
     ];
 
     await prisma.study.upsert({
       where: {
-        branchId_code: { branchId: effectiveService.branchId, code: study.code },
+        branchId_code: {
+          branchId: effectiveService.branchId,
+          code: study.code,
+        },
       },
       update: {
         name: studyData.name,
         description: studyData.description,
-        sampleType: studyData.sampleType,
+        sampleTypeId,
         deliveryTime: studyData.deliveryTime,
         preparation: studyData.preparation,
         isActive: studyData.isActive,
@@ -59,6 +76,7 @@ export async function seedStudies(prisma: PrismaClient) {
       },
       create: {
         ...studyData,
+        sampleTypeId,
         serviceId: effectiveService.id,
         branchId: effectiveService.branchId,
         priceSheets: { create: priceSheetEntries },

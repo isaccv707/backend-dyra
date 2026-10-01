@@ -87,15 +87,18 @@ model Branch {
 
   priceSheets PriceSheets[]
 
-  authors    Author[]
-  banners    Banner[]
-  posts      Post[]
-  reviews    Review[]
-  services   Service[]
-  studies    Study[]
-  schedules  BranchSchedule[]
-  users      User[]
-  quotations Quotation[]
+  authors         Author[]
+  banners         Banner[]
+  posts           Post[]
+  reviews         Review[]
+  services        Service[]
+  studies         Study[]
+  studySections   StudySection[]
+  sampleTypes     SampleType[]
+  studyTechniques StudyTechnique[]
+  schedules       BranchSchedule[]
+  users           User[]
+  quotations      Quotation[]
 
   locations                   Location[]
   employees                   Employee[]
@@ -244,34 +247,45 @@ model StudyOnPriceSheet {
 }
 
 model Study {
-  id           String  @id @default(uuid())
-  name         String
-  slug         String
-  code         String
-  description  String?
-  sampleType   String?
-  deliveryTime Int?
-  preparation  String?
-  isActive     Boolean @default(true)
+  id               String  @id @default(uuid())
+  name             String
+  slug             String
+  code             String
+  description      String?
+  // DEPRECATED (fase 1 de la migración a catálogos): se conserva solo para
+  // prisma/scripts/backfill-study-catalogs.ts; se elimina en la fase 2.
+  legacySampleType String? @map("sampleType")
+  deliveryTime     Int?
+  preparation      String?
+  isActive         Boolean @default(true)
 
-  abbreviation String?
-  title        String?
-  section      String  @default("General")
-  technique    String?
-  isPanel      Boolean @default(false)
+  abbreviation    String?
+  title           String?
+  legacySection   String  @default("General") @map("section") // DEPRECATED
+  legacyTechnique String? @map("technique") // DEPRECATED
+  isPanel         Boolean @default(false)
   // false = parámetro que solo existe dentro de un perfil (p. ej. Hemoglobina
   // de la BH): no se puede cotizar suelto.
-  isOrderable  Boolean @default(true)
+  isOrderable     Boolean @default(true)
   // M = masculino, F = femenino, A = ambos (ver src/studies/constants/study-fields.const.ts)
-  gender       String  @default("A")
+  gender          String  @default("A")
   // Unidad de minAge/maxAge: "DIAS" o "AÑOS"
-  ageFormat    String  @default("AÑOS")
-  minAge       Int     @default(0)
-  maxAge       Int     @default(120)
-  decimals     Int     @default(0)
+  ageFormat       String  @default("AÑOS")
+  minAge          Int     @default(0)
+  maxAge          Int     @default(120)
+  decimals        Int     @default(0)
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
+
+  // Catálogos por sucursal; deben ser de la misma sucursal del estudio
+  // (validado en studies.service.ts).
+  sectionId    Int?            @map("section_id")
+  section      StudySection?   @relation(fields: [sectionId], references: [id])
+  sampleTypeId Int?            @map("sample_type_id")
+  sampleType   SampleType?     @relation(fields: [sampleTypeId], references: [id])
+  techniqueId  Int?            @map("technique_id")
+  technique    StudyTechnique? @relation(fields: [techniqueId], references: [id])
 
   priceSheets StudyOnPriceSheet[]
   serviceId   String
@@ -290,7 +304,66 @@ model Study {
   @@unique([branchId, code])
   @@unique([branchId, slug])
   @@index([branchId])
+  @@index([sectionId])
+  @@index([sampleTypeId])
+  @@index([techniqueId])
   @@map("studies")
+}
+
+// Catálogos de estudio (por sucursal). Mismo shape en los tres; la lógica
+// compartida vive en src/study-catalogs/.
+model StudySection {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("study_sections")
+}
+
+model SampleType {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("sample_types")
+}
+
+model StudyTechnique {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("study_techniques")
 }
 
 // Relación perfil -> estudio hijo. Reglas (misma sucursal, el padre debe ser
