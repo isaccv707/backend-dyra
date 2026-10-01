@@ -31,6 +31,10 @@ import {
   Totals,
 } from './interfaces/quotations-interfaces';
 import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
+import {
+  loadPanelSnapshots,
+  PanelComponentSnapshot,
+} from 'src/studies/utils/panel-tree.util';
 
 // Subtítulo del documento (no es dato de la sucursal, es la etiqueta fija
 // del tipo de documento).
@@ -79,6 +83,7 @@ type ResolvedQuotationItem = {
   price: number;
   quantity: number;
   studyId: string | null;
+  components?: PanelComponentSnapshot[];
 };
 
 @Injectable()
@@ -182,6 +187,7 @@ export class QuotationsService {
       string,
       { name: string; code: string; price: Prisma.Decimal }
     >();
+    let componentsByPanelId = new Map<string, PanelComponentSnapshot[]>();
 
     if (catalogStudyIds.length > 0) {
       const entries = await this.prisma.studyOnPriceSheet.findMany({
@@ -189,8 +195,33 @@ export class QuotationsService {
           studyId: { in: catalogStudyIds },
           priceSheetId: dto.priceSheetId,
         },
-        include: { study: { select: { name: true, code: true } } },
+        include: {
+          study: {
+            select: {
+              name: true,
+              code: true,
+              isPanel: true,
+              isOrderable: true,
+            },
+          },
+        },
       });
+
+      const notOrderable = entries.filter((entry) => !entry.study.isOrderable);
+      if (notOrderable.length > 0) {
+        throw new BadRequestException(
+          `Los siguientes estudios solo se pueden cotizar como parte de un perfil: ${notOrderable
+            .map((entry) => entry.study.code)
+            .join(', ')}`,
+        );
+      }
+
+      // El desglose se guarda como snapshot: si después cambian los hijos
+      // del perfil, la cotización ya emitida no se altera.
+      componentsByPanelId = await loadPanelSnapshots(
+        this.prisma,
+        entries.filter((entry) => entry.study.isPanel).map((e) => e.studyId),
+      );
 
       priceByStudyId = new Map(
         entries.map((entry) => [
@@ -220,6 +251,7 @@ export class QuotationsService {
         price: resolved ? Number(resolved.price) : study.price,
         quantity: study.quantity,
         studyId: study.id ?? null,
+        components: study.id ? componentsByPanelId.get(study.id) : undefined,
       };
     });
   }
@@ -319,6 +351,9 @@ export class QuotationsService {
         code: item.code,
         price: Number(item.price),
         quantity: item.quantity,
+        components: Array.isArray(item.components)
+          ? (item.components as PanelComponentSnapshot[])
+          : [],
       })),
       company: this.buildCompanyInfo(quotation.branch),
     };

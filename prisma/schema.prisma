@@ -259,6 +259,9 @@ model Study {
   section      String  @default("General")
   technique    String?
   isPanel      Boolean @default(false)
+  // false = parámetro que solo existe dentro de un perfil (p. ej. Hemoglobina
+  // de la BH): no se puede cotizar suelto.
+  isOrderable  Boolean @default(true)
   // M = masculino, F = femenino, A = ambos (ver src/studies/constants/study-fields.const.ts)
   gender       String  @default("A")
   // Unidad de minAge/maxAge: "DIAS" o "AÑOS"
@@ -276,6 +279,11 @@ model Study {
 
   quotationItems QuotationItem[]
 
+  // Solo con isPanel = true: estudios hijos del perfil (pueden ser a su vez perfiles)
+  panelItems   StudyPanelItem[] @relation("PanelItems")
+  // Perfiles que incluyen a este estudio (un estudio puede estar en varios)
+  parentPanels StudyPanelItem[] @relation("PanelChild")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -283,6 +291,23 @@ model Study {
   @@unique([branchId, slug])
   @@index([branchId])
   @@map("studies")
+}
+
+// Relación perfil -> estudio hijo. Reglas (misma sucursal, el padre debe ser
+// isPanel, sin ciclos) se validan en src/studies/utils/panel-tree.util.ts.
+model StudyPanelItem {
+  id    String @id @default(uuid())
+  order Int    @default(0)
+
+  panelId String @map("panel_id")
+  panel   Study  @relation("PanelItems", fields: [panelId], references: [id], onDelete: Cascade)
+
+  childId String @map("child_id")
+  child   Study  @relation("PanelChild", fields: [childId], references: [id], onDelete: Restrict)
+
+  @@unique([panelId, childId])
+  @@index([childId])
+  @@map("study_panel_items")
 }
 
 model Author {
@@ -423,11 +448,14 @@ model Quotation {
 }
 
 model QuotationItem {
-  id       String  @id @default(uuid())
-  name     String
-  code     String?
-  price    Decimal @db.Decimal(10, 2)
-  quantity Int
+  id         String  @id @default(uuid())
+  name       String
+  code       String?
+  price      Decimal @db.Decimal(10, 2)
+  quantity   Int
+  // Snapshot del desglose de un perfil al momento de cotizar
+  // (PanelComponentSnapshot[]); null para estudios simples o líneas ad-hoc.
+  components Json?
 
   studyId String?
   study   Study?  @relation(fields: [studyId], references: [id], onDelete: SetNull)

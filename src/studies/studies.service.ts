@@ -8,6 +8,7 @@ import { CreateStudyDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
 import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { PaginationDto } from './dto/pagination-study.dto';
+import { SetPanelItemsDto } from './dto/set-panel-items.dto';
 import { Prisma } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import { generateSlug } from 'src/common/utils/slugger.util';
@@ -16,6 +17,11 @@ import {
   buildPaginatedQuery,
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
+import {
+  findPanelsInCycle,
+  loadPanelGraph,
+  loadPanelTree,
+} from './utils/panel-tree.util';
 
 const STUDY_ALLOWED_FIELDS = [
   'name',
@@ -24,6 +30,7 @@ const STUDY_ALLOWED_FIELDS = [
   'section',
   'isActive',
   'isPanel',
+  'isOrderable',
   'gender',
   'ageFormat',
   'deliveryTime',
@@ -33,6 +40,23 @@ const STUDY_ALLOWED_FIELDS = [
 // Deben coincidir con los @default de Study.minAge/maxAge en schema.prisma
 const DEFAULT_MIN_AGE = 0;
 const DEFAULT_MAX_AGE = 120;
+
+const PANEL_ITEMS_INCLUDE = {
+  orderBy: { order: 'asc' },
+  select: {
+    order: true,
+    child: {
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        abbreviation: true,
+        isPanel: true,
+        isOrderable: true,
+      },
+    },
+  },
+} satisfies Prisma.Study$panelItemsArgs;
 
 @Injectable()
 export class StudiesService {
@@ -138,7 +162,7 @@ export class StudiesService {
   }
 
   async findAll(dto: PaginationDto) {
-    const { priceSheetId, branchId } = dto;
+    const { priceSheetId, branchId, isPanel, isOrderable } = dto;
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
       searchFields: ['name', 'code', 'abbreviation', 'title'],
       defaultSort: { name: 'asc' },
@@ -149,6 +173,8 @@ export class StudiesService {
     const whereClause: Prisma.StudyWhereInput = {
       ...(where as Prisma.StudyWhereInput),
       ...(branchId && { branchId }),
+      ...(isPanel !== undefined && { isPanel }),
+      ...(isOrderable !== undefined && { isOrderable }),
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -163,6 +189,7 @@ export class StudiesService {
           // compartida por toda la sucursal. Sin branchId se usa el
           // priceSheetId explícito (vista admin de un tarifario puntual).
           service: { select: { priceSheetId: true } },
+          _count: { select: { panelItems: true } },
         },
       }),
       this.prisma.study.count({ where: whereClause }),
@@ -235,12 +262,98 @@ export class StudiesService {
           },
         },
         service: true,
+        panelItems: PANEL_ITEMS_INCLUDE,
+        parentPanels: {
+          select: {
+            panel: { select: { id: true, code: true, name: true } },
+          },
+        },
       },
     });
     if (!study) {
       throw new NotFoundException(`Study with id ${id} not found`);
     }
     return study;
+  }
+
+  // Árbol completo del perfil (los sub-perfiles traen sus propios hijos).
+  async getPanelTree(id: string, branchId?: string) {
+    const study = await this.prisma.study.findFirst({
+      where: { OR: [{ id }, { slug: id }], ...(branchId && { branchId }) },
+      select: { id: true, code: true, name: true, isPanel: true },
+    });
+    if (!study) {
+      throw new NotFoundException(`Study with id ${id} not found`);
+    }
+
+    return {
+      ...study,
+      children: study.isPanel ? await loadPanelTree(this.prisma, study.id) : [],
+    };
+  }
+
+  async setPanelItems(id: string, dto: SetPanelItemsDto) {
+    const panel = await this.prisma.study.findUnique({
+      where: { id },
+      select: { id: true, branchId: true, isPanel: true },
+    });
+    if (!panel) {
+      throw new NotFoundException(`Study with id ${id} not found`);
+    }
+    if (!panel.isPanel) {
+      throw new BadRequestException(
+        'Solo un estudio marcado como perfil (isPanel) puede tener estudios hijos',
+      );
+    }
+
+    const childIds = dto.items.map((item) => item.childId);
+    if (new Set(childIds).size !== childIds.length) {
+      throw new BadRequestException('El perfil contiene estudios repetidos');
+    }
+    if (childIds.includes(id)) {
+      throw new BadRequestException('Un perfil no puede contenerse a sí mismo');
+    }
+
+    const children = await this.prisma.study.findMany({
+      where: { id: { in: childIds } },
+      select: { id: true, branchId: true },
+    });
+    if (
+      children.length !== childIds.length ||
+      children.some((c) => c.branchId !== panel.branchId)
+    ) {
+      throw new BadRequestException(
+        'Todos los estudios del perfil deben existir y pertenecer a la misma sucursal del perfil',
+      );
+    }
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const graph = await loadPanelGraph(tx, panel.branchId);
+        graph.set(id, childIds);
+        if (findPanelsInCycle(graph, [id]).length) {
+          throw new BadRequestException(
+            'La lista crea un ciclo: algún perfil hijo ya contiene (directa o indirectamente) a este perfil',
+          );
+        }
+
+        await tx.studyPanelItem.deleteMany({ where: { panelId: id } });
+        await tx.studyPanelItem.createMany({
+          data: dto.items.map((item, index) => ({
+            panelId: id,
+            childId: item.childId,
+            order: item.order ?? index,
+          })),
+        });
+      });
+    } catch (error) {
+      handleDatabaseErrors(error, 'Study');
+    }
+
+    return this.prisma.studyPanelItem.findMany({
+      where: { panelId: id },
+      ...PANEL_ITEMS_INCLUDE,
+    });
   }
 
   async update(id: string, updateStudyDto: UpdateStudyDto) {
@@ -257,6 +370,28 @@ export class StudiesService {
       studyData.minAge ?? existingStudy.minAge,
       studyData.maxAge ?? existingStudy.maxAge,
     );
+
+    if (studyData.isPanel === false && existingStudy.isPanel) {
+      const childCount = await this.prisma.studyPanelItem.count({
+        where: { panelId: id },
+      });
+      if (childCount > 0) {
+        throw new BadRequestException(
+          `No se puede desmarcar como perfil: aún tiene ${childCount} estudio(s) hijo(s). Elimínalos primero.`,
+        );
+      }
+    }
+
+    if (branchId && branchId !== existingStudy.branchId) {
+      const panelLinks = await this.prisma.studyPanelItem.count({
+        where: { OR: [{ panelId: id }, { childId: id }] },
+      });
+      if (panelLinks > 0) {
+        throw new BadRequestException(
+          'No se puede cambiar de sucursal un estudio que es perfil con hijos o que forma parte de un perfil',
+        );
+      }
+    }
 
     const effectiveBranchId = branchId ?? existingStudy.branchId;
     const effectiveServiceId = serviceId ?? existingStudy.serviceId;
@@ -376,6 +511,11 @@ export class StudiesService {
         sampleType: true,
         technique: true,
         isPanel: true,
+        isOrderable: true,
+        panelItems: {
+          orderBy: { order: 'asc' },
+          select: { child: { select: { code: true } } },
+        },
         gender: true,
         ageFormat: true,
         minAge: true,
@@ -400,6 +540,11 @@ export class StudiesService {
       { header: 'Tipo de muestra', value: (s) => s.sampleType ?? '' },
       { header: 'Técnica', value: (s) => s.technique ?? '' },
       { header: 'Es perfil', value: (s) => (s.isPanel ? 'Sí' : 'No') },
+      {
+        header: 'Parámetros',
+        value: (s) => s.panelItems.map((i) => i.child.code).join(','),
+      },
+      { header: 'Vendible', value: (s) => (s.isOrderable ? 'Sí' : 'No') },
       { header: 'Género', value: (s) => s.gender },
       { header: 'Formato de edad', value: (s) => s.ageFormat },
       { header: 'Edad mínima', value: (s) => s.minAge },
@@ -430,6 +575,20 @@ export class StudiesService {
     });
     if (!existingStudy) {
       throw new NotFoundException(`Study with id ${id} not found`);
+    }
+
+    // Sus propios hijos (si es perfil) se desvinculan en cascada; lo que se
+    // bloquea es borrar un estudio que todavía forma parte de algún perfil.
+    const parentPanels = await this.prisma.studyPanelItem.findMany({
+      where: { childId: id },
+      select: { panel: { select: { code: true } } },
+    });
+    if (parentPanels.length) {
+      throw new BadRequestException(
+        `No se puede eliminar: el estudio forma parte de los perfiles ${parentPanels
+          .map((p) => p.panel.code)
+          .join(', ')}`,
+      );
     }
 
     try {

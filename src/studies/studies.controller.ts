@@ -5,6 +5,7 @@ import {
   Post,
   Body,
   Patch,
+  Put,
   Param,
   Delete,
   Query,
@@ -25,6 +26,7 @@ import { CreateStudyDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
 import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { PaginationDto } from './dto/pagination-study.dto';
+import { SetPanelItemsDto } from './dto/set-panel-items.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { generateSlug } from 'src/common/utils/slugger.util';
@@ -121,6 +123,48 @@ export class StudiesController {
   }
 
   @ApiOperation({
+    summary: 'Árbol de un perfil',
+    description:
+      'Devuelve los estudios hijos de un perfil, con los sub-perfiles expandidos recursivamente. Para un estudio que no es perfil, children es [].',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador o slug del estudio.' })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal, recomendado al buscar por slug.',
+  })
+  @ApiResponse({ status: 200, description: 'Árbol del perfil.' })
+  @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
+  @Public()
+  @Get(':id/panel-tree')
+  getPanelTree(@Param('id') id: string, @Query('branchId') branchId?: string) {
+    return this.studiesService.getPanelTree(id, branchId);
+  }
+
+  @ApiOperation({
+    summary: 'Definir estudios de un perfil',
+    description:
+      'Reemplaza la lista completa de estudios hijos de un perfil (isPanel = true). Los hijos deben ser de la misma sucursal, pueden ser a su vez perfiles, y no se permiten ciclos. Enviar items: [] deja el perfil vacío.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador (UUID) del perfil.' })
+  @ApiResponse({ status: 200, description: 'Lista de hijos actualizada.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'El estudio no es perfil, hay hijos repetidos/de otra sucursal, o se forma un ciclo.',
+  })
+  @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
+  @ApiBearerAuth()
+  @Permissions('studies:update')
+  @Put(':id/panel-items')
+  setPanelItems(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetPanelItemsDto,
+  ) {
+    return this.studiesService.setPanelItems(id, dto);
+  }
+
+  @ApiOperation({
     summary: 'Actualizar estudio',
     description: 'Actualiza los datos de un estudio existente.',
   })
@@ -142,7 +186,8 @@ export class StudiesController {
 
   @ApiOperation({
     summary: 'Eliminar estudio',
-    description: 'Elimina un estudio existente.',
+    description:
+      'Elimina un estudio existente. Si es perfil, sus vínculos con hijos se eliminan; si forma parte de algún perfil, se rechaza.',
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
   @ApiResponse({ status: 200, description: 'Estudio eliminado exitosamente.' })

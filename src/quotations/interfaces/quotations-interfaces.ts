@@ -1,9 +1,17 @@
 // quotations-interfaces.ts
+export interface StudyItemComponent {
+  code: string;
+  name: string;
+  level: number; // 1 = hijo directo del perfil
+}
+
 export interface StudyItem {
   name: string;
   code: string | null;
   price: number;
   quantity: number;
+  // Desglose del perfil (vacío para estudios simples)
+  components: StudyItemComponent[];
 }
 
 export interface Totals {
