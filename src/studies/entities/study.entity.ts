@@ -9,14 +9,14 @@ export class Study {
   slug!: string;
   code!: string;
   description?: string;
-  sampleType?: string;
+  sampleTypeId?: number | null;
   deliveryTime?: number;
   preparation?: string;
   isActive?: boolean;
   abbreviation?: string;
   title?: string;
-  section!: string;
-  technique?: string;
+  sectionId?: number | null;
+  techniqueId?: number | null;
   isPanel!: boolean;
   isOrderable!: boolean;
   gender!: StudyGender;

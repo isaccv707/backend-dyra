@@ -1,5 +1,5 @@
 // src/prisma/prisma.service.ts
-import 'dotenv/config';  // 👈 IMPORTANTE: carga .env al inicio
+import 'dotenv/config'; // 👈 IMPORTANTE: carga .env al inicio
 
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -12,7 +12,6 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL is not defined');
     }
@@ -23,7 +22,19 @@ export class PrismaService
 
     const adapter = new PrismaPg(pool);
 
-    super({ adapter });
+    super({
+      adapter,
+      // Columnas de texto previas a los catálogos de estudio (fase 1 de la
+      // migración): solo las lee prisma/scripts/backfill-study-catalogs.ts.
+      // Quitar junto con los campos legacy* del schema en la fase 2.
+      omit: {
+        study: {
+          legacySection: true,
+          legacySampleType: true,
+          legacyTechnique: true,
+        },
+      },
+    });
   }
 
   async onModuleInit() {

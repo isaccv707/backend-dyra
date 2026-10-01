@@ -18,6 +18,7 @@ import {
   STUDY_GENDERS,
   STUDY_MAX_DECIMALS,
 } from 'src/studies/constants/study-fields.const';
+import { STUDY_CATALOG_NAME_MAX_LENGTH } from 'src/study-catalogs/study-catalog.config';
 
 export class ImportStudyRowDto {
   @IsString()
@@ -39,11 +40,11 @@ export class ImportStudyRowDto {
   @IsOptional()
   description?: string;
 
+  // sampleType, section y technique son nombres de catálogo (por sucursal);
+  // si no existen se crean al importar.
   @IsString()
   @IsOptional()
-  @MaxLength(500, {
-    message: 'El tipo de muestra es demasiado largo (máximo 500 caracteres).',
-  })
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
   sampleType?: string;
 
   @IsString()
@@ -86,12 +87,12 @@ export class ImportStudyRowDto {
 
   @IsString()
   @IsOptional()
-  @MaxLength(150)
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
   section?: string;
 
   @IsString()
   @IsOptional()
-  @MaxLength(300)
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
   technique?: string;
 
   @IsOptional()

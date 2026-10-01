@@ -22,12 +22,19 @@ import {
   loadPanelGraph,
   loadPanelTree,
 } from './utils/panel-tree.util';
+import {
+  STUDY_CATALOGS,
+  StudyCatalogKind,
+} from 'src/study-catalogs/study-catalog.config';
+import { studyCatalogDelegate } from 'src/study-catalogs/utils/study-catalog.util';
 
 const STUDY_ALLOWED_FIELDS = [
   'name',
   'code',
   'abbreviation',
-  'section',
+  'section.name',
+  'sampleType.name',
+  'technique.name',
   'isActive',
   'isPanel',
   'isOrderable',
@@ -40,6 +47,40 @@ const STUDY_ALLOWED_FIELDS = [
 // Deben coincidir con los @default de Study.minAge/maxAge en schema.prisma
 const DEFAULT_MIN_AGE = 0;
 const DEFAULT_MAX_AGE = 120;
+
+const CATALOG_INCLUDE = {
+  section: { select: { id: true, name: true } },
+  sampleType: { select: { id: true, name: true } },
+  technique: { select: { id: true, name: true } },
+} satisfies Prisma.StudyInclude;
+
+type StudyCatalogIds = {
+  sectionId?: number | null;
+  sampleTypeId?: number | null;
+  techniqueId?: number | null;
+};
+
+const CATALOG_ID_FIELDS: Array<[keyof StudyCatalogIds, StudyCatalogKind]> = [
+  ['sectionId', 'section'],
+  ['sampleTypeId', 'sampleType'],
+  ['techniqueId', 'technique'],
+];
+
+// id -> connect, null -> disconnect (solo update), undefined -> sin cambio
+function catalogRelations(ids: StudyCatalogIds, mode: 'create' | 'update') {
+  const relation = (id: number | null | undefined) =>
+    id
+      ? { connect: { id } }
+      : id === null && mode === 'update'
+        ? { disconnect: true }
+        : undefined;
+
+  return {
+    section: relation(ids.sectionId),
+    sampleType: relation(ids.sampleTypeId),
+    technique: relation(ids.techniqueId),
+  };
+}
 
 const PANEL_ITEMS_INCLUDE = {
   orderBy: { order: 'asc' },
@@ -80,6 +121,38 @@ export class StudiesService {
     }
   }
 
+  // Los catálogos son por sucursal: deben ser de la sucursal del estudio.
+  // `activeIds` son los que vienen en el request (no se permite asignar uno
+  // inactivo); los ya guardados solo se revalidan por sucursal.
+  private async assertCatalogsBelongToBranch(
+    ids: StudyCatalogIds,
+    branchId: string,
+    activeIds: StudyCatalogIds = ids,
+  ) {
+    for (const [field, kind] of CATALOG_ID_FIELDS) {
+      const id = ids[field];
+      if (!id) continue;
+
+      const item = await studyCatalogDelegate(this.prisma, kind).findUnique({
+        where: { id },
+      });
+      const { label } = STUDY_CATALOGS[kind];
+      if (!item) {
+        throw new NotFoundException(`No existe ${label} con id ${id}`);
+      }
+      if (item.branchId !== branchId) {
+        throw new BadRequestException(
+          `${label[0].toUpperCase()}${label.slice(1)} seleccionada pertenece a otra sucursal`,
+        );
+      }
+      if (activeIds[field] === id && !item.isActive) {
+        throw new BadRequestException(
+          `${label[0].toUpperCase()}${label.slice(1)} "${item.name}" está inactiva`,
+        );
+      }
+    }
+  }
+
   // minAge/maxAge tienen default en DB, así que en un update parcial se
   // compara contra el valor ya guardado del campo que no viene en el body.
   private assertValidAgeRange(minAge?: number, maxAge?: number) {
@@ -110,15 +183,25 @@ export class StudiesService {
   }
 
   async create(createStudyDto: CreateStudyDto) {
-    const { name, studyPrices, serviceId, branchId, ...studyData } =
-      createStudyDto;
+    const {
+      name,
+      studyPrices,
+      serviceId,
+      branchId,
+      sectionId,
+      sampleTypeId,
+      techniqueId,
+      ...studyData
+    } = createStudyDto;
     const slug = generateSlug(name);
+    const catalogIds = { sectionId, sampleTypeId, techniqueId };
 
     this.assertValidAgeRange(
       studyData.minAge ?? DEFAULT_MIN_AGE,
       studyData.maxAge ?? DEFAULT_MAX_AGE,
     );
     await this.assertServiceBelongsToBranch(serviceId, branchId);
+    await this.assertCatalogsBelongToBranch(catalogIds, branchId);
     if (studyPrices?.length) {
       await this.assertPriceSheetsBelongToBranch(
         studyPrices.map((p) => p.priceSheetId),
@@ -130,6 +213,7 @@ export class StudiesService {
       return await this.prisma.study.create({
         data: {
           ...studyData,
+          ...catalogRelations(catalogIds, 'create'),
           service: {
             connect: { id: serviceId },
           },
@@ -153,6 +237,7 @@ export class StudiesService {
             select: { name: true, slug: true },
           },
           priceSheets: true,
+          ...CATALOG_INCLUDE,
         },
       });
     } catch (error: any) {
@@ -162,7 +247,15 @@ export class StudiesService {
   }
 
   async findAll(dto: PaginationDto) {
-    const { priceSheetId, branchId, isPanel, isOrderable } = dto;
+    const {
+      priceSheetId,
+      branchId,
+      isPanel,
+      isOrderable,
+      sectionId,
+      sampleTypeId,
+      techniqueId,
+    } = dto;
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
       searchFields: ['name', 'code', 'abbreviation', 'title'],
       defaultSort: { name: 'asc' },
@@ -175,6 +268,9 @@ export class StudiesService {
       ...(branchId && { branchId }),
       ...(isPanel !== undefined && { isPanel }),
       ...(isOrderable !== undefined && { isOrderable }),
+      ...(sectionId && { sectionId }),
+      ...(sampleTypeId && { sampleTypeId }),
+      ...(techniqueId && { techniqueId }),
     };
 
     const [items, total] = await this.prisma.$transaction([
@@ -190,6 +286,7 @@ export class StudiesService {
           // priceSheetId explícito (vista admin de un tarifario puntual).
           service: { select: { priceSheetId: true } },
           _count: { select: { panelItems: true } },
+          ...CATALOG_INCLUDE,
         },
       }),
       this.prisma.study.count({ where: whereClause }),
@@ -262,6 +359,7 @@ export class StudiesService {
           },
         },
         service: true,
+        ...CATALOG_INCLUDE,
         panelItems: PANEL_ITEMS_INCLUDE,
         parentPanels: {
           select: {
@@ -357,7 +455,16 @@ export class StudiesService {
   }
 
   async update(id: string, updateStudyDto: UpdateStudyDto) {
-    const { name, serviceId, branchId, ...studyData } = updateStudyDto;
+    const {
+      name,
+      serviceId,
+      branchId,
+      sectionId,
+      sampleTypeId,
+      techniqueId,
+      ...studyData
+    } = updateStudyDto;
+    const catalogIds = { sectionId, sampleTypeId, techniqueId };
 
     const existingStudy = await this.prisma.study.findUnique({
       where: { id },
@@ -401,12 +508,28 @@ export class StudiesService {
         effectiveBranchId,
       );
     }
+    // Con cambio de sucursal también se revalidan los catálogos ya guardados.
+    await this.assertCatalogsBelongToBranch(
+      {
+        sectionId:
+          sectionId !== undefined ? sectionId : existingStudy.sectionId,
+        sampleTypeId:
+          sampleTypeId !== undefined
+            ? sampleTypeId
+            : existingStudy.sampleTypeId,
+        techniqueId:
+          techniqueId !== undefined ? techniqueId : existingStudy.techniqueId,
+      },
+      effectiveBranchId,
+      catalogIds,
+    );
 
     try {
       return await this.prisma.study.update({
         where: { id },
         data: {
           ...studyData,
+          ...catalogRelations(catalogIds, 'update'),
           ...(name && { name, slug: generateSlug(name) }),
           ...(serviceId && { service: { connect: { id: serviceId } } }),
           ...(branchId && { branch: { connect: { id: branchId } } }),
@@ -416,6 +539,7 @@ export class StudiesService {
             select: { name: true, slug: true },
           },
           priceSheets: true,
+          ...CATALOG_INCLUDE,
         },
       });
     } catch (error) {
@@ -507,9 +631,9 @@ export class StudiesService {
         abbreviation: true,
         name: true,
         title: true,
-        section: true,
-        sampleType: true,
-        technique: true,
+        section: { select: { name: true } },
+        sampleType: { select: { name: true } },
+        technique: { select: { name: true } },
         isPanel: true,
         isOrderable: true,
         panelItems: {
@@ -536,9 +660,9 @@ export class StudiesService {
       { header: 'Abreviatura', value: (s) => s.abbreviation ?? '' },
       { header: 'Nombre', value: (s) => s.name },
       { header: 'Título', value: (s) => s.title ?? '' },
-      { header: 'Sección', value: (s) => s.section },
-      { header: 'Tipo de muestra', value: (s) => s.sampleType ?? '' },
-      { header: 'Técnica', value: (s) => s.technique ?? '' },
+      { header: 'Sección', value: (s) => s.section?.name ?? '' },
+      { header: 'Tipo de muestra', value: (s) => s.sampleType?.name ?? '' },
+      { header: 'Técnica', value: (s) => s.technique?.name ?? '' },
       { header: 'Es perfil', value: (s) => (s.isPanel ? 'Sí' : 'No') },
       {
         header: 'Parámetros',

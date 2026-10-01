@@ -171,7 +171,7 @@ export class ServicesService {
               slug: true,
               code: true,
               description: true,
-              sampleType: true,
+              sampleType: { select: { name: true } },
               deliveryTime: true,
               preparation: true,
             },
@@ -226,7 +226,7 @@ export class ServicesService {
             slug: study.slug,
             code: study.code,
             description: study.description,
-            sampleType: study.sampleType,
+            sampleType: study.sampleType?.name ?? null,
             deliveryTime: study.deliveryTime,
             preparation: study.preparation,
             priceInfo: {
