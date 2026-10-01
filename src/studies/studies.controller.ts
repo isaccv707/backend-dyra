@@ -67,7 +67,7 @@ export class StudiesController {
   @ApiOperation({
     summary: 'Exportar estudios de una sucursal',
     description:
-      'Genera y descarga un Excel con código, nombre y tipo de muestra de todos los estudios cargados en una sucursal.',
+      'Genera y descarga un Excel con los datos generales (código, nombre, sección, tipo de muestra, técnica, rango de edad, etc.) de todos los estudios cargados en una sucursal.',
   })
   @ApiQuery({
     name: 'branchId',

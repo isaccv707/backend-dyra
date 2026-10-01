@@ -33,7 +33,7 @@ import {
 import { SafeguardPdfData } from './interfaces/safeguard-pdf-interfaces';
 import { SafeguardPdfRenderer } from './pdf/safeguard-pdf.renderer';
 
-const DOC_CODE = 'ADM.F.00';
+const DOC_CODE = 'ADM.F.18';
 const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
 
 const SAFEGUARD_ALLOWED_FIELDS = [
@@ -438,7 +438,9 @@ export class SafeguardsService {
       deviceId: device.id,
       brand: device.catalog.brand,
       model: device.catalog.model,
-      imei: device.serialNumber,
+      serialNumber: device.serialNumber,
+      internalCode: device.internalCode,
+      imei: device.imei,
       phoneNumber: device.phoneNumber,
       condition: device.condition,
       observations: device.notes,
@@ -499,6 +501,8 @@ export class SafeguardsService {
         ? {
             brand: safeguard.mobile.brand,
             model: safeguard.mobile.model,
+            serialNumber: safeguard.mobile.serialNumber ?? '',
+            internalCode: safeguard.mobile.internalCode ?? '',
             imei: safeguard.mobile.imei ?? '',
             phoneNumber: safeguard.mobile.phoneNumber ?? '',
             accessories: this.composeAccessoriesLabel(

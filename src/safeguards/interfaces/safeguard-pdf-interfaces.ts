@@ -33,6 +33,8 @@ export interface SafeguardComputerInfo {
 export interface SafeguardMobileInfo {
   brand: string;
   model: string;
+  serialNumber: string;
+  internalCode: string;
   imei: string;
   phoneNumber: string;
   accessories: string;

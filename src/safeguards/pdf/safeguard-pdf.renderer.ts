@@ -198,6 +198,15 @@ export class SafeguardPdfRenderer {
       doc,
       layout,
       cursor,
+      'No. serie',
+      mobile.serialNumber,
+      'Código interno',
+      mobile.internalCode,
+    );
+    cursor = this.kit.drawTwoColumnRow(
+      doc,
+      layout,
+      cursor,
       'IMEI',
       mobile.imei,
       'Número',

@@ -1,0 +1,17 @@
+# Forzar LF en el working copy sin importar core.autocrlf (Windows),
+# para que coincida con Prettier ("endOfLine": "lf").
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.xls binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
