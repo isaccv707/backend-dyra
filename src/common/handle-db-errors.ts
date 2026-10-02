@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { getUniqueViolationFields } from './utils/unique-violation-fields';
 
 export const handleDatabaseErrors = (
   error: any,
@@ -16,8 +17,11 @@ export const handleDatabaseErrors = (
       throw new NotFoundException(`${entityName} not found`);
     }
     if (error.code === 'P2002') {
+      const fields = getUniqueViolationFields(error);
       throw new ConflictException(
-        `There is already an ${entityName.toLocaleLowerCase()} with that unique value`,
+        fields.length
+          ? `There is already an ${entityName.toLocaleLowerCase()} with that unique value (${fields.join(', ')})`
+          : `There is already an ${entityName.toLocaleLowerCase()} with that unique value`,
       );
     }
     if (error.code === 'P2003') {
