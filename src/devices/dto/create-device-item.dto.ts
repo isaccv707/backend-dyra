@@ -14,6 +14,15 @@ import {
   SafeguardConditionState,
   SafeguardUsageType,
 } from '@prisma/client';
+import { Transform } from 'class-transformer';
+
+const NO_SERIAL_NUMBER_VALUES = new Set(['', 'N/A', 'NA', 'N.A.', 'S/N']);
+
+const normalizeSerialNumber = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return NO_SERIAL_NUMBER_VALUES.has(trimmed.toUpperCase()) ? null : trimmed;
+};
 
 export class CreateDeviceItemDto {
   @IsString()
@@ -25,9 +34,12 @@ export class CreateDeviceItemDto {
   internalCode!: string;
 
   // Número de serie del equipo, para cualquier catalogId.type (incluido MOBILE).
+  // Es opcional: vacío o "N/A" (en cualquier variante) se guarda como null,
+  // que no choca con el @unique; en PATCH sirve para borrar el valor.
+  @Transform(({ value }: { value: unknown }) => normalizeSerialNumber(value))
   @IsOptional()
   @IsString()
-  serialNumber?: string;
+  serialNumber?: string | null;
 
   @IsString()
   @IsUUID()
