@@ -8,11 +8,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { TicketsService } from './tickets.service';
 import { TicketsGateway } from './tickets.gateway';
+import { MailService } from 'src/mail/mail.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FindTicketsDto } from './dto/find-tickets.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
+import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
 
 describe('TicketsService', () => {
   let service: TicketsService;
@@ -22,8 +24,10 @@ describe('TicketsService', () => {
       findMany: jest.Mock;
       count: jest.Mock;
       findUnique: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
       update: jest.Mock;
     };
+    ticketAssignee: { deleteMany: jest.Mock; createMany: jest.Mock };
     ticketComment: { create: jest.Mock };
     ticketNotification: {
       createMany: jest.Mock;
@@ -35,7 +39,7 @@ describe('TicketsService', () => {
     };
     ticketEvent: { create: jest.Mock; createMany: jest.Mock };
     ticketSubcategory: { findUnique: jest.Mock };
-    user: { findUnique: jest.Mock };
+    user: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let gateway: {
@@ -45,6 +49,7 @@ describe('TicketsService', () => {
     notifyUsers: jest.Mock;
     emitOverdueTicket: jest.Mock;
   };
+  let mailService: { sendTicketAssignedEmail: jest.Mock };
 
   const branchId = 'branch-1';
 
@@ -87,8 +92,10 @@ describe('TicketsService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         findUnique: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
         update: jest.fn(),
       },
+      ticketAssignee: { deleteMany: jest.fn(), createMany: jest.fn() },
       ticketComment: { create: jest.fn() },
       ticketNotification: {
         createMany: jest.fn(),
@@ -100,7 +107,7 @@ describe('TicketsService', () => {
       },
       ticketEvent: { create: jest.fn(), createMany: jest.fn() },
       ticketSubcategory: { findUnique: jest.fn() },
-      user: { findUnique: jest.fn() },
+      user: { findMany: jest.fn() },
       $transaction: jest.fn(),
     };
     gateway = {
@@ -110,12 +117,16 @@ describe('TicketsService', () => {
       notifyUsers: jest.fn(),
       emitOverdueTicket: jest.fn(),
     };
+    mailService = {
+      sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TicketsService,
         { provide: PrismaService, useValue: prisma },
         { provide: TicketsGateway, useValue: gateway },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -186,7 +197,12 @@ describe('TicketsService', () => {
       });
     });
 
-    it('aplica los filtros de status, category, priority y assignedToId', async () => {
+    // findAll arma el where como { AND: [...] } para no pisar el OR de la
+    // búsqueda con el OR de acceso (creador o asignado).
+    const whereConditions = () =>
+      prisma.ticket.findMany.mock.calls[0][0].where.AND as unknown[];
+
+    it('aplica los filtros de status, category, priority y assigneeId', async () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       await service.findAll(
@@ -194,21 +210,34 @@ describe('TicketsService', () => {
           status: 'OPEN',
           category: 'HARDWARE',
           priority: 'HIGH',
-          assignedToId: 'user-2',
+          assigneeId: 'user-2',
         } as FindTicketsDto,
         globalUser,
       );
 
-      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
+      expect(whereConditions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
             status: 'OPEN',
             category: 'HARDWARE',
             priority: 'HIGH',
-            assignedToId: 'user-2',
           }),
-        }),
+          { assignees: { some: { userId: 'user-2' } } },
+        ]),
       );
+    });
+
+    it('assignedToMe=true filtra los tickets asignados al usuario autenticado', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll(
+        { assignedToMe: true } as FindTicketsDto,
+        staffUser,
+      );
+
+      expect(whereConditions()).toContainEqual({
+        assignees: { some: { userId: staffUser.id } },
+      });
     });
 
     it('restringe la búsqueda a las sucursales del usuario TI cuando no manda branchId', async () => {
@@ -216,32 +245,34 @@ describe('TicketsService', () => {
 
       await service.findAll({} as FindTicketsDto, scopedStaffUser);
 
-      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ branchId: { in: [branchId] } }),
-        }),
+      expect(whereConditions()).toContainEqual(
+        expect.objectContaining({ branchId: { in: [branchId] } }),
       );
     });
 
-    it('restringe a los tickets propios cuando el usuario no tiene tickets:update', async () => {
+    it('sin tickets:update, restringe a los tickets propios o asignados', async () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       await service.findAll({} as FindTicketsDto, scopedUser);
 
-      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ createdById: scopedUser.id }),
-        }),
-      );
+      expect(whereConditions()).toContainEqual({
+        OR: [
+          { createdById: scopedUser.id },
+          { assignees: { some: { userId: scopedUser.id } } },
+        ],
+      });
     });
 
-    it('no restringe por createdById cuando el usuario tiene tickets:update', async () => {
+    it('no restringe por creador/asignado cuando el usuario tiene tickets:update', async () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       await service.findAll({} as FindTicketsDto, staffUser);
 
-      const where = prisma.ticket.findMany.mock.calls[0][0].where;
-      expect(where).not.toHaveProperty('createdById');
+      const where = JSON.stringify(
+        prisma.ticket.findMany.mock.calls[0][0].where,
+      );
+      expect(where).not.toContain('createdById');
+      expect(where).not.toContain('assignees');
     });
 
     it('no restringe por sucursal a un usuario sin tickets:update, aunque esté asignado a una sola sucursal', async () => {
@@ -249,11 +280,13 @@ describe('TicketsService', () => {
 
       await service.findAll({} as FindTicketsDto, scopedUser);
 
-      const where = prisma.ticket.findMany.mock.calls[0][0].where;
-      expect(where).not.toHaveProperty('branchId');
+      const where = JSON.stringify(
+        prisma.ticket.findMany.mock.calls[0][0].where,
+      );
+      expect(where).not.toContain('branchId');
     });
 
-    it('permite filtrar por branchId a un usuario sin tickets:update como un filtro más sobre su propio histórico', async () => {
+    it('permite filtrar por branchId a un usuario sin tickets:update como un filtro más sobre sus tickets', async () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       await service.findAll(
@@ -261,13 +294,16 @@ describe('TicketsService', () => {
         scopedUser,
       );
 
-      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            branchId: 'other-branch',
-            createdById: scopedUser.id,
-          }),
-        }),
+      expect(whereConditions()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ branchId: 'other-branch' }),
+          {
+            OR: [
+              { createdById: scopedUser.id },
+              { assignees: { some: { userId: scopedUser.id } } },
+            ],
+          },
+        ]),
       );
     });
   });
@@ -287,6 +323,7 @@ describe('TicketsService', () => {
     it('devuelve el ticket con sus comentarios cuando existe y el usuario tiene acceso', async () => {
       const ticket = {
         id: 'ticket-1',
+        assignees: [],
         branchId,
         createdById: scopedUser.id,
         comments: [publicComment],
@@ -301,6 +338,7 @@ describe('TicketsService', () => {
     it('oculta las notas internas a un usuario sin el permiso tickets:update', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId,
         createdById: scopedUser.id,
         comments: [internalComment, publicComment],
@@ -314,6 +352,7 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si el ticket es de otro usuario y no tiene tickets:update', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId,
         createdById: 'someone-else',
         comments: [publicComment],
@@ -327,6 +366,7 @@ describe('TicketsService', () => {
     it('incluye las notas internas para un usuario con el permiso tickets:update', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId,
         comments: [internalComment, publicComment],
       });
@@ -347,6 +387,7 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si el ticket es de otro usuario, aunque sea de la misma sucursal', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId: 'other-branch',
       });
 
@@ -358,6 +399,7 @@ describe('TicketsService', () => {
     it('el dueño ve su ticket aunque ya no esté asignado a esa sucursal', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId: 'other-branch',
         createdById: scopedUser.id,
         comments: [publicComment],
@@ -371,6 +413,7 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si el usuario TI no tiene acceso a la sucursal del ticket ajeno', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId: 'other-branch',
         createdById: 'someone-else',
         comments: [publicComment],
@@ -380,6 +423,20 @@ describe('TicketsService', () => {
         service.findOne('ticket-1', scopedStaffUser),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
+
+    it('un usuario asignado sin tickets:update ve el ticket, pero no las notas internas', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        branchId,
+        createdById: 'someone-else',
+        assignees: [{ user: { id: scopedUser.id } }],
+        comments: [internalComment, publicComment],
+      });
+
+      const result = await service.findOne('ticket-1', scopedUser);
+
+      expect(result.comments).toEqual([publicComment]);
+    });
   });
 
   describe('update', () => {
@@ -388,8 +445,8 @@ describe('TicketsService', () => {
       branchId,
       status: 'OPEN',
       priority: 'MEDIUM',
-      assignedToId: null,
       createdById: 'reporter-1',
+      assignees: [],
     };
 
     it('actualiza el ticket y notifica por el gateway', async () => {
@@ -446,41 +503,32 @@ describe('TicketsService', () => {
       expect(gateway.emitNewComment).toHaveBeenCalledWith(
         'ticket-1',
         expect.objectContaining({ id: 'comment-1' }),
-        ['reporter-1', null],
+        ['reporter-1'],
       );
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
-        ['reporter-1', null],
+        ['reporter-1'],
         'ticket-1',
         expect.stringContaining(staffUser.name),
       );
     });
 
-    it('menciona al nuevo responsable cuando se reasigna el ticket', async () => {
+    it('avisa también a todos los asignados del ticket', async () => {
       prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue({
-        isActive: true,
-        branches: [],
-        role: { permissions: [{ action: 'tickets:update' }] },
-      });
-      const updated = {
+      prisma.ticket.update.mockResolvedValue({
         ...existingTicket,
-        assignedToId: 'tech-1',
-        assignedTo: { id: 'tech-1', name: 'María', email: 'maria@dyra.com' },
-      };
-      prisma.ticket.update.mockResolvedValue(updated);
+        status: 'IN_PROGRESS',
+        assignees: [{ user: { id: 'tech-1' } }, { user: { id: 'tech-2' } }],
+      });
       prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
 
       await service.update(
         'ticket-1',
-        { assignedToId: 'tech-1' } as UpdateTicketDto,
+        { status: 'IN_PROGRESS' } as UpdateTicketDto,
         staffUser,
       );
 
-      const commentBody = prisma.ticketComment.create.mock.calls[0][0].data
-        .body as string;
-      expect(commentBody).toContain('María');
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
-        ['reporter-1', 'tech-1'],
+        ['reporter-1', 'tech-1', 'tech-2'],
         'ticket-1',
         expect.any(String),
       );
@@ -494,40 +542,6 @@ describe('TicketsService', () => {
 
       expect(prisma.ticketComment.create).not.toHaveBeenCalled();
       expect(gateway.notifyUsers).not.toHaveBeenCalled();
-    });
-
-    it('permite desasignar el ticket enviando assignedToId: null', async () => {
-      prisma.ticket.findUnique.mockResolvedValue({
-        ...existingTicket,
-        assignedToId: 'tech-1',
-      });
-      prisma.ticket.update.mockResolvedValue({ ...existingTicket });
-
-      await service.update(
-        'ticket-1',
-        { assignedToId: null } as UpdateTicketDto,
-        globalUser,
-      );
-
-      expect(prisma.ticket.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ assignedToId: null }),
-        }),
-      );
-    });
-
-    it('no toca assignedToId si se omite del dto', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.ticket.update.mockResolvedValue({ ...existingTicket });
-
-      await service.update(
-        'ticket-1',
-        { status: 'IN_PROGRESS' } as UpdateTicketDto,
-        globalUser,
-      );
-
-      const dataArg = prisma.ticket.update.mock.calls[0][0].data;
-      expect(dataArg).not.toHaveProperty('assignedToId');
     });
 
     it('lanza NotFoundException si el ticket no existe', async () => {
@@ -594,95 +608,305 @@ describe('TicketsService', () => {
         ),
       ).resolves.toBeDefined();
     });
+  });
 
-    it('lanza NotFoundException si el usuario a asignar no existe', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.update(
-          'ticket-1',
-          { assignedToId: 'ghost-1' } as UpdateTicketDto,
-          staffUser,
-        ),
-      ).rejects.toBeInstanceOf(NotFoundException);
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
+  describe('setAssignees', () => {
+    const ticket = {
+      id: 'ticket-1',
+      code: 42,
+      title: 'No enciende el monitor',
+      priority: 'HIGH',
+      branchId,
+      createdById: 'reporter-1',
+      firstResponseAt: null,
+      branch: { name: 'Sucursal 1' },
+      assignees: [{ userId: 'old-1', user: { name: 'Pedro' } }],
+    };
+    const activeUser = (id: string, name: string) => ({
+      id,
+      name,
+      email: `${id}@dyra.com`,
+      isActive: true,
+      branches: [{ id: branchId }],
     });
+    const setDto = (userIds: string[]) =>
+      ({ userIds }) as SetTicketAssigneesDto;
 
-    it('lanza BadRequestException si el usuario a asignar está inactivo', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue({
-        isActive: false,
-        branches: [],
-        role: { permissions: [{ action: 'tickets:update' }] },
-      });
-
-      await expect(
-        service.update(
-          'ticket-1',
-          { assignedToId: 'tech-1' } as UpdateTicketDto,
-          staffUser,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
-    });
-
-    it('lanza BadRequestException si el usuario a asignar no tiene tickets:update', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue({
-        isActive: true,
-        branches: [],
-        role: { permissions: [] },
-      });
-
-      await expect(
-        service.update(
-          'ticket-1',
-          { assignedToId: 'tech-1' } as UpdateTicketDto,
-          staffUser,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
-    });
-
-    it('lanza BadRequestException si el usuario a asignar es de otra sucursal', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue({
-        isActive: true,
-        branches: [{ id: 'other-branch' }],
-        role: { permissions: [{ action: 'tickets:update' }] },
-      });
-
-      await expect(
-        service.update(
-          'ticket-1',
-          { assignedToId: 'tech-1' } as UpdateTicketDto,
-          staffUser,
-        ),
-      ).rejects.toBeInstanceOf(BadRequestException);
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
-    });
-
-    it('permite asignar a un técnico global (sin sucursales asignadas)', async () => {
-      prisma.ticket.findUnique.mockResolvedValue(existingTicket);
-      prisma.user.findUnique.mockResolvedValue({
-        isActive: true,
-        branches: [],
-        role: { permissions: [{ action: 'tickets:update' }] },
-      });
-      prisma.ticket.update.mockResolvedValue({
-        ...existingTicket,
-        assignedToId: 'tech-1',
-      });
+    beforeEach(() => {
+      prisma.$transaction.mockResolvedValue([]);
       prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+    });
+
+    it('agrega los nuevos, quita los que salen, registra eventos y manda correo solo a los nuevos', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([activeUser('new-1', 'María')]);
+      const updated = {
+        id: 'ticket-1',
+        assignees: [{ user: { id: 'new-1' } }],
+      };
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue(updated);
+
+      const result = await service.setAssignees(
+        'ticket-1',
+        setDto(['new-1']),
+        staffUser,
+      );
+
+      expect(prisma.ticketAssignee.deleteMany).toHaveBeenCalledWith({
+        where: { ticketId: 'ticket-1', userId: { in: ['old-1'] } },
+      });
+      expect(prisma.ticketAssignee.createMany).toHaveBeenCalledWith({
+        data: [
+          { ticketId: 'ticket-1', userId: 'new-1', assignedById: staffUser.id },
+        ],
+      });
+      expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+        data: [
+          expect.objectContaining({ type: 'ASSIGNED', toValue: 'new-1' }),
+          expect.objectContaining({ type: 'UNASSIGNED', fromValue: 'old-1' }),
+        ],
+      });
+      const body = prisma.ticketComment.create.mock.calls[0][0].data
+        .body as string;
+      expect(body).toContain('María');
+      expect(body).toContain('Pedro');
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'new-1'],
+        'ticket-1',
+        expect.any(String),
+      );
+      expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledTimes(1);
+      expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledWith(
+        'new-1@dyra.com',
+        {
+          ticketId: 'ticket-1',
+          code: 42,
+          title: 'No enciende el monitor',
+          priorityLabel: 'Alta',
+          branchName: 'Sucursal 1',
+          assignedByName: staffUser.name,
+        },
+      );
+      expect(gateway.emitTicketUpdated).toHaveBeenCalledWith(updated);
+      expect(result).toBe(updated);
+    });
+
+    it('fija firstResponseAt en la primera asignación', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({ ...ticket, assignees: [] });
+      prisma.user.findMany.mockResolvedValue([activeUser('new-1', 'María')]);
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue({
+        id: 'ticket-1',
+        assignees: [{ user: { id: 'new-1' } }],
+      });
+
+      await service.setAssignees('ticket-1', setDto(['new-1']), staffUser);
+
+      expect(prisma.ticket.update).toHaveBeenCalledWith({
+        where: { id: 'ticket-1' },
+        data: { firstResponseAt: expect.any(Date) },
+      });
+    });
+
+    it('no registra cambios ni manda correos si la lista no cambió', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue({
+        id: 'ticket-1',
+        assignees: [{ user: { id: 'old-1' } }],
+      });
+
+      await service.setAssignees('ticket-1', setDto(['old-1']), staffUser);
+
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(prisma.ticketComment.create).not.toHaveBeenCalled();
+      expect(mailService.sendTicketAssignedEmail).not.toHaveBeenCalled();
+    });
+
+    it('la asignación se mantiene aunque el correo falle', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({ ...ticket, assignees: [] });
+      prisma.user.findMany.mockResolvedValue([activeUser('new-1', 'María')]);
+      const updated = {
+        id: 'ticket-1',
+        assignees: [{ user: { id: 'new-1' } }],
+      };
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue(updated);
+      mailService.sendTicketAssignedEmail.mockRejectedValue(
+        new Error('SMTP caído'),
+      );
 
       await expect(
-        service.update(
-          'ticket-1',
-          { assignedToId: 'tech-1' } as UpdateTicketDto,
-          staffUser,
-        ),
+        service.setAssignees('ticket-1', setDto(['new-1']), staffUser),
+      ).resolves.toBe(updated);
+    });
+
+    it('lanza NotFoundException si el ticket no existe', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.setAssignees('missing', setDto([]), staffUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('lanza ForbiddenException si TI no tiene acceso a la sucursal del ticket', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...ticket,
+        branchId: 'other-branch',
+      });
+
+      await expect(
+        service.setAssignees('ticket-1', setDto([]), scopedStaffUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('lanza NotFoundException si un usuario a asignar no existe', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.setAssignees('ticket-1', setDto(['ghost-1']), staffUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si se intenta asignar a quien reportó el ticket', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([
+        activeUser('reporter-1', 'Reportero'),
+      ]);
+
+      await expect(
+        service.setAssignees('ticket-1', setDto(['reporter-1']), staffUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si un usuario a asignar está inactivo', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([
+        { ...activeUser('new-1', 'María'), isActive: false },
+      ]);
+
+      await expect(
+        service.setAssignees('ticket-1', setDto(['new-1']), staffUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('lanza BadRequestException si un usuario a asignar no tiene acceso a la sucursal', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([
+        { ...activeUser('new-1', 'María'), branches: [{ id: 'other-branch' }] },
+      ]);
+
+      await expect(
+        service.setAssignees('ticket-1', setDto(['new-1']), staffUser),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('permite asignar a cualquier usuario activo sin tickets:update, o global (sin sucursales)', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({ ...ticket, assignees: [] });
+      prisma.user.findMany.mockResolvedValue([
+        { ...activeUser('new-1', 'María'), branches: [] },
+      ]);
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue({
+        id: 'ticket-1',
+        assignees: [{ user: { id: 'new-1' } }],
+      });
+
+      await expect(
+        service.setAssignees('ticket-1', setDto(['new-1']), staffUser),
       ).resolves.toBeDefined();
+    });
+  });
+
+  describe('findAssignableUsers', () => {
+    const ticket = {
+      branchId,
+      createdById: 'reporter-1',
+      assignees: [{ userId: 'tech-1' }],
+    };
+
+    it('filtra activos, de la sucursal del ticket (o globales) y distintos del creador, y marca isAssigned', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([
+        {
+          id: 'tech-1',
+          name: 'Ana',
+          email: 'ana@dyra.com',
+          role: { name: 'Soporte TI' },
+        },
+        {
+          id: 'user-9',
+          name: 'Luis',
+          email: 'luis@dyra.com',
+          role: { name: 'Usuario' },
+        },
+      ]);
+
+      const result = await service.findAssignableUsers(
+        'ticket-1',
+        {},
+        staffUser,
+      );
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            isActive: true,
+            id: { not: 'reporter-1' },
+            OR: [
+              { branches: { none: {} } },
+              { branches: { some: { id: branchId } } },
+            ],
+          },
+          orderBy: { name: 'asc' },
+        }),
+      );
+      expect(result.map((u) => [u.id, u.isAssigned])).toEqual([
+        ['tech-1', true],
+        ['user-9', false],
+      ]);
+    });
+
+    it('aplica search sobre nombre o email', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.findAssignableUsers(
+        'ticket-1',
+        { search: '  mar ' },
+        staffUser,
+      );
+
+      expect(prisma.user.findMany.mock.calls[0][0].where.AND).toEqual([
+        {
+          OR: [
+            { name: { contains: 'mar', mode: 'insensitive' } },
+            { email: { contains: 'mar', mode: 'insensitive' } },
+          ],
+        },
+      ]);
+    });
+
+    it('lanza NotFoundException si el ticket no existe', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.findAssignableUsers('missing', {}, staffUser),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('lanza ForbiddenException si TI no tiene acceso a la sucursal del ticket', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...ticket,
+        branchId: 'other-branch',
+      });
+
+      await expect(
+        service.findAssignableUsers('ticket-1', {}, scopedStaffUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
   });
 
@@ -692,7 +916,7 @@ describe('TicketsService', () => {
       id: 'ticket-1',
       branchId,
       createdById: 'reporter-1',
-      assignedToId: 'tech-1',
+      assignees: [{ userId: 'tech-1' }],
     };
 
     it('crea el comentario y notifica por el gateway', async () => {
@@ -794,6 +1018,7 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si un usuario sin permiso intenta isInternal:true', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId,
         createdById: scopedUser.id,
       });
@@ -819,6 +1044,7 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si el ticket pertenece a otra sucursal', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId: 'other-branch',
       });
 
@@ -831,12 +1057,52 @@ describe('TicketsService', () => {
     it('lanza ForbiddenException si el ticket es de otro usuario y no tiene tickets:update', async () => {
       prisma.ticket.findUnique.mockResolvedValue({
         id: 'ticket-1',
+        assignees: [],
         branchId,
         createdById: 'someone-else',
       });
 
       await expect(
         service.addComment('ticket-1', commentDto, scopedUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.ticketComment.create).not.toHaveBeenCalled();
+    });
+
+    it('un usuario asignado sin tickets:update puede comentar y avisa al creador', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        branchId,
+        createdById: 'reporter-1',
+        assignees: [{ userId: scopedUser.id }, { userId: 'tech-2' }],
+      });
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+
+      await service.addComment('ticket-1', commentDto, scopedUser);
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'tech-2'],
+        'ticket-1',
+        expect.any(String),
+      );
+    });
+
+    it('un usuario asignado sin tickets:update no puede crear notas internas', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        branchId,
+        createdById: 'reporter-1',
+        assignees: [{ userId: scopedUser.id }],
+      });
+
+      await expect(
+        service.addComment(
+          'ticket-1',
+          { ...commentDto, isInternal: true },
+          scopedUser,
+        ),
       ).rejects.toBeInstanceOf(ForbiddenException);
       expect(prisma.ticketComment.create).not.toHaveBeenCalled();
     });
@@ -848,7 +1114,7 @@ describe('TicketsService', () => {
       id: 'ticket-1',
       branchId,
       createdById: 'reporter-1',
-      assignedToId: 'tech-1',
+      assignees: [{ userId: 'tech-1' }],
     };
 
     it('guarda una TicketNotification por cada destinatario antes de emitir por el gateway', async () => {
@@ -880,7 +1146,7 @@ describe('TicketsService', () => {
       prisma.ticket.findUnique.mockResolvedValue({
         ...ticketWithParties,
         createdById: staffUser.id,
-        assignedToId: null,
+        assignees: [],
       });
       prisma.ticketComment.create.mockResolvedValue({
         id: 'comment-1',
@@ -1017,7 +1283,7 @@ describe('TicketsService', () => {
       priority: 'MEDIUM' as const,
       category: 'HARDWARE' as const,
       subcategoryId: null,
-      assignedToId: null,
+      assignees: [],
       createdById: 'reporter-1',
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
       resolvedAt: null,
@@ -1111,7 +1377,7 @@ describe('TicketsService', () => {
       id: 'ticket-1',
       branchId,
       createdById: 'reporter-1',
-      assignedToId: 'tech-1',
+      assignees: [{ userId: 'tech-1' }],
       firstResponseAt: null,
     };
 
@@ -1170,12 +1436,12 @@ describe('TicketsService', () => {
   });
 
   describe('notifyOverdueTickets', () => {
-    it('avisa al asignado, transmite a TI y marca overdueNotifiedAt por cada ticket vencido', async () => {
+    it('avisa al creador, transmite a TI y marca overdueNotifiedAt por cada ticket vencido', async () => {
       const overdueTicket = {
         id: 'ticket-1',
         code: 42,
         title: 'No enciende el monitor',
-        assignedToId: 'tech-1',
+        createdById: 'reporter-1',
       };
       prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
       prisma.ticket.update.mockResolvedValue(overdueTicket);
@@ -1185,34 +1451,22 @@ describe('TicketsService', () => {
       expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
         data: [
           {
-            userId: 'tech-1',
+            userId: 'reporter-1',
             ticketId: 'ticket-1',
             message: expect.stringContaining('#42'),
           },
         ],
       });
-      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith(overdueTicket);
+      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith({
+        id: 'ticket-1',
+        code: 42,
+        title: 'No enciende el monitor',
+      });
       expect(prisma.ticket.update).toHaveBeenCalledWith({
         where: { id: 'ticket-1' },
         data: { overdueNotifiedAt: expect.any(Date) },
       });
       expect(result).toEqual({ notified: 1 });
-    });
-
-    it('no crea TicketNotification para tickets vencidos sin asignar, pero sigue transmitiendo a TI', async () => {
-      const overdueTicket = {
-        id: 'ticket-1',
-        code: 42,
-        title: 'No enciende el monitor',
-        assignedToId: null,
-      };
-      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
-      prisma.ticket.update.mockResolvedValue(overdueTicket);
-
-      await service.notifyOverdueTickets();
-
-      expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
-      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith(overdueTicket);
     });
 
     it('no hace nada si no hay tickets vencidos', async () => {

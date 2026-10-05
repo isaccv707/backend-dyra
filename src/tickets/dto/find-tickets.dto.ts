@@ -1,4 +1,5 @@
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { Category, TicketPriority, TicketStatus } from '@prisma/client';
 import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
@@ -19,9 +20,16 @@ export class FindTicketsDto extends PaginatedQueryDto {
   @IsEnum(TicketPriority)
   priority?: TicketPriority;
 
+  // Tickets que tienen a este usuario entre sus asignados.
   @IsOptional()
   @IsUUID()
-  assignedToId?: string;
+  assigneeId?: string;
+
+  // true: solo los tickets asignados al usuario autenticado.
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  assignedToMe?: boolean;
 
   @IsOptional()
   @IsUUID()

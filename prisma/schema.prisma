@@ -26,7 +26,8 @@ model User {
   signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
 
   createdTickets      Ticket[]             @relation("TicketCreatedBy")
-  assignedTickets     Ticket[]             @relation("TicketAssignedTo")
+  ticketAssignments   TicketAssignee[]     @relation("TicketAssigneeUser")
+  ticketAssignmentsBy TicketAssignee[]     @relation("TicketAssigneeAssignedBy")
   ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
   ticketNotifications TicketNotification[]
   ticketEvents        TicketEvent[]        @relation("TicketEventActor")
@@ -1249,15 +1250,16 @@ model Ticket {
   createdById String @map("created_by_id")
   createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
 
-  assignedToId String? @map("assigned_to_id")
-  assignedTo   User?   @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  // N usuarios asignados (cualquier usuario activo con acceso a la sucursal
+  // del ticket, no solo TI) — ver TicketAssignee.
+  assignees TicketAssignee[]
 
   comments      TicketComment[]
   notifications TicketNotification[]
   events        TicketEvent[]
 
   // Trazabilidad/analytics — ver TicketsService para cómo se calculan:
-  // firstResponseAt: primera asignación o primer comentario público de
+  // firstResponseAt: primera asignación o primer comentario de
   // alguien distinto al creador (lo que ocurra primero).
   // resolvedAt/closedAt: se fijan al entrar a RESOLVED/CLOSED y se limpian
   // si el ticket se reabre (por eso son nullable, no basta con updatedAt).
@@ -1280,7 +1282,6 @@ model Ticket {
 
   @@index([branchId])
   @@index([createdById])
-  @@index([assignedToId])
   @@index([status])
   @@index([subcategoryId])
   @@index([branchId, createdAt])
@@ -1289,6 +1290,31 @@ model Ticket {
   @@index([resolvedAt])
   @@index([dueAt])
   @@map("tickets")
+}
+
+// Usuarios asignados a atender un ticket. Todos valen lo mismo (no hay
+// responsable principal). Solo TI (tickets:update) asigna/desasigna, vía
+// PUT /tickets/:id/assignees. Reglas validadas en TicketsService (no en la
+// DB): el asignado debe estar activo, tener acceso a la sucursal del ticket
+// y no ser quien lo creó. Estar asignado da acceso al ticket (verlo y
+// comentarlo, sin notas internas) solo mientras dure la asignación.
+model TicketAssignee {
+  id String @id @default(uuid())
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation("TicketAssigneeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedById String? @map("assigned_by_id")
+  assignedBy   User?   @relation("TicketAssigneeAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@unique([ticketId, userId])
+  @@index([userId])
+  @@map("ticket_assignees")
 }
 
 model TicketComment {
