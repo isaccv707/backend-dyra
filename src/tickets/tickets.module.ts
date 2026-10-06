@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
+import { MailModule } from 'src/mail/mail.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
@@ -17,6 +18,7 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
 @Module({
   imports: [
     PrismaModule,
+    MailModule,
     // Registra la infraestructura de @nestjs/schedule para TicketsSlaCron
     // (aviso por hora de tickets con SLA vencido). Solo este módulo la usa.
     ScheduleModule.forRoot(),

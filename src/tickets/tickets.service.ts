@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -23,11 +24,14 @@ import {
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
+import { MailService } from 'src/mail/mail.service';
 import { computeDueAt } from './constants/ticket-sla.const';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { FindAssignableUsersDto } from './dto/find-assignable-users.dto';
 import { FindTicketNotificationsDto } from './dto/find-ticket-notifications.dto';
 import { FindTicketsDto } from './dto/find-tickets.dto';
+import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsGateway } from './tickets.gateway';
 
@@ -89,7 +93,14 @@ const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()({
   include: {
     branch: { select: { id: true, name: true } },
     createdBy: { select: { id: true, name: true, email: true } },
-    assignedTo: { select: { id: true, name: true, email: true } },
+    assignees: {
+      orderBy: { assignedAt: 'asc' },
+      select: {
+        assignedAt: true,
+        user: { select: { id: true, name: true, email: true } },
+        assignedBy: { select: { id: true, name: true } },
+      },
+    },
     subcategory: { select: { id: true, category: true, name: true } },
   },
 });
@@ -138,11 +149,17 @@ interface ChangeEntry {
   text: string;
 }
 
+const assigneeIdsOf = (ticket: { assignees: { user: { id: string } }[] }) =>
+  ticket.assignees.map((a) => a.user.id);
+
 @Injectable()
 export class TicketsService {
+  private readonly logger = new Logger(TicketsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ticketsGateway: TicketsGateway,
+    private readonly mailService: MailService,
   ) {}
 
   async create(
@@ -190,19 +207,24 @@ export class TicketsService {
   // Punto único de autorización para operar sobre un ticket ya existente
   // (verlo, comentarlo, adjuntar). Con tickets:update (TI) el criterio sigue
   // siendo de sucursal, como siempre. Sin ese permiso, el criterio es
-  // exclusivamente "eres quien lo creó" — deliberadamente *sin* pasar por
-  // assertBranchAccess: el reportero conserva el control de todo lo que ha
-  // levantado aunque después lo reasignen a otra sucursal (o deje de estar
-  // asignado a la sucursal donde lo reportó).
+  // exclusivamente "eres quien lo creó o estás asignado ahora" —
+  // deliberadamente *sin* pasar por assertBranchAccess: el reportero
+  // conserva el control de todo lo que ha levantado aunque después lo
+  // reasignen a otra sucursal. El asignado, en cambio, pierde el acceso en
+  // cuanto TI lo quita de la lista.
   private assertTicketAccess(
     ticket: { branchId: string; createdById: string },
+    assigneeIds: string[],
     user: RequestUser,
   ): boolean {
     const canSeeAllTickets = this.hasTicketUpdatePermission(user);
 
     if (canSeeAllTickets) {
       assertBranchAccess(user, ticket.branchId);
-    } else if (ticket.createdById !== user.id) {
+    } else if (
+      ticket.createdById !== user.id &&
+      !assigneeIds.includes(user.id)
+    ) {
       throw new ForbiddenException('No tienes acceso a este ticket');
     }
 
@@ -216,27 +238,42 @@ export class TicketsService {
       allowedFields: TICKET_ALLOWED_FIELDS,
     });
 
-    // Sin tickets:update (personal de TI), el usuario solo ve su propio
-    // histórico de reportes — nunca los tickets de otros, aunque compartan
-    // sucursal. Ese histórico tampoco se filtra por sucursal: es "todos los
-    // tickets que este usuario ha levantado", sin importar en qué sucursal
-    // los reportó ni a cuáles esté asignado ahora. branchId como query param
-    // sigue aceptándose como un filtro más sobre ese histórico, no como una
-    // restricción de acceso.
+    // Sin tickets:update (personal de TI), el usuario solo ve los tickets
+    // que levantó (su histórico) más los que tiene asignados ahora — nunca
+    // otros tickets, aunque compartan sucursal. Ese conjunto tampoco se
+    // filtra por las sucursales del usuario. branchId como query param
+    // sigue aceptándose como un filtro más, no como una restricción de
+    // acceso.
     const canSeeAllTickets = this.hasTicketUpdatePermission(user);
 
-    const finalWhere = {
-      ...where,
-      ...(canSeeAllTickets
-        ? userBranchFilter(user, dto.branchId)
-        : dto.branchId && { branchId: dto.branchId }),
-      ...(dto.status && { status: dto.status }),
-      ...(dto.category && { category: dto.category }),
-      ...(dto.priority && { priority: dto.priority }),
-      ...(dto.assignedToId && { assignedToId: dto.assignedToId }),
-      ...(dto.subcategoryId && { subcategoryId: dto.subcategoryId }),
-      ...(!canSeeAllTickets && { createdById: user.id }),
-    } as Prisma.TicketWhereInput;
+    const conditions: Prisma.TicketWhereInput[] = [
+      where as Prisma.TicketWhereInput,
+      {
+        ...(canSeeAllTickets
+          ? userBranchFilter(user, dto.branchId)
+          : dto.branchId && { branchId: dto.branchId }),
+        ...(dto.status && { status: dto.status }),
+        ...(dto.category && { category: dto.category }),
+        ...(dto.priority && { priority: dto.priority }),
+        ...(dto.subcategoryId && { subcategoryId: dto.subcategoryId }),
+      },
+    ];
+    if (dto.assigneeId) {
+      conditions.push({ assignees: { some: { userId: dto.assigneeId } } });
+    }
+    if (dto.assignedToMe) {
+      conditions.push({ assignees: { some: { userId: user.id } } });
+    }
+    if (!canSeeAllTickets) {
+      conditions.push({
+        OR: [
+          { createdById: user.id },
+          { assignees: { some: { userId: user.id } } },
+        ],
+      });
+    }
+
+    const finalWhere: Prisma.TicketWhereInput = { AND: conditions };
 
     const [data, total] = await this.prisma.$transaction([
       this.prisma.ticket.findMany({
@@ -261,7 +298,11 @@ export class TicketsService {
       throw new NotFoundException(`Ticket with ID '${id}' not found`);
     }
 
-    const canSeeAllTickets = this.assertTicketAccess(ticket, user);
+    const canSeeAllTickets = this.assertTicketAccess(
+      ticket,
+      assigneeIdsOf(ticket),
+      user,
+    );
 
     return {
       ...ticket,
@@ -284,13 +325,6 @@ export class TicketsService {
 
     if (updateTicketDto.status && updateTicketDto.status !== ticket.status) {
       this.assertValidStatusTransition(ticket.status, updateTicketDto.status);
-    }
-
-    if (updateTicketDto.assignedToId) {
-      await this.assertAssigneeIsValid(
-        updateTicketDto.assignedToId,
-        ticket.branchId,
-      );
     }
 
     if (updateTicketDto.subcategoryId) {
@@ -319,9 +353,6 @@ export class TicketsService {
           ...(updateTicketDto.subcategoryId !== undefined && {
             subcategoryId: updateTicketDto.subcategoryId,
           }),
-          ...(updateTicketDto.assignedToId !== undefined && {
-            assignedToId: updateTicketDto.assignedToId,
-          }),
           ...traceabilityData,
         },
         ...ticketWithRelations,
@@ -344,12 +375,14 @@ export class TicketsService {
   ) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id: ticketId },
+      include: { assignees: { select: { userId: true } } },
     });
     if (!ticket) {
       throw new NotFoundException(`Ticket with ID '${ticketId}' not found`);
     }
 
-    const canSeeAllTickets = this.assertTicketAccess(ticket, user);
+    const assigneeIds = ticket.assignees.map((a) => a.userId);
+    const canSeeAllTickets = this.assertTicketAccess(ticket, assigneeIds, user);
 
     if (dto.isInternal && !canSeeAllTickets) {
       throw new ForbiddenException(
@@ -388,12 +421,12 @@ export class TicketsService {
 
     this.ticketsGateway.emitNewComment(ticketId, comment, [
       ticket.createdById,
-      ticket.assignedToId,
+      ...assigneeIds,
     ]);
 
     // Las notas internas solo le importan a TI (ya llegan por
     // emitNewComment a ti_staff_room) — un comentario público sí debe
-    // avisarle a quien reportó el ticket y a quien lo tiene asignado.
+    // avisarle a quien reportó el ticket y a todos sus asignados.
     if (!comment.isInternal) {
       const preview =
         dto.body.length > COMMENT_PREVIEW_LENGTH
@@ -401,9 +434,7 @@ export class TicketsService {
           : dto.body;
 
       await this.persistAndNotify(
-        [ticket.createdById, ticket.assignedToId].filter(
-          (id) => id !== user.id,
-        ),
+        [ticket.createdById, ...assigneeIds].filter((id) => id !== user.id),
         ticketId,
         `${user.name} comentó: ${preview}`,
       );
@@ -445,17 +476,13 @@ export class TicketsService {
       data.overdueNotifiedAt = null;
     }
 
-    if (dto.assignedToId && !ticket.assignedToId && !ticket.firstResponseAt) {
-      data.firstResponseAt = new Date();
-    }
-
     return data;
   }
 
   private buildChangeEntries(
     previousTicket: Pick<
       Ticket,
-      'status' | 'priority' | 'category' | 'subcategoryId' | 'assignedToId'
+      'status' | 'priority' | 'category' | 'subcategoryId'
     >,
     updatedTicket: TicketWithRelations,
     dto: UpdateTicketDto,
@@ -516,28 +543,11 @@ export class TicketsService {
       });
     }
 
-    if (
-      dto.assignedToId !== undefined &&
-      dto.assignedToId !== previousTicket.assignedToId
-    ) {
-      entries.push({
-        type: dto.assignedToId ? 'ASSIGNED' : 'UNASSIGNED',
-        fromValue: previousTicket.assignedToId,
-        toValue: updatedTicket.assignedToId,
-        text: updatedTicket.assignedTo
-          ? `reasignó el ticket a ${updatedTicket.assignedTo.name}`
-          : 'quitó la asignación del ticket',
-      });
-    }
-
     return entries;
   }
 
-  // Deja un comentario de sistema (isSystem:true) con lo que cambió en este
-  // update() — es el historial legible para la UI — y, por cada cambio, una
-  // fila estructurada en TicketEvent (la fuente de datos para analytics).
-  // También avisa en vivo a quien reportó el ticket y a quien quedó
-  // asignado (si cambió) — no solo a ti_staff_room.
+  // Calcula qué cambió en este update() y lo registra/avisa vía
+  // recordEntriesAndNotify.
   private async recordChangeAndNotify(
     previousTicket: Pick<
       Ticket,
@@ -546,7 +556,6 @@ export class TicketsService {
       | 'priority'
       | 'category'
       | 'subcategoryId'
-      | 'assignedToId'
       | 'createdById'
     >,
     updatedTicket: TicketWithRelations,
@@ -571,6 +580,26 @@ export class TicketsService {
       dto,
       previousSubcategoryName,
     );
+
+    await this.recordEntriesAndNotify(
+      previousTicket.id,
+      entries,
+      [previousTicket.createdById, ...assigneeIdsOf(updatedTicket)],
+      user,
+    );
+  }
+
+  // Deja un comentario de sistema (isSystem:true) con los cambios — es el
+  // historial legible para la UI — y, por cada cambio, una fila
+  // estructurada en TicketEvent (la fuente de datos para analytics).
+  // También avisa en vivo a `recipientIds` (quien reportó el ticket y sus
+  // asignados) — no solo a ti_staff_room.
+  private async recordEntriesAndNotify(
+    ticketId: string,
+    entries: ChangeEntry[],
+    recipientIds: string[],
+    user: RequestUser,
+  ) {
     if (entries.length === 0) return;
 
     const message = `${user.name} ${entries.map((e) => e.text).join(', ')}.`;
@@ -580,7 +609,7 @@ export class TicketsService {
         body: message,
         isInternal: false,
         isSystem: true,
-        ticketId: previousTicket.id,
+        ticketId,
         authorId: user.id,
       },
       ...commentWithAuthor,
@@ -591,20 +620,184 @@ export class TicketsService {
         type: entry.type,
         fromValue: entry.fromValue,
         toValue: entry.toValue,
-        ticketId: previousTicket.id,
+        ticketId,
         actorId: user.id,
       })),
     });
 
-    this.ticketsGateway.emitNewComment(previousTicket.id, comment, [
-      previousTicket.createdById,
-      updatedTicket.assignedToId,
-    ]);
-    await this.persistAndNotify(
-      [previousTicket.createdById, updatedTicket.assignedToId],
-      previousTicket.id,
-      message,
+    this.ticketsGateway.emitNewComment(ticketId, comment, recipientIds);
+    await this.persistAndNotify(recipientIds, ticketId, message);
+  }
+
+  // Candidatos para el selector de asignados (solo TI, ver controller): los
+  // mismos usuarios que assertAssigneesAreValid aceptaría — activos, con
+  // acceso a la sucursal del ticket (o globales, sin sucursales) y distintos
+  // de quien lo reportó. Existe porque el rol de TI no tiene users:read.
+  // isAssigned marca a los que ya están asignados.
+  async findAssignableUsers(
+    id: string,
+    dto: FindAssignableUsersDto,
+    user: RequestUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        branchId: true,
+        createdById: true,
+        assignees: { select: { userId: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${id}' not found`);
+    }
+    assertBranchAccess(user, ticket.branchId);
+
+    const search = dto.search?.trim();
+    const users = await this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        id: { not: ticket.createdById },
+        OR: [
+          { branches: { none: {} } },
+          { branches: { some: { id: ticket.branchId } } },
+        ],
+        ...(search && {
+          AND: [
+            {
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+              ],
+            },
+          ],
+        }),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: { select: { name: true } },
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    const assignedIds = new Set(ticket.assignees.map((a) => a.userId));
+    return users.map((candidate) => ({
+      ...candidate,
+      isAssigned: assignedIds.has(candidate.id),
+    }));
+  }
+
+  // Reemplaza la lista completa de asignados (solo TI, ver controller). Los
+  // que salen de la lista pierden el acceso al ticket de inmediato; los que
+  // entran reciben, además del aviso in-app, un correo de asignación que se
+  // envía en segundo plano: si falla, la asignación ya quedó guardada y
+  // solo se registra el error.
+  async setAssignees(
+    id: string,
+    dto: SetTicketAssigneesDto,
+    user: RequestUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: {
+        branch: { select: { name: true } },
+        assignees: {
+          select: { userId: true, user: { select: { name: true } } },
+        },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${id}' not found`);
+    }
+    assertBranchAccess(user, ticket.branchId);
+
+    const currentIds = new Set(ticket.assignees.map((a) => a.userId));
+    const desiredIds = new Set(dto.userIds);
+    const addedIds = dto.userIds.filter((userId) => !currentIds.has(userId));
+    const removed = ticket.assignees.filter((a) => !desiredIds.has(a.userId));
+
+    const addedUsers = await this.assertAssigneesAreValid(addedIds, ticket);
+
+    try {
+      await this.prisma.$transaction([
+        this.prisma.ticketAssignee.deleteMany({
+          where: {
+            ticketId: id,
+            userId: { in: removed.map((a) => a.userId) },
+          },
+        }),
+        this.prisma.ticketAssignee.createMany({
+          data: addedIds.map((userId) => ({
+            ticketId: id,
+            userId,
+            assignedById: user.id,
+          })),
+        }),
+        // "Primera respuesta" = primera asignación o primer comentario de
+        // alguien distinto a quien reportó el ticket.
+        ...(addedIds.length > 0 && !ticket.firstResponseAt
+          ? [
+              this.prisma.ticket.update({
+                where: { id },
+                data: { firstResponseAt: new Date() },
+              }),
+            ]
+          : []),
+      ]);
+    } catch (error) {
+      handleDatabaseErrors(error, 'Ticket');
+    }
+
+    const updated = await this.prisma.ticket.findUniqueOrThrow({
+      where: { id },
+      ...ticketWithRelations,
+    });
+
+    if (addedIds.length === 0 && removed.length === 0) return updated;
+
+    const entries: ChangeEntry[] = [
+      ...addedUsers.map((assignee) => ({
+        type: 'ASSIGNED' as const,
+        fromValue: null,
+        toValue: assignee.id,
+        text: `asignó el ticket a ${assignee.name}`,
+      })),
+      ...removed.map((assignee) => ({
+        type: 'UNASSIGNED' as const,
+        fromValue: assignee.userId,
+        toValue: null,
+        text: `quitó a ${assignee.user.name} del ticket`,
+      })),
+    ];
+
+    await this.recordEntriesAndNotify(
+      id,
+      entries,
+      [ticket.createdById, ...assigneeIdsOf(updated)],
+      user,
     );
+
+    this.ticketsGateway.emitTicketUpdated(updated);
+
+    for (const assignee of addedUsers) {
+      this.mailService
+        .sendTicketAssignedEmail(assignee.email, {
+          ticketId: id,
+          code: ticket.code,
+          title: ticket.title,
+          priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
+          branchName: ticket.branch.name,
+          assignedByName: user.name,
+        })
+        .catch((error: unknown) => {
+          this.logger.error(
+            `No se pudo enviar el correo de asignación del ticket #${ticket.code} a ${assignee.email}: ${(error as Error).message}`,
+          );
+        });
+    }
+
+    return updated;
   }
 
   private assertValidStatusTransition(from: TicketStatus, to: TicketStatus) {
@@ -615,44 +808,56 @@ export class TicketsService {
     }
   }
 
-  // El responsable asignado debe ser un usuario activo, con permiso
-  // tickets:update (es quien va a resolver tickets, no cualquier usuario del
-  // sistema) y con acceso a la sucursal del ticket — mismo criterio que
-  // assertBranchAccess pero evaluado sobre el asignado, no sobre quien hace
-  // la petición.
-  private async assertAssigneeIsValid(assignedToId: string, branchId: string) {
-    const assignee = await this.prisma.user.findUnique({
-      where: { id: assignedToId },
+  // Cualquier usuario de la plataforma (no solo TI) puede quedar asignado,
+  // siempre que esté activo, tenga acceso a la sucursal del ticket — mismo
+  // criterio que assertBranchAccess pero evaluado sobre el asignado, no
+  // sobre quien hace la petición — y no sea quien reportó el ticket.
+  // Devuelve los usuarios en el mismo orden que `userIds`.
+  private async assertAssigneesAreValid(
+    userIds: string[],
+    ticket: { branchId: string; createdById: string },
+  ) {
+    if (userIds.length === 0) return [];
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
       select: {
+        id: true,
+        name: true,
+        email: true,
         isActive: true,
         branches: { select: { id: true } },
-        role: { select: { permissions: { select: { action: true } } } },
       },
     });
+    const userMap = new Map(users.map((u) => [u.id, u]));
 
-    if (!assignee) {
-      throw new NotFoundException(`User with ID '${assignedToId}' not found`);
-    }
-    if (!assignee.isActive) {
-      throw new BadRequestException('El usuario asignado no está activo');
-    }
-    if (
-      !assignee.role.permissions.some(
-        (p) => p.action === TICKET_UPDATE_PERMISSION,
-      )
-    ) {
-      throw new BadRequestException(
-        'El usuario asignado no tiene el permiso tickets:update',
-      );
-    }
-    if (
-      assignee.branches.length > 0 &&
-      !assignee.branches.some((b) => b.id === branchId)
-    ) {
-      throw new BadRequestException(
-        'El usuario asignado no tiene acceso a la sucursal de este ticket',
-      );
-    }
+    return userIds.map((userId) => {
+      const assignee = userMap.get(userId);
+
+      if (!assignee) {
+        throw new NotFoundException(`User with ID '${userId}' not found`);
+      }
+      if (userId === ticket.createdById) {
+        throw new BadRequestException(
+          'No se puede asignar el ticket a quien lo reportó',
+        );
+      }
+      if (!assignee.isActive) {
+        throw new BadRequestException(
+          `El usuario ${assignee.name} no está activo`,
+        );
+      }
+      if (
+        assignee.branches.length > 0 &&
+        !assignee.branches.some((b) => b.id === ticket.branchId)
+      ) {
+        throw new BadRequestException(
+          `El usuario ${assignee.name} no tiene acceso a la sucursal de este ticket`,
+        );
+      }
+
+      return assignee;
+    });
   }
 
   // La subcategoría, cuando se manda, debe pertenecer a la misma Category
@@ -756,8 +961,9 @@ export class TicketsService {
 
   // Llamado por TicketsSlaCron (una vez por hora). Busca tickets con SLA
   // vencido (dueAt < ahora) en un estado no terminal que todavía no se
-  // notificaron (overdueNotifiedAt null), avisa al técnico asignado (si
-  // hay) y transmite en vivo a ti_staff_room aunque no haya asignado, y
+  // notificaron (overdueNotifiedAt null), avisa a quien reportó el ticket
+  // (los asignados no reciben este aviso), transmite en vivo a
+  // ti_staff_room, y
   // marca overdueNotifiedAt para no repetir el mismo aviso en la próxima
   // corrida. Se limpia (vuelve a null) cuando el ticket cambia de
   // prioridad o se reabre — ver computeTraceabilityFields.
@@ -769,16 +975,18 @@ export class TicketsService {
         overdueNotifiedAt: null,
         status: { notIn: ['RESOLVED', 'CLOSED', 'CANCELLED'] },
       },
-      select: { id: true, code: true, title: true, assignedToId: true },
+      select: { id: true, code: true, title: true, createdById: true },
     });
 
     for (const ticket of overdue) {
       const message = `El ticket #${ticket.code} "${ticket.title}" venció su tiempo de atención (SLA).`;
 
-      if (ticket.assignedToId) {
-        await this.persistAndNotify([ticket.assignedToId], ticket.id, message);
-      }
-      this.ticketsGateway.emitOverdueTicket(ticket);
+      await this.persistAndNotify([ticket.createdById], ticket.id, message);
+      this.ticketsGateway.emitOverdueTicket({
+        id: ticket.id,
+        code: ticket.code,
+        title: ticket.title,
+      });
 
       await this.prisma.ticket.update({
         where: { id: ticket.id },

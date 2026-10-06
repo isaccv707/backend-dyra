@@ -21,7 +21,7 @@ const TI_STAFF_PERMISSION = 'tickets:update';
 
 // Cada socket autenticado se une a su propia sala personal (ver
 // handleConnection) — así podemos avisarle directo a un usuario específico
-// (el que reportó el ticket, el técnico asignado) sin depender de que esté
+// (el que reportó el ticket, sus asignados) sin depender de que esté
 // en ti_staff_room, que solo une a quienes tienen tickets:update.
 const userRoom = (userId: string) => `user:${userId}`;
 
@@ -115,7 +115,7 @@ export class TicketsGateway implements OnGatewayConnection {
   // TI siempre ve el comentario (incluidas las notas internas, porque nadie
   // fuera de TI se une a ti_staff_room). Además, si el comentario NO es
   // interno, también se emite a las salas personales de quien reportó el
-  // ticket y de quien lo tiene asignado — así un comentario de un usuario
+  // ticket y de sus asignados — así un comentario de un usuario
   // normal se renderiza en vivo para TI, y un comentario de TI se renderiza
   // en vivo para el usuario normal, simétricamente. Se arma un solo set de
   // salas y se emite una vez para que un socket presente en varias (p. ej.
@@ -140,7 +140,7 @@ export class TicketsGateway implements OnGatewayConnection {
     });
   }
 
-  // Avisa directo al creador y/o al técnico asignado de un ticket (a
+  // Avisa directo al creador y/o a los asignados de un ticket (a
   // diferencia de emitNewTicket/emitTicketUpdated/emitNewComment, que solo
   // llegan a ti_staff_room). Los IDs duplicados o vacíos no generan
   // problema: socket.io emite una sola vez por socket aunque esté en varias
@@ -159,9 +159,8 @@ export class TicketsGateway implements OnGatewayConnection {
   }
 
   // Aviso en vivo de SLA vencido, transmitido a ti_staff_room sin importar
-  // si el ticket tiene asignado (a diferencia de notifyUsers, que requiere
-  // IDs de usuario concretos) — así un ticket vencido y sin asignar sigue
-  // siendo visible para cualquier técnico conectado.
+  // si el ticket tiene asignados (a diferencia de notifyUsers, que requiere
+  // IDs de usuario concretos) — así cualquier técnico conectado se entera.
   emitOverdueTicket(ticket: { id: string; code: number; title: string }) {
     this.server.to(TI_STAFF_ROOM).emit('ticket_overdue', ticket);
   }

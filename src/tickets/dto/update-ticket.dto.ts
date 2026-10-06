@@ -23,9 +23,4 @@ export class UpdateTicketDto {
   @IsOptional()
   @IsUUID()
   subcategoryId?: string | null;
-
-  // null desasigna el ticket; omitir el campo lo deja sin tocar.
-  @IsOptional()
-  @IsUUID()
-  assignedToId?: string | null;
 }
