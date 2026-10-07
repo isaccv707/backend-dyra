@@ -1,11 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import {
   buildPaginatedQuery,
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
-import { Prisma } from '@prisma/client';
+import { Category, Prisma, TicketFormType } from '@prisma/client';
+import { TICKET_FORM_DEFINITIONS } from '../forms/ticket-forms.const';
 import { CreateTicketSubcategoryDto } from './dto/create-ticket-subcategory.dto';
 import { UpdateTicketSubcategoryDto } from './dto/update-ticket-subcategory.dto';
 import { FindTicketSubcategoriesDto } from './dto/find-ticket-subcategories.dto';
@@ -15,6 +20,8 @@ export class TicketSubcategoriesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateTicketSubcategoryDto) {
+    this.assertFormTypeMatchesCategory(dto.formType, dto.category);
+
     try {
       return await this.prisma.ticketSubcategory.create({ data: dto });
     } catch (error) {
@@ -49,7 +56,11 @@ export class TicketSubcategoriesService {
   }
 
   async update(id: string, dto: UpdateTicketSubcategoryDto) {
-    await this.assertExists(id);
+    const current = await this.assertExists(id);
+    this.assertFormTypeMatchesCategory(
+      dto.formType !== undefined ? dto.formType : current.formType,
+      dto.category ?? current.category,
+    );
 
     try {
       return await this.prisma.ticketSubcategory.update({
@@ -68,6 +79,20 @@ export class TicketSubcategoriesService {
       return await this.prisma.ticketSubcategory.delete({ where: { id } });
     } catch (error) {
       handleDatabaseErrors(error, 'TicketSubcategory');
+    }
+  }
+
+  private assertFormTypeMatchesCategory(
+    formType: TicketFormType | null | undefined,
+    category: Category,
+  ) {
+    if (!formType) return;
+
+    const definition = TICKET_FORM_DEFINITIONS[formType];
+    if (definition.category !== category) {
+      throw new BadRequestException(
+        `El formulario "${definition.label}" solo aplica a la categoría ${definition.category}`,
+      );
     }
   }
 

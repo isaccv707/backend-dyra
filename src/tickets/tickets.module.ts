@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { MailModule } from 'src/mail/mail.module';
+import { StudiesModule } from 'src/studies/studies.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
@@ -14,11 +15,15 @@ import { TicketSubcategoriesService } from './subcategories/ticket-subcategories
 import { TicketsAnalyticsController } from './analytics/tickets-analytics.controller';
 import { TicketsAnalyticsService } from './analytics/tickets-analytics.service';
 import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.renderer';
+import { TicketFormsService } from './forms/ticket-forms.service';
+import { StudyCreateFormHandler } from './forms/study-create/study-create-form.handler';
+import { StudyUpdateFormHandler } from './forms/study-update/study-update-form.handler';
 
 @Module({
   imports: [
     PrismaModule,
     MailModule,
+    StudiesModule,
     ScheduleModule.forRoot(),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -47,6 +52,9 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
     TicketSubcategoriesService,
     TicketsAnalyticsService,
     TicketAnalyticsPdfRenderer,
+    TicketFormsService,
+    StudyCreateFormHandler,
+    StudyUpdateFormHandler,
   ],
   exports: [TicketsService],
 })

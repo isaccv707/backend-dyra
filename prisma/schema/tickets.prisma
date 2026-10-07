@@ -16,6 +16,11 @@ enum TicketStatus {
   CANCELLED
 }
 
+enum TicketFormType {
+  STUDY_CREATE
+  STUDY_UPDATE
+}
+
 enum TicketPriority {
   LOW
   MEDIUM
@@ -24,10 +29,11 @@ enum TicketPriority {
 }
 
 model TicketSubcategory {
-  id       String   @id @default(uuid())
+  id       String          @id @default(uuid())
   category Category
   name     String
-  isActive Boolean  @default(true) @map("is_active")
+  isActive Boolean         @default(true) @map("is_active")
+  formType TicketFormType? @map("form_type")
 
   tickets Ticket[]
 
@@ -48,6 +54,8 @@ enum TicketEventType {
   UNASSIGNED
   COMMENTED
   REOPENED
+  FORM_UPDATED
+  FORM_APPLIED
 }
 
 model TicketEvent {
@@ -91,6 +99,7 @@ model Ticket {
   createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
 
   assignees TicketAssignee[]
+  form      TicketForm?
 
   comments      TicketComment[]
   notifications TicketNotification[]
@@ -116,6 +125,26 @@ model Ticket {
   @@index([resolvedAt])
   @@index([dueAt])
   @@map("tickets")
+}
+
+model TicketForm {
+  id     String         @id @default(uuid())
+  type   TicketFormType
+  data   Json
+  result Json?
+
+  ticketId String @unique @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  appliedAt   DateTime? @map("applied_at")
+  appliedById String?   @map("applied_by_id")
+  appliedBy   User?     @relation("TicketFormAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, appliedAt])
+  @@map("ticket_forms")
 }
 
 model TicketAssignee {

@@ -53,7 +53,7 @@ const CATALOG_INCLUDE = {
   technique: { select: { id: true, name: true } },
 } satisfies Prisma.StudyInclude;
 
-type StudyCatalogIds = {
+export type StudyCatalogIds = {
   sectionId?: number | null;
   sampleTypeId?: number | null;
   techniqueId?: number | null;
@@ -119,7 +119,7 @@ export class StudiesService {
     }
   }
 
-  private async assertCatalogsBelongToBranch(
+  async assertCatalogsBelongToBranch(
     ids: StudyCatalogIds,
     branchId: string,
     activeIds: StudyCatalogIds = ids,
@@ -148,7 +148,7 @@ export class StudiesService {
     }
   }
 
-  private assertValidAgeRange(minAge?: number, maxAge?: number) {
+  assertValidAgeRange(minAge?: number, maxAge?: number) {
     if (minAge !== undefined && maxAge !== undefined && minAge > maxAge) {
       throw new BadRequestException(
         'La edad mínima no puede ser mayor que la edad máxima',
@@ -631,6 +631,7 @@ export class StudiesService {
         minAge: true,
         maxAge: true,
         decimals: true,
+        units: true,
         deliveryTime: true,
       },
       orderBy: { name: 'asc' },
@@ -658,6 +659,7 @@ export class StudiesService {
       { header: 'Edad mínima', value: (s) => s.minAge },
       { header: 'Edad máxima', value: (s) => s.maxAge },
       { header: 'Decimales', value: (s) => s.decimals },
+      { header: 'Unidades', value: (s) => s.units ?? '' },
       { header: 'Tiempo de entrega', value: (s) => s.deliveryTime ?? '' },
     ];
 

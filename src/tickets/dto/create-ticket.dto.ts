@@ -1,6 +1,7 @@
 import {
   IsEnum,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -34,4 +35,8 @@ export class CreateTicketDto {
   @IsOptional()
   @IsEnum(TicketPriority)
   priority?: TicketPriority = TicketPriority.MEDIUM;
+
+  @IsOptional()
+  @IsObject()
+  form?: Record<string, unknown>;
 }

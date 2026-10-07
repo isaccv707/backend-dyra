@@ -24,6 +24,7 @@ export class Study {
   minAge!: number;
   maxAge!: number;
   decimals!: number;
+  units?: string;
   priceSheets?: StudyOnPriceSheet[];
 }
 

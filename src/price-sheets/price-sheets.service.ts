@@ -230,6 +230,7 @@ export class PriceSheetsService {
       'minAge',
       'maxAge',
       'decimals',
+      'units',
     ];
 
     const exampleRow: Record<string, string | number> = {
@@ -255,6 +256,7 @@ export class PriceSheetsService {
       minAge: 0,
       maxAge: 120,
       decimals: 2,
+      units: '',
     };
 
     const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], {
@@ -363,6 +365,7 @@ export class PriceSheetsService {
       minAge?: number;
       maxAge?: number;
       decimals?: number;
+      units?: string;
     };
 
     const valid: ValidRow[] = [];
@@ -438,6 +441,7 @@ export class PriceSheetsService {
         minAge: toOptionalInt(row.minAge),
         maxAge: toOptionalInt(row.maxAge),
         decimals: toOptionalInt(row.decimals),
+        units: cellToString(row.units),
       };
 
       const hasMinAge = normalizedData.minAge !== undefined;
@@ -486,6 +490,7 @@ export class PriceSheetsService {
           minAge: dto.minAge,
           maxAge: dto.maxAge,
           decimals: dto.decimals,
+          units: dto.units,
         });
       }
     }
@@ -571,6 +576,7 @@ export class PriceSheetsService {
             minAge: item.minAge,
             maxAge: item.maxAge,
             decimals: item.decimals,
+            units: item.units,
             service: { connect: { id: item.serviceId } },
           },
           create: {
@@ -593,6 +599,7 @@ export class PriceSheetsService {
             minAge: item.minAge,
             maxAge: item.maxAge,
             decimals: item.decimals,
+            units: item.units,
             service: { connect: { id: item.serviceId } },
             branch: { connect: { id: branchId } },
           },

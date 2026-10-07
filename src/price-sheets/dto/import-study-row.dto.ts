@@ -131,4 +131,9 @@ export class ImportStudyRowDto {
   @Max(STUDY_MAX_DECIMALS)
   @IsOptional()
   decimals?: number;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  units?: string;
 }

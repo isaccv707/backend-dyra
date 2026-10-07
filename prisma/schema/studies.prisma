@@ -20,6 +20,7 @@ model Study {
   minAge          Int     @default(0)
   maxAge          Int     @default(120)
   decimals        Int     @default(0)
+  units           String?
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])

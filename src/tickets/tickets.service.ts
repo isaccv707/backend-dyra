@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -9,6 +10,8 @@ import {
   Category,
   Prisma,
   Ticket,
+  TicketForm,
+  TicketFormType,
   TicketPriority,
   TicketStatus,
 } from '@prisma/client';
@@ -34,6 +37,9 @@ import { FindTicketsDto } from './dto/find-tickets.dto';
 import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketsGateway } from './tickets.gateway';
+import { TICKET_FORM_DEFINITIONS } from './forms/ticket-forms.const';
+import { TicketFormApplyResult } from './forms/ticket-form-handler.interface';
+import { TicketFormsService } from './forms/ticket-forms.service';
 
 const TICKET_ALLOWED_FIELDS = [
   'code',
@@ -84,6 +90,8 @@ const COMMENT_PREVIEW_LENGTH = 140;
 
 const REOPENABLE_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED'];
 
+const FORM_LOCKED_STATUSES: TicketStatus[] = ['CLOSED', 'CANCELLED'];
+
 const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()({
   include: {
     branch: { select: { id: true, name: true } },
@@ -96,7 +104,19 @@ const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()({
         assignedBy: { select: { id: true, name: true } },
       },
     },
-    subcategory: { select: { id: true, category: true, name: true } },
+    subcategory: {
+      select: { id: true, category: true, name: true, formType: true },
+    },
+    form: {
+      select: {
+        type: true,
+        data: true,
+        result: true,
+        appliedAt: true,
+        appliedBy: { select: { id: true, name: true } },
+        updatedAt: true,
+      },
+    },
   },
 });
 
@@ -155,30 +175,58 @@ export class TicketsService {
     private readonly prisma: PrismaService,
     private readonly ticketsGateway: TicketsGateway,
     private readonly mailService: MailService,
+    private readonly ticketForms: TicketFormsService,
   ) {}
 
   async create(
     createTicketDto: CreateTicketDto,
     user: BranchScopedUser & { id: string },
   ) {
-    assertBranchAccess(user, createTicketDto.branchId);
+    const { form, ...ticketData } = createTicketDto;
+    assertBranchAccess(user, ticketData.branchId);
 
-    if (createTicketDto.subcategoryId) {
-      await this.assertSubcategoryBelongsToCategory(
-        createTicketDto.subcategoryId,
-        createTicketDto.category,
+    const formType = ticketData.subcategoryId
+      ? (
+          await this.assertSubcategoryBelongsToCategory(
+            ticketData.subcategoryId,
+            ticketData.category,
+          )
+        ).formType
+      : null;
+
+    if (formType && !form) {
+      throw new BadRequestException(
+        `La subcategoría requiere el formulario "${TICKET_FORM_DEFINITIONS[formType].label}" (form)`,
+      );
+    }
+    if (!formType && form) {
+      throw new BadRequestException(
+        'La subcategoría seleccionada no lleva formulario (form)',
       );
     }
 
+    const formData = formType
+      ? await this.ticketForms.parseData(
+          formType,
+          form,
+          { branchId: ticketData.branchId },
+          'form',
+        )
+      : null;
+
     const now = new Date();
-    const priority = createTicketDto.priority ?? TicketPriority.MEDIUM;
+    const priority = ticketData.priority ?? TicketPriority.MEDIUM;
 
     try {
       const ticket = await this.prisma.ticket.create({
         data: {
-          ...createTicketDto,
+          ...ticketData,
           createdById: user.id,
           dueAt: computeDueAt(priority, now),
+          ...(formType &&
+            formData && {
+              form: { create: { type: formType, data: formData } },
+            }),
         },
         ...ticketWithRelations,
       });
@@ -298,7 +346,10 @@ export class TicketsService {
     updateTicketDto: UpdateTicketDto,
     user: RequestUser,
   ) {
-    const ticket = await this.prisma.ticket.findUnique({ where: { id } });
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: { form: { select: { type: true } } },
+    });
     if (!ticket) {
       throw new NotFoundException(`Ticket with ID '${id}' not found`);
     }
@@ -308,10 +359,19 @@ export class TicketsService {
       this.assertValidStatusTransition(ticket.status, updateTicketDto.status);
     }
 
-    if (updateTicketDto.subcategoryId) {
-      await this.assertSubcategoryBelongsToCategory(
-        updateTicketDto.subcategoryId,
-        updateTicketDto.category ?? ticket.category,
+    const newSubcategory = updateTicketDto.subcategoryId
+      ? await this.assertSubcategoryBelongsToCategory(
+          updateTicketDto.subcategoryId,
+          updateTicketDto.category ?? ticket.category,
+        )
+      : null;
+
+    if (ticket.form) {
+      this.assertFormKeptOnReclassify(
+        ticket.form.type,
+        ticket,
+        updateTicketDto,
+        newSubcategory?.formType ?? null,
       );
     }
 
@@ -814,7 +874,7 @@ export class TicketsService {
   ) {
     const subcategory = await this.prisma.ticketSubcategory.findUnique({
       where: { id: subcategoryId },
-      select: { category: true },
+      select: { category: true, formType: true },
     });
 
     if (!subcategory) {
@@ -827,6 +887,160 @@ export class TicketsService {
         `La subcategoría no pertenece a la categoría '${category}'`,
       );
     }
+
+    return subcategory;
+  }
+
+  private assertFormKeptOnReclassify(
+    formType: TicketFormType,
+    ticket: Pick<Ticket, 'category' | 'subcategoryId'>,
+    dto: UpdateTicketDto,
+    newSubcategoryFormType: TicketFormType | null,
+  ) {
+    const changesCategory =
+      dto.category !== undefined && dto.category !== ticket.category;
+    const changesSubcategory =
+      dto.subcategoryId !== undefined &&
+      dto.subcategoryId !== ticket.subcategoryId;
+
+    if (
+      changesCategory ||
+      (changesSubcategory && newSubcategoryFormType !== formType)
+    ) {
+      throw new BadRequestException(
+        `El ticket tiene un formulario de "${TICKET_FORM_DEFINITIONS[formType].label}": solo puede moverse a otra subcategoría con ese mismo formulario`,
+      );
+    }
+  }
+
+  async updateForm(id: string, payload: unknown, user: RequestUser) {
+    const ticket = await this.findTicketWithForm(id);
+
+    if (this.hasTicketUpdatePermission(user)) {
+      assertBranchAccess(user, ticket.branchId);
+    } else if (ticket.createdById !== user.id) {
+      throw new ForbiddenException(
+        'Solo quien reportó el ticket o TI pueden editar el formulario',
+      );
+    }
+
+    const form = this.assertFormIsPending(ticket);
+    const data = await this.ticketForms.parseData(form.type, payload, {
+      branchId: ticket.branchId,
+    });
+
+    await this.prisma.ticketForm.update({
+      where: { ticketId: id },
+      data: { data },
+    });
+
+    return this.recordFormChange(
+      ticket,
+      {
+        type: 'FORM_UPDATED',
+        fromValue: null,
+        toValue: form.type,
+        text: 'actualizó los datos del formulario',
+      },
+      user,
+    );
+  }
+
+  async applyForm(id: string, payload: unknown, user: RequestUser) {
+    const ticket = await this.findTicketWithForm(id);
+    assertBranchAccess(user, ticket.branchId);
+    const form = this.assertFormIsPending(ticket);
+
+    const { count } = await this.prisma.ticketForm.updateMany({
+      where: { ticketId: id, appliedAt: null },
+      data: { appliedAt: new Date(), appliedById: user.id },
+    });
+    if (count === 0) {
+      throw new ConflictException('El formulario ya fue aprobado');
+    }
+
+    let applied: TicketFormApplyResult;
+    try {
+      applied = await this.ticketForms.apply(form.type, form.data, payload, {
+        branchId: ticket.branchId,
+      });
+    } catch (error) {
+      await this.prisma.ticketForm.update({
+        where: { ticketId: id },
+        data: { appliedAt: null, appliedById: null },
+      });
+      throw error;
+    }
+
+    await this.prisma.ticketForm.update({
+      where: { ticketId: id },
+      data: { result: applied.result },
+    });
+
+    return this.recordFormChange(
+      ticket,
+      {
+        type: 'FORM_APPLIED',
+        fromValue: null,
+        toValue: form.type,
+        text: `aprobó la solicitud y ${applied.summary}`,
+      },
+      user,
+    );
+  }
+
+  private async findTicketWithForm(id: string) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      include: {
+        form: true,
+        assignees: { select: { userId: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${id}' not found`);
+    }
+    return ticket;
+  }
+
+  private assertFormIsPending<
+    T extends Pick<Ticket, 'status'> & { form: TicketForm | null },
+  >(ticket: T): TicketForm {
+    if (!ticket.form) {
+      throw new BadRequestException('Este ticket no tiene formulario');
+    }
+    if (ticket.form.appliedAt) {
+      throw new ConflictException('El formulario ya fue aprobado');
+    }
+    if (FORM_LOCKED_STATUSES.includes(ticket.status)) {
+      throw new BadRequestException(
+        `No se puede modificar el formulario de un ticket ${TICKET_STATUS_LABELS[ticket.status].toLowerCase()}`,
+      );
+    }
+    return ticket.form;
+  }
+
+  private async recordFormChange(
+    ticket: Pick<Ticket, 'id' | 'createdById'> & {
+      assignees: { userId: string }[];
+    },
+    entry: ChangeEntry,
+    user: RequestUser,
+  ) {
+    await this.recordEntriesAndNotify(
+      ticket.id,
+      [entry],
+      [ticket.createdById, ...ticket.assignees.map((a) => a.userId)],
+      user,
+    );
+
+    const updated = await this.prisma.ticket.findUniqueOrThrow({
+      where: { id: ticket.id },
+      ...ticketWithRelations,
+    });
+    this.ticketsGateway.emitTicketUpdated(updated);
+
+    return updated;
   }
 
   private async persistAndNotify(

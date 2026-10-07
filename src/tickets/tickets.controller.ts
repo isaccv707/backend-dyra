@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiParam,
   ApiResponse,
@@ -271,5 +272,77 @@ export class TicketsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.ticketsService.addComment(id, dto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Editar formulario del ticket',
+    description:
+      'Reemplaza los datos del formulario del ticket (p. ej. el alta de parámetro de CogniTI) mientras no haya sido aprobado ' +
+      'y el ticket no esté cerrado ni cancelado. El cuerpo tiene la misma forma que el campo form al crear el ticket. ' +
+      'Solo quien reportó el ticket o un usuario con tickets:update (en su sucursal) pueden editarlo.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiBody({ schema: { type: 'object' } })
+  @ApiResponse({ status: 200, description: 'Formulario actualizado.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Datos inválidos, el ticket no tiene formulario o está cerrado/cancelado.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El usuario no es quien reportó el ticket ni tiene tickets:update.',
+  })
+  @ApiResponse({ status: 404, description: 'Ticket no encontrado.' })
+  @ApiResponse({ status: 409, description: 'El formulario ya fue aprobado.' })
+  @Patch(':id/form')
+  updateForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.updateForm(id, body, user);
+  }
+
+  @ApiOperation({
+    summary: 'Aprobar formulario del ticket',
+    description:
+      'TI aprueba el formulario y el sistema ejecuta la acción solicitada. Para STUDY_CREATE crea el Study en la sucursal ' +
+      'del ticket con los datos del formulario más los que captura TI en el cuerpo: code y serviceId (obligatorios), title, ' +
+      'abbreviation, description, deliveryTime, preparation e isOrderable (opcionales). Se vuelven a validar catálogos y ' +
+      'tarifarios. Si es un perfil con panelItems, newStudies trae el code (y opcionalmente title, abbreviation, serviceId…) ' +
+      'de cada parámetro nuevo en el mismo orden; los hijos nuevos se crean sin precios y con isOrderable=false, y se ' +
+      'enlazan al perfil junto con los existentes (si algo falla, se revierte lo creado). Para STUDY_UPDATE aplica solo los campos y precios por tarifario que difieren del parámetro actual (más ' +
+      'los ajustes opcionales de TI: code, title, abbreviation, etc.) y guarda el antes/después en form.result. ' +
+      'No cambia el estado del ticket. Requiere el permiso tickets:update.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiBody({ schema: { type: 'object' } })
+  @ApiResponse({ status: 201, description: 'Formulario aprobado.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Datos inválidos, catálogos o tarifarios ya no válidos, o el ticket no tiene formulario / está cerrado o cancelado.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El usuario no tiene el permiso tickets:update o acceso a esa sucursal.',
+  })
+  @ApiResponse({ status: 404, description: 'Ticket no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'El formulario ya fue aprobado, o ya existe un estudio con ese code en la sucursal.',
+  })
+  @Permissions('tickets:update')
+  @Post(':id/form/apply')
+  applyForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.applyForm(id, body, user);
   }
 }

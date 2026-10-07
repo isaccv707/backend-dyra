@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import { FindTicketsDto } from './dto/find-tickets.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
+import { TicketFormsService } from './forms/ticket-forms.service';
 
 describe('TicketsService', () => {
   let service: TicketsService;
@@ -39,6 +41,7 @@ describe('TicketsService', () => {
     };
     ticketEvent: { create: jest.Mock; createMany: jest.Mock };
     ticketSubcategory: { findUnique: jest.Mock };
+    ticketForm: { update: jest.Mock; updateMany: jest.Mock };
     user: { findMany: jest.Mock };
     $transaction: jest.Mock;
   };
@@ -50,6 +53,7 @@ describe('TicketsService', () => {
     emitOverdueTicket: jest.Mock;
   };
   let mailService: { sendTicketAssignedEmail: jest.Mock };
+  let ticketForms: { parseData: jest.Mock; apply: jest.Mock };
 
   const branchId = 'branch-1';
 
@@ -107,6 +111,7 @@ describe('TicketsService', () => {
       },
       ticketEvent: { create: jest.fn(), createMany: jest.fn() },
       ticketSubcategory: { findUnique: jest.fn() },
+      ticketForm: { update: jest.fn(), updateMany: jest.fn() },
       user: { findMany: jest.fn() },
       $transaction: jest.fn(),
     };
@@ -120,6 +125,7 @@ describe('TicketsService', () => {
     mailService = {
       sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
     };
+    ticketForms = { parseData: jest.fn(), apply: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -127,6 +133,7 @@ describe('TicketsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TicketsGateway, useValue: gateway },
         { provide: MailService, useValue: mailService },
+        { provide: TicketFormsService, useValue: ticketForms },
       ],
     }).compile();
 
@@ -1474,6 +1481,257 @@ describe('TicketsService', () => {
 
       expect(prisma.ticket.update).not.toHaveBeenCalled();
       expect(result).toEqual({ notified: 0 });
+    });
+  });
+
+  describe('formularios de ticket', () => {
+    const form = { name: 'Glucosa' };
+    const formDto = {
+      ...createDto,
+      category: 'COGNITI',
+      subcategoryId: 'sub-1',
+      form,
+    } as CreateTicketDto;
+
+    const pendingTicket = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ticket-1',
+      branchId,
+      status: 'OPEN',
+      category: 'COGNITI',
+      subcategoryId: 'sub-1',
+      createdById: 'user-1',
+      assignees: [{ userId: 'staff-2' }],
+      form: {
+        type: 'STUDY_CREATE',
+        data: { name: 'Glucosa' },
+        appliedAt: null,
+      },
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      prisma.ticketComment.create.mockResolvedValue({ id: 'c-1' });
+      prisma.ticket.findUniqueOrThrow.mockResolvedValue({ id: 'ticket-1' });
+    });
+
+    it('rechaza crear sin form si la subcategoría lleva formulario', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: 'STUDY_CREATE',
+      });
+
+      await expect(
+        service.create({ ...formDto, form: undefined }, globalUser),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
+    });
+
+    it('rechaza form si la subcategoría no lleva formulario', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: null,
+      });
+
+      await expect(service.create(formDto, globalUser)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('valida el form contra la sucursal del ticket y lo guarda junto al ticket', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: 'STUDY_CREATE',
+      });
+      ticketForms.parseData.mockResolvedValue({ name: 'Glucosa' });
+      prisma.ticket.create.mockResolvedValue({ id: 'ticket-1' });
+
+      await service.create(formDto, globalUser);
+
+      expect(ticketForms.parseData).toHaveBeenCalledWith(
+        'STUDY_CREATE',
+        form,
+        { branchId },
+        'form',
+      );
+      expect(prisma.ticket.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            form: {
+              create: { type: 'STUDY_CREATE', data: { name: 'Glucosa' } },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('no permite cambiar la categoría de un ticket con formulario', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+
+      await expect(
+        service.update(
+          'ticket-1',
+          { category: 'SOFTWARE' } as UpdateTicketDto,
+          staffUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+
+    it('no permite mover el ticket a una subcategoría con otro formulario', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: null,
+      });
+
+      await expect(
+        service.update(
+          'ticket-1',
+          { subcategoryId: 'sub-2' } as UpdateTicketDto,
+          staffUser,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('permite mover el ticket a otra subcategoría con el mismo formulario', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: 'STUDY_CREATE',
+      });
+      prisma.ticket.update.mockResolvedValue({
+        id: 'ticket-1',
+        subcategoryId: 'sub-2',
+        subcategory: { name: 'Otra' },
+        assignees: [],
+      });
+
+      await service.update(
+        'ticket-1',
+        { subcategoryId: 'sub-2' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      expect(prisma.ticket.update).toHaveBeenCalled();
+    });
+
+    it('updateForm: solo el creador o TI pueden editar', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(
+        pendingTicket({ createdById: 'otro' }),
+      );
+
+      await expect(
+        service.updateForm('ticket-1', form, globalUser),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('updateForm: rechaza editar un formulario ya aprobado', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(
+        pendingTicket({
+          form: { type: 'STUDY_CREATE', data: {}, appliedAt: new Date() },
+        }),
+      );
+
+      await expect(
+        service.updateForm('ticket-1', form, globalUser),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('updateForm: rechaza editar si el ticket está cerrado', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(
+        pendingTicket({ status: 'CLOSED' }),
+      );
+
+      await expect(
+        service.updateForm('ticket-1', form, globalUser),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('updateForm: el creador reemplaza los datos y queda registrado', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      ticketForms.parseData.mockResolvedValue({ name: 'Glucosa 2' });
+
+      await service.updateForm('ticket-1', form, globalUser);
+
+      expect(prisma.ticketForm.update).toHaveBeenCalledWith({
+        where: { ticketId: 'ticket-1' },
+        data: { data: { name: 'Glucosa 2' } },
+      });
+      expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ type: 'FORM_UPDATED' })],
+      });
+      expect(gateway.emitTicketUpdated).toHaveBeenCalled();
+    });
+
+    it('applyForm: rechaza si otro usuario lo aprobó al mismo tiempo', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      prisma.ticketForm.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(
+        service.applyForm('ticket-1', { code: 'GLU' }, staffUser),
+      ).rejects.toThrow(ConflictException);
+      expect(ticketForms.apply).not.toHaveBeenCalled();
+    });
+
+    it('applyForm: si la acción falla, libera el formulario para reintentar', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      prisma.ticketForm.updateMany.mockResolvedValue({ count: 1 });
+      ticketForms.apply.mockRejectedValue(new BadRequestException('x'));
+
+      await expect(
+        service.applyForm('ticket-1', { code: 'GLU' }, staffUser),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.ticketForm.update).toHaveBeenCalledWith({
+        where: { ticketId: 'ticket-1' },
+        data: { appliedAt: null, appliedById: null },
+      });
+    });
+
+    it('applyForm: guarda el resultado y avisa al creador y asignados', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(pendingTicket());
+      prisma.ticketForm.updateMany.mockResolvedValue({ count: 1 });
+      ticketForms.apply.mockResolvedValue({
+        result: { studyId: 'study-1', code: 'GLU', name: 'Glucosa' },
+        summary: 'creó el parámetro GLU - Glucosa',
+      });
+
+      await service.applyForm('ticket-1', { code: 'GLU' }, staffUser);
+
+      expect(ticketForms.apply).toHaveBeenCalledWith(
+        'STUDY_CREATE',
+        { name: 'Glucosa' },
+        { code: 'GLU' },
+        { branchId },
+      );
+      expect(prisma.ticketForm.update).toHaveBeenCalledWith({
+        where: { ticketId: 'ticket-1' },
+        data: {
+          result: { studyId: 'study-1', code: 'GLU', name: 'Glucosa' },
+        },
+      });
+      expect(prisma.ticketComment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            body: 'TI aprobó la solicitud y creó el parámetro GLU - Glucosa.',
+            isSystem: true,
+          }),
+        }),
+      );
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['user-1', 'staff-2'],
+        'ticket-1',
+        expect.any(String),
+      );
+    });
+
+    it('applyForm: lanza ForbiddenException si TI no tiene acceso a la sucursal', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(
+        pendingTicket({ branchId: 'branch-2' }),
+      );
+
+      await expect(
+        service.applyForm('ticket-1', {}, scopedStaffUser),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

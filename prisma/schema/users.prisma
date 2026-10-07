@@ -23,6 +23,7 @@ model User {
   ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
   ticketNotifications TicketNotification[]
   ticketEvents        TicketEvent[]        @relation("TicketEventActor")
+  ticketFormsApplied  TicketForm[]         @relation("TicketFormAppliedBy")
 }
 
 model PasswordResetToken {
