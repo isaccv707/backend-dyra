@@ -13,8 +13,6 @@ export interface TicketAssignedEmailData {
   assignedByName: string;
 }
 
-// Escapa texto libre (títulos de ticket, nombres) antes de interpolarlo en
-// el HTML del correo.
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -75,9 +73,6 @@ export class MailService {
     }
   }
 
-  // A diferencia de sendOtpEmail, lo dispara una acción que ya se guardó
-  // (la asignación), así que TicketsService lo llama sin await y solo
-  // registra el error si falla — el error se propaga para que lo loguee.
   async sendTicketAssignedEmail(
     to: string,
     data: TicketAssignedEmailData,

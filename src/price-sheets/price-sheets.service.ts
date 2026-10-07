@@ -248,7 +248,6 @@ export class PriceSheetsService {
       section: 'Hematología',
       technique: 'Citometría de flujo',
       isPanel: 'false',
-      // Solo con isPanel = true: códigos de los estudios hijos separados por coma
       parametros: '',
       isOrderable: 'true',
       gender: 'A',
@@ -388,9 +387,6 @@ export class PriceSheetsService {
         seenCodes.add(code);
       }
 
-      // Códigos de los hijos del perfil; se resuelven después de importar
-      // todas las filas para que un perfil pueda referir estudios del mismo
-      // archivo.
       const panelCodes = (cellToString(row.parametros) ?? '')
         .split(',')
         .map((c) => c.trim())
@@ -444,8 +440,6 @@ export class PriceSheetsService {
         decimals: toOptionalInt(row.decimals),
       };
 
-      // minAge/maxAge van juntos: con solo uno no se puede validar el rango
-      // contra el valor ya guardado (o el default) sin consultar cada fila.
       const hasMinAge = normalizedData.minAge !== undefined;
       const hasMaxAge = normalizedData.maxAge !== undefined;
       if (hasMinAge !== hasMaxAge) {
@@ -500,8 +494,6 @@ export class PriceSheetsService {
     const importErrors: Array<{ code: string; error: string }> = [];
     const processedCodes = new Set<string>();
 
-    // Un perfil con hijos no se puede desmarcar (isPanel = false) hasta
-    // quitarle todos sus estudios.
     const panelsWithChildren = new Set(
       (
         await this.prisma.study.findMany({
@@ -517,8 +509,6 @@ export class PriceSheetsService {
       ).map((s) => s.code),
     );
 
-    // Sección, tipo de muestra y técnica llegan como nombre: se resuelven en
-    // el catálogo de la sucursal y los que no existen se dan de alta.
     const catalogNames = (field: 'section' | 'sampleType' | 'technique') =>
       valid.flatMap((v) => (v[field] ? [v[field]] : []));
     const [sectionIds, sampleTypeIds, techniqueIds] = await Promise.all([
@@ -651,9 +641,6 @@ export class PriceSheetsService {
     };
   }
 
-  // Reemplaza los hijos de cada perfil importado. Se valida contra el grafo
-  // completo de la sucursal (con todos los cambios del archivo aplicados) para
-  // rechazar ciclos entre perfiles, incluso si están en filas distintas.
   private async importPanelItems(
     branchId: string,
     panelRows: Array<{ code: string; panelCodes: string[] }>,

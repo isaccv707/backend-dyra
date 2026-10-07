@@ -1,14 +1,3 @@
-// One-off script. Run after the additive `npx prisma db push` that adds
-// DeviceItem.imei and SafeguardMobileDetail.serialNumber/internalCode.
-//
-// Until now MOBILE devices stored their IMEI in DeviceItem.serialNumber.
-// This moves it to DeviceItem.imei and clears serialNumber, which from now on
-// holds the phone's real serial number (captured later by PATCH).
-// It also fills SafeguardMobileDetail.internalCode on existing safeguards from
-// their device, so regenerated PDFs show it; their serialNumber stays empty
-// because it was never captured. Safe to re-run.
-//
-// Usage: npx ts-node prisma/scripts/backfill-mobile-imei.ts
 import 'dotenv/config';
 import { DeviceType, PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';

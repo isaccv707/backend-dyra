@@ -27,10 +27,6 @@ export const handleDatabaseErrors = (
     }
   }
 
-  // Errores intencionales (BadRequestException, NotFoundException, etc.) lanzados
-  // dentro del try/catch -p. ej. validaciones de negocio dentro de una
-  // transacción de Prisma- deben propagarse tal cual; no son errores de base
-  // de datos inesperados y no deben convertirse en un 500 genérico.
   if (error instanceof HttpException) {
     throw error;
   }

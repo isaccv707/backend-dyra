@@ -82,7 +82,6 @@ export class BannersService {
     const imageUrl = rest.imageUrl.trim();
     const mobileImageUrl = rest.mobileImageUrl?.trim();
 
-    // Logical duplication check
     const existingBanner = await this.prisma.banner.findFirst({
       where: {
         imageUrl,
@@ -99,7 +98,6 @@ export class BannersService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // Shift others to make room, scoped to this branch's queue
       await tx.banner.updateMany({
         where: { branchId, placement, order: { gte: order } },
         data: { order: { increment: 1 } },
@@ -139,13 +137,11 @@ export class BannersService {
       targetBranchId !== oldBranchId || targetPlacement !== oldPlacement;
 
     return this.prisma.$transaction(async (tx) => {
-      // Logic for reordering
       if (newOrder !== undefined && (newOrder !== oldOrder || movingQueue)) {
         if (newOrder < 0)
           throw new BadRequestException('Order cannot be less than 0');
 
         if (!movingQueue) {
-          // Reordering within the same branch+placement queue
           if (newOrder > oldOrder) {
             await tx.banner.updateMany({
               where: {
@@ -166,8 +162,6 @@ export class BannersService {
             });
           }
         } else {
-          // Moving to a different branch and/or placement queue
-          // 1. Close gap in the old queue
           await tx.banner.updateMany({
             where: {
               branchId: oldBranchId,
@@ -176,7 +170,6 @@ export class BannersService {
             },
             data: { order: { decrement: 1 } },
           });
-          // 2. Open space in the new queue
           await tx.banner.updateMany({
             where: {
               branchId: targetBranchId,
@@ -187,7 +180,6 @@ export class BannersService {
           });
         }
       } else if (movingQueue) {
-        // Queue changed but order not specified - keep the same order and just close the gap in the old one
         await tx.banner.updateMany({
           where: {
             branchId: oldBranchId,
@@ -196,8 +188,6 @@ export class BannersService {
           },
           data: { order: { decrement: 1 } },
         });
-        // We could shift in the new queue but since order is not provided,
-        // it might conflict or create gaps. For safety, we shift in the new queue too.
         await tx.banner.updateMany({
           where: {
             branchId: targetBranchId,
@@ -227,7 +217,6 @@ export class BannersService {
     return this.prisma.$transaction(async (tx) => {
       await tx.banner.delete({ where: { id } });
 
-      // Close the gap in this branch+placement queue
       await tx.banner.updateMany({
         where: {
           branchId: banner.branchId,

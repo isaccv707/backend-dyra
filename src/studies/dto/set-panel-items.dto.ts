@@ -15,7 +15,6 @@ export class PanelItemDto {
   @IsUUID()
   childId!: string;
 
-  // Si no se envía, se usa la posición dentro de `items`.
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -24,7 +23,6 @@ export class PanelItemDto {
 }
 
 export class SetPanelItemsDto {
-  // Reemplaza la lista completa; [] deja el perfil sin hijos.
   @IsArray()
   @ArrayMaxSize(300)
   @ValidateNested({ each: true })

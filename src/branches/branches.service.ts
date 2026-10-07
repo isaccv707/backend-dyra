@@ -97,10 +97,8 @@ export class BranchesService {
   async update(id: string, updateBranchDto: UpdateBranchDto) {
     const { address, stateId, schedules, ...branchData } = updateBranchDto;
 
-    // Ensure branch exists
     await this.findOne(id);
 
-    // Check if new name is already taken by another branch
     if (branchData.name) {
       const existingBranch = await this.prisma.branch.findUnique({
         where: { name: branchData.name },

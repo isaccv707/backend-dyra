@@ -38,10 +38,6 @@ import {
   getSafeguardSectionForType,
 } from 'src/safeguards/constants/safeguardable-device-types.const';
 
-// Forma mínima compartida por AssignDeviceDto y los campos de resguardo de
-// CreateDeviceItemDto: lo que triggerSafeguardForAssignment necesita para
-// generar/regenerar el resguardo, sin acoplarse a un DTO en particular.
-// condition/observations NO están aquí: se leen directo del DeviceItem.
 interface SafeguardAssignmentFields {
   usageType?: SafeguardUsageType;
   startDate?: string;
@@ -82,10 +78,6 @@ export class DevicesService {
     private readonly prisma: PrismaService,
     private readonly safeguardsService: SafeguardsService,
   ) {}
-
-  // ---------------------------------------------------------------------
-  // Alta / lectura de equipos
-  // ---------------------------------------------------------------------
 
   async create(dto: CreateDeviceItemDto, user: AuthUser) {
     assertBranchAccess(user, dto.currentBranchId);
@@ -164,8 +156,6 @@ export class DevicesService {
       await this.assertLocationInBranch(dto.locationId, dto.currentBranchId);
     }
 
-    // Un accesorio hereda employeeId/locationId/status de su mainDevice en
-    // el momento de enlazarse; el resto de equipos sigue la regla normal.
     const employeeId = mainDevice ? mainDevice.employeeId : dto.employeeId;
     const locationId = mainDevice ? mainDevice.locationId : dto.locationId;
     const status = mainDevice
@@ -232,8 +222,6 @@ export class DevicesService {
             },
           );
         } else if (employeeId) {
-          // El accesorio heredó employeeId de su mainDevice: refresca el
-          // resguardo de ese empleado para que aparezca en "Accesorios incluidos".
           await this.triggerSafeguardForAssignment(
             tx,
             employeeId,
@@ -316,9 +304,6 @@ export class DevicesService {
     const device = await this.getDeviceOrThrow(id);
     assertBranchAccess(user, device.currentBranchId);
 
-    // @ValidateIf only sees the PATCH body, not the persisted row, so the
-    // PROVIDER -> providerFolio rule must be re-checked against the merged
-    // (existing + patch) state here.
     const effectiveOwnership = dto.ownershipType ?? device.ownershipType;
     const effectiveFolio = dto.providerFolio ?? device.providerFolio;
     if (effectiveOwnership === OwnershipType.PROVIDER && !effectiveFolio) {
@@ -352,8 +337,6 @@ export class DevicesService {
       );
     }
 
-    // Reenlazar un accesorio a otra computadora vuelve a derivar employeeId/
-    // locationId/status desde la nueva mainDevice (misma lógica que create()).
     let inheritedFields:
       | {
           employeeId: string | null;
@@ -380,9 +363,6 @@ export class DevicesService {
       };
     }
 
-    // usageType/startDate/endDate/mobileAccessories son términos de resguardo
-    // heredados de CreateDeviceItemDto, no columnas de DeviceItem — se
-    // descartan aquí; PATCH nunca toca employeeId ni regenera resguardos.
     const {
       usageType: _usageType,
       startDate: _startDate,
@@ -420,9 +400,6 @@ export class DevicesService {
             },
           });
 
-          // Reenlazar un accesorio cambia lo que aparece en "Accesorios
-          // incluidos" de su nueva computadora — hay que refrescar la
-          // responsiva del empleado dueño de esa computadora, si tiene una.
           if (inheritedFields?.employeeId) {
             await this.triggerSafeguardForAssignment(
               tx,
@@ -440,10 +417,6 @@ export class DevicesService {
       handleDatabaseErrors(error, 'DeviceItem');
     }
   }
-
-  // ---------------------------------------------------------------------
-  // Asignación exclusiva
-  // ---------------------------------------------------------------------
 
   async assign(deviceId: string, dto: AssignDeviceDto, user: AuthUser) {
     const device = await this.getDeviceOrThrow(deviceId);
@@ -498,8 +471,6 @@ export class DevicesService {
           include: DEVICE_INCLUDE,
         });
 
-        // Monitor/teclado/mouse enlazados a esta computadora viajan con
-        // ella: mismo empleado/ubicación/status.
         await this.cascadeToAccessories(tx, deviceId, {
           employeeId: updated.employeeId,
           locationId: updated.locationId,
@@ -570,10 +541,6 @@ export class DevicesService {
     }
   }
 
-  // Desenlaza un accesorio (MONITOR/KEYBOARD/MOUSE) de su computadora
-  // principal sin darlo de baja — queda AVAILABLE, listo para enlazarse a
-  // otra. Si la computadora tenía empleado asignado, se regenera su
-  // responsiva para que el accesorio deje de aparecer en "Accesorios incluidos".
   async unlink(deviceId: string, user: AuthUser) {
     const device = await this.getDeviceOrThrow(deviceId);
     assertBranchAccess(user, device.currentBranchId);
@@ -646,8 +613,6 @@ export class DevicesService {
           include: DEVICE_INCLUDE,
         });
 
-        // Dar de baja la computadora no da de baja sus periféricos: se
-        // desenlazan y quedan disponibles para reutilizarse en otra.
         await this.cascadeToAccessories(tx, deviceId, {
           mainDeviceId: null,
           employeeId: null,
@@ -669,10 +634,6 @@ export class DevicesService {
       handleDatabaseErrors(error, 'DeviceItem');
     }
   }
-
-  // ---------------------------------------------------------------------
-  // Traspasos entre sucursales (2 pasos, transaccional)
-  // ---------------------------------------------------------------------
 
   async createTransfer(dto: CreateTransferDto, user: BranchScopedUser) {
     if (dto.originBranchId === dto.destinationBranchId) {
@@ -783,8 +744,6 @@ export class DevicesService {
           data: { status: DeviceStatus.IN_TRANSFER },
         });
 
-        // Los accesorios enlazados a una computadora en traspaso viajan con
-        // ella (nunca se agregan sueltos, ver createTransfer).
         await tx.deviceItem.updateMany({
           where: { mainDeviceId: { in: deviceIds } },
           data: { status: DeviceStatus.IN_TRANSFER },
@@ -919,8 +878,6 @@ export class DevicesService {
           },
         });
 
-        // El equipo nunca cambió de currentBranchId durante el tránsito, así
-        // que basta con devolver su status a AVAILABLE en su sucursal de origen.
         await tx.deviceItem.updateMany({
           where: { id: { in: deviceIds } },
           data: { status: DeviceStatus.AVAILABLE },
@@ -972,15 +929,6 @@ export class DevicesService {
     return this.getTransferOrThrow(id);
   }
 
-  // ---------------------------------------------------------------------
-  // Helpers privados
-  // ---------------------------------------------------------------------
-
-  // Dispara/regenera el resguardo del empleado tras asignarle un equipo.
-  // COMPUTER/MOBILE siempre regeneran (condition/observations ya viven en el
-  // DeviceItem, no hace falta validarlos aquí). MONITOR/KEYBOARD/MOUSE no
-  // tienen sección propia: solo regeneran el resguardo (para refrescar
-  // "Accesorios incluidos") si el empleado ya tiene una computadora asignada.
   private async triggerSafeguardForAssignment(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -1036,8 +984,6 @@ export class DevicesService {
     }
   }
 
-  // "Máximo 1 accesorio por tipo por computadora" — análogo a
-  // assertNoDuplicateTypeForEmployee pero scoped por mainDeviceId.
   private async assertNoDuplicateAccessoryTypeForMainDevice(
     tx: Prisma.TransactionClient,
     mainDeviceId: string,
@@ -1058,9 +1004,6 @@ export class DevicesService {
     }
   }
 
-  // Propaga employeeId/locationId/status/currentBranchId de una computadora
-  // a sus accesorios enlazados (mainDeviceId) — se usa cada vez que esos
-  // campos cambian en el equipo principal (assign/unassign/retire/traspaso).
   private async cascadeToAccessories(
     tx: Prisma.TransactionClient,
     mainDeviceId: string,
@@ -1108,11 +1051,6 @@ export class DevicesService {
     }
   }
 
-  // Libera todo el equipo (computadoras/celulares/vehículos y sus accesorios
-  // enlazados) que un empleado tiene actualmente asignado. Usado por
-  // EmployeesService.offboard — corre dentro de la misma transacción para
-  // que la baja del empleado sea atómica junto con la liberación de su
-  // equipo y el cierre de su resguardo vigente.
   async releaseAllForEmployee(
     tx: Prisma.TransactionClient,
     employeeId: string,

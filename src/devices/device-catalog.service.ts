@@ -91,9 +91,6 @@ export class DeviceCatalogService {
   async remove(id: string) {
     await this.findOne(id);
 
-    // Chequeo explícito (con mensaje claro para la UI) en vez de dejar que
-    // truene el FK constraint: un modelo de catálogo solo se puede eliminar
-    // si ningún DeviceItem lo referencia.
     const itemCount = await this.prisma.deviceItem.count({
       where: { catalogId: id },
     });

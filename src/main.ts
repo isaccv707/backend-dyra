@@ -9,10 +9,6 @@ import type { Application } from 'express';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { cors: true });
 
-  // Express 5 cambió el parser de query string por defecto a 'simple' (sin
-  // soporte para notación de corchetes). Los DTOs de paginación dependen de
-  // `sort[field]`/`filters[and][0][field]` anidándose en objetos, así que
-  // necesitamos el parser 'extended' (qs) como en Express 4.
   const httpAdapterInstance = app.getHttpAdapter().getInstance() as Application;
   httpAdapterInstance.set('query parser', 'extended');
 
@@ -28,7 +24,6 @@ async function bootstrap() {
 
   const document = SwaggerModule.createDocument(app, config);
 
-  // '/api' será la ruta para acceder a la documentación
   SwaggerModule.setup('api', app, document);
 
   const { httpAdapter } = app.get(HttpAdapterHost);

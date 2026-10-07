@@ -7,7 +7,6 @@ export class FindStudyCatalogsDto extends PaginatedQueryDto {
   @IsUUID()
   branchId?: string;
 
-  // Los selects del formulario de estudio deben pedir isActive=true.
   @IsOptional()
   @Transform(({ value }: { value: unknown }) =>
     value === 'true' ? true : value === 'false' ? false : value,

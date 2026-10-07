@@ -33,9 +33,6 @@ export class VehicleSafeguardPdfRenderer {
     this.drawInspectionPage(doc, layout, data);
   }
 
-  // ===========================
-  // ENCABEZADO
-  // ===========================
   private drawHeader(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -51,9 +48,6 @@ export class VehicleSafeguardPdfRenderer {
     });
   }
 
-  // ===========================
-  // GRILLA: datos del empleado + uso + resumen del vehículo (PÁGINA 1)
-  // ===========================
   private drawInfoGrid(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -129,10 +123,6 @@ export class VehicleSafeguardPdfRenderer {
     return cursor + 10;
   }
 
-  // ===========================
-  // DOCUMENTACIÓN DEL VEHÍCULO (PÁGINA 1, debajo del resumen — aprovecha el
-  // espacio en blanco que quedaba tras los datos del vehículo)
-  // ===========================
   private drawDocumentationSection(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -157,9 +147,6 @@ export class VehicleSafeguardPdfRenderer {
     );
   }
 
-  // ===========================
-  // PÁGINA 2: INSPECCIÓN VEHICULAR + FIRMAS
-  // ===========================
   private drawInspectionPage(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,

@@ -20,12 +20,10 @@ export class FindTicketsDto extends PaginatedQueryDto {
   @IsEnum(TicketPriority)
   priority?: TicketPriority;
 
-  // Tickets que tienen a este usuario entre sus asignados.
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
 
-  // true: solo los tickets asignados al usuario autenticado.
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()

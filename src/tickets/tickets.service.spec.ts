@@ -197,8 +197,6 @@ describe('TicketsService', () => {
       });
     });
 
-    // findAll arma el where como { AND: [...] } para no pisar el OR de la
-    // búsqueda con el OR de acceso (creador o asignado).
     const whereConditions = () =>
       prisma.ticket.findMany.mock.calls[0][0].where.AND as unknown[];
 

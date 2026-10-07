@@ -27,7 +27,6 @@ import {
 
 export class StudyPriceDto {
   @IsNumber({ maxDecimalPlaces: 2 })
-  // @IsPositive()
   price!: number;
 
   @IsString()
@@ -71,8 +70,6 @@ export class CreateStudyDto {
   @Type(() => StudyPriceDto)
   studyPrices?: StudyPriceDto[];
 
-  // Catálogos (src/study-catalogs): ids de la misma sucursal del estudio.
-  // En un PATCH, null quita el valor.
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -132,7 +129,6 @@ export class CreateStudyDto {
   @IsBoolean()
   isPanel?: boolean;
 
-  // false = solo se puede cotizar como parte de un perfil
   @IsOptional()
   @IsBoolean()
   isOrderable?: boolean;

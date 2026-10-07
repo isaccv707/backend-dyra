@@ -19,11 +19,7 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
   imports: [
     PrismaModule,
     MailModule,
-    // Registra la infraestructura de @nestjs/schedule para TicketsSlaCron
-    // (aviso por hora de tickets con SLA vencido). Solo este módulo la usa.
     ScheduleModule.forRoot(),
-    // Mismo secreto que AuthModule (JWT_SECRET) para que el gateway pueda
-    // verificar el mismo token que emite POST /auth/login.
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -31,12 +27,6 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
         secret: configService.getOrThrow<string>('JWT_SECRET'),
       }),
     }),
-    // Solo se usa vía @UseGuards(ThrottlerGuard) en los endpoints puntuales
-    // de tickets.controller.ts (crear ticket, comentar) — no se registra
-    // como APP_GUARD, así que no afecta a ningún otro módulo. Se agrupa por
-    // usuario autenticado (ver getTracker), no por IP: varios usuarios de la
-    // misma sucursal/oficina comparten salida a internet y no deben
-    // bloquearse entre sí.
     ThrottlerModule.forRoot({
       throttlers: [{ name: 'default', ttl: 60_000, limit: 30 }],
       getTracker: (req: Record<string, unknown>) => {

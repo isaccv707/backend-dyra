@@ -10,7 +10,6 @@ import {
   StudyTechniquesService,
 } from './study-catalog.service';
 
-// Catálogos de estudio por sucursal: secciones, tipos de muestra y técnicas.
 @Module({
   controllers: [
     StudySectionsController,

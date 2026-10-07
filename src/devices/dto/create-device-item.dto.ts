@@ -24,7 +24,6 @@ export class CreateDeviceItemDto {
   })
   internalCode!: string;
 
-  // Número de serie del equipo, para cualquier catalogId.type (incluido MOBILE).
   @IsOptional()
   @IsString()
   serialNumber?: string;
@@ -43,9 +42,6 @@ export class CreateDeviceItemDto {
   @IsEnum(OwnershipType)
   ownershipType?: OwnershipType;
 
-  // The callback receives the DTO instance being validated (conventionally
-  // named `o`), not the value of this property. When it returns false the
-  // property is skipped entirely, so no @IsOptional is needed alongside it.
   @ValidateIf(
     (o: CreateDeviceItemDto) => o.ownershipType === OwnershipType.PROVIDER,
   )
@@ -55,19 +51,13 @@ export class CreateDeviceItemDto {
   })
   providerFolio?: string;
 
-  // Estado físico del equipo (Nuevo/Seminuevo), obligatorio para cualquier
-  // DeviceType. Se reutiliza tal cual al generar el resguardo del empleado
-  // que lo tenga asignado — nunca se vuelve a pedir en assign().
   @IsEnum(SafeguardConditionState)
   condition!: SafeguardConditionState;
 
-  // Observaciones del equipo (inventario). Mismo texto que aparece como
-  // "Observaciones" en el resguardo generado.
   @IsOptional()
   @IsString()
   notes?: string;
 
-  // Solo aplica cuando catalogId.type = COMPUTER; se valida en DevicesService.
   @IsOptional()
   @IsString()
   hardDrive?: string;
@@ -76,7 +66,6 @@ export class CreateDeviceItemDto {
   @IsString()
   processor?: string;
 
-  // Solo aplican cuando catalogId.type = MOBILE; se valida en DevicesService.
   @IsOptional()
   @IsString()
   imei?: string;
@@ -85,9 +74,6 @@ export class CreateDeviceItemDto {
   @IsString()
   phoneNumber?: string;
 
-  // employeeId/locationId NO aplican cuando catalogId.type es MONITOR/
-  // KEYBOARD/MOUSE (esos se enlazan vía mainDeviceId, no directamente a un
-  // empleado/ubicación) — validado en DevicesService.
   @IsOptional()
   @IsString()
   @IsUUID()
@@ -98,21 +84,11 @@ export class CreateDeviceItemDto {
   @IsUUID()
   locationId?: string;
 
-  // Solo aplica cuando catalogId.type es MONITOR/KEYBOARD/MOUSE: id de la
-  // DeviceItem tipo COMPUTER a la que este accesorio queda enlazado.
-  // employeeId/locationId/status/currentBranchId del accesorio se derivan
-  // de esa computadora en ese momento y se mantienen en cascada mientras
-  // dure el enlace (ver DevicesService).
   @IsOptional()
   @IsString()
   @IsUUID()
   mainDeviceId?: string;
 
-  // Términos del resguardo que se genera automáticamente cuando el alta ya
-  // trae employeeId para un equipo COMPUTER/MOBILE (misma regla que
-  // POST /devices/:id/assign). No son datos del equipo: usageType/fechas
-  // describen la asignación, mobileAccessories son accesorios sin
-  // identificador propio capturados al momento de firmar.
   @IsOptional()
   @IsEnum(SafeguardUsageType)
   usageType?: SafeguardUsageType;

@@ -1,4 +1,3 @@
-// quotations.service.ts
 import {
   BadRequestException,
   Injectable,
@@ -36,8 +35,6 @@ import {
   PanelComponentSnapshot,
 } from 'src/studies/utils/panel-tree.util';
 
-// Subtítulo del documento (no es dato de la sucursal, es la etiqueta fija
-// del tipo de documento).
 const QUOTATION_SUBTITLE = 'Cotización de estudios de laboratorio';
 
 const QUOTATION_ALLOWED_FIELDS = [
@@ -93,14 +90,10 @@ export class QuotationsService {
     private readonly pdfRenderer: QuotationPdfRenderer,
   ) {}
 
-  // Flujo público (usuarios de la página web, sin login): solo puede
-  // cotizar contra la hoja de precios pública de la sucursal.
   async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
     return this.createQuotation(dto, { requirePublicPriceSheet: true });
   }
 
-  // Flujo admin (staff autenticado con `quotations:create`): puede cotizar
-  // contra cualquier hoja de precios activa de una sucursal a la que tenga acceso.
   async createForAdmin(
     dto: CreateQuotationDto,
     user: BranchScopedUser,
@@ -162,14 +155,6 @@ export class QuotationsService {
     return { ...quotation, branch };
   }
 
-  // ===========================
-  // RESOLUCIÓN DE PRECIOS
-  // ===========================
-  // Los estudios de catálogo (con `id`) nunca confían en el precio/nombre
-  // enviado por el cliente: se resuelven contra el StudyOnPriceSheet de la
-  // hoja de precios (ya validada en `createQuotation`) para evitar que la
-  // cotización se manipule desde el frontend. Solo las líneas ad-hoc (sin
-  // `id`, fuera de catálogo) usan lo enviado.
   private async resolveQuotationItems(
     dto: CreateQuotationDto,
   ): Promise<ResolvedQuotationItem[]> {
@@ -216,8 +201,6 @@ export class QuotationsService {
         );
       }
 
-      // El desglose se guarda como snapshot: si después cambian los hijos
-      // del perfil, la cotización ya emitida no se altera.
       componentsByPanelId = await loadPanelSnapshots(
         this.prisma,
         entries.filter((entry) => entry.study.isPanel).map((e) => e.studyId),
@@ -359,9 +342,6 @@ export class QuotationsService {
     };
   }
 
-  // La cotización pertenece a una sola sucursal (branchId requerido); la
-  // identidad mostrada en el PDF es siempre la de esa sucursal, no un dato
-  // de "empresa" global.
   private buildCompanyInfo(branch: QuotationBranch): CompanyInfo {
     return {
       name: branch.name,
@@ -382,12 +362,6 @@ export class QuotationsService {
       .join(', ');
   }
 
-  // ===========================
-  // CÁLCULOS Y METADATOS
-  // ===========================
-  // Los precios cargados en las hojas de precios ya son el total con IVA
-  // incluido (16%), no el subtotal antes de impuesto. El subtotal e IVA se
-  // desglosan a partir de ese total: subtotal = total / 1.16.
   private calculateTotals(
     studies: { price: number; quantity: number }[],
   ): Totals {

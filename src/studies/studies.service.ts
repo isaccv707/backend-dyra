@@ -44,7 +44,6 @@ const STUDY_ALLOWED_FIELDS = [
   'createdAt',
 ];
 
-// Deben coincidir con los @default de Study.minAge/maxAge en schema.prisma
 const DEFAULT_MIN_AGE = 0;
 const DEFAULT_MAX_AGE = 120;
 
@@ -66,7 +65,6 @@ const CATALOG_ID_FIELDS: Array<[keyof StudyCatalogIds, StudyCatalogKind]> = [
   ['techniqueId', 'technique'],
 ];
 
-// id -> connect, null -> disconnect (solo update), undefined -> sin cambio
 function catalogRelations(ids: StudyCatalogIds, mode: 'create' | 'update') {
   const relation = (id: number | null | undefined) =>
     id
@@ -121,9 +119,6 @@ export class StudiesService {
     }
   }
 
-  // Los catálogos son por sucursal: deben ser de la sucursal del estudio.
-  // `activeIds` son los que vienen en el request (no se permite asignar uno
-  // inactivo); los ya guardados solo se revalidan por sucursal.
   private async assertCatalogsBelongToBranch(
     ids: StudyCatalogIds,
     branchId: string,
@@ -153,8 +148,6 @@ export class StudiesService {
     }
   }
 
-  // minAge/maxAge tienen default en DB, así que en un update parcial se
-  // compara contra el valor ya guardado del campo que no viene en el body.
   private assertValidAgeRange(minAge?: number, maxAge?: number) {
     if (minAge !== undefined && maxAge !== undefined && minAge > maxAge) {
       throw new BadRequestException(
@@ -280,10 +273,6 @@ export class StudiesService {
         where: whereClause,
         orderBy,
         include: {
-          // Con branchId cada estudio muestra el precio de la hoja pública de
-          // SU PROPIO servicio (Service.priceSheetId), no una hoja única
-          // compartida por toda la sucursal. Sin branchId se usa el
-          // priceSheetId explícito (vista admin de un tarifario puntual).
           service: { select: { priceSheetId: true } },
           _count: { select: { panelItems: true } },
           ...CATALOG_INCLUDE,
@@ -337,7 +326,6 @@ export class StudiesService {
           message: regionalPrice?.showPrice
             ? null
             : 'Para mayor información consulte en sucursal',
-          // Agregamos esto para debug o por si el estado no tiene precio cargado
           hasConfiguredPrice: !!regionalPrice,
         },
       };
@@ -374,7 +362,6 @@ export class StudiesService {
     return study;
   }
 
-  // Árbol completo del perfil (los sub-perfiles traen sus propios hijos).
   async getPanelTree(id: string, branchId?: string) {
     const study = await this.prisma.study.findFirst({
       where: { OR: [{ id }, { slug: id }], ...(branchId && { branchId }) },
@@ -508,7 +495,6 @@ export class StudiesService {
         effectiveBranchId,
       );
     }
-    // Con cambio de sucursal también se revalidan los catálogos ya guardados.
     await this.assertCatalogsBelongToBranch(
       {
         sectionId:
@@ -650,8 +636,6 @@ export class StudiesService {
       orderBy: { name: 'asc' },
     });
 
-    // Una sola lista de columnas para que encabezado y valores no se
-    // desalineen al agregar o reordenar campos.
     const columns: Array<{
       header: string;
       value: (s: (typeof studies)[number]) => string | number;
@@ -701,8 +685,6 @@ export class StudiesService {
       throw new NotFoundException(`Study with id ${id} not found`);
     }
 
-    // Sus propios hijos (si es perfil) se desvinculan en cascada; lo que se
-    // bloquea es borrar un estudio que todavía forma parte de algún perfil.
     const parentPanels = await this.prisma.studyPanelItem.findMany({
       where: { childId: id },
       select: { panel: { select: { code: true } } },

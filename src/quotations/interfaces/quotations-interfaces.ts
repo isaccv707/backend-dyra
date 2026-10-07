@@ -1,8 +1,7 @@
-// quotations-interfaces.ts
 export interface StudyItemComponent {
   code: string;
   name: string;
-  level: number; // 1 = hijo directo del perfil
+  level: number;
 }
 
 export interface StudyItem {
@@ -10,7 +9,6 @@ export interface StudyItem {
   code: string | null;
   price: number;
   quantity: number;
-  // Desglose del perfil (vacío para estudios simples)
   components: StudyItemComponent[];
 }
 
@@ -32,7 +30,7 @@ export interface ClientInfo {
   lastName?: string;
   phoneNumber: string;
   email: string;
-  clientType: string; // ya formateado
+  clientType: string;
 }
 
 export interface CompanyInfo {

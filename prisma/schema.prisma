@@ -174,10 +174,6 @@ model Service {
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  // Hoja de precios pública de este servicio (opcional). Relación 1 a 1:
-  // solo un servicio puede tener vinculada una hoja dada como su pública.
-  // La hoja referenciada debe tener isPublic = true y pertenecer a la
-  // misma branchId — validado en services.service.ts, no a nivel DB.
   priceSheetId String?      @unique @map("price_sheet_id")
   priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
 
@@ -253,8 +249,6 @@ model Study {
   slug             String
   code             String
   description      String?
-  // DEPRECATED (fase 1 de la migración a catálogos): se conserva solo para
-  // prisma/scripts/backfill-study-catalogs.ts; se elimina en la fase 2.
   legacySampleType String? @map("sampleType")
   deliveryTime     Int?
   preparation      String?
@@ -262,15 +256,11 @@ model Study {
 
   abbreviation    String?
   title           String?
-  legacySection   String  @default("General") @map("section") // DEPRECATED
-  legacyTechnique String? @map("technique") // DEPRECATED
+  legacySection   String  @default("General") @map("section")
+  legacyTechnique String? @map("technique")
   isPanel         Boolean @default(false)
-  // false = parámetro que solo existe dentro de un perfil (p. ej. Hemoglobina
-  // de la BH): no se puede cotizar suelto.
   isOrderable     Boolean @default(true)
-  // M = masculino, F = femenino, A = ambos (ver src/studies/constants/study-fields.const.ts)
   gender          String  @default("A")
-  // Unidad de minAge/maxAge: "DIAS" o "AÑOS"
   ageFormat       String  @default("AÑOS")
   minAge          Int     @default(0)
   maxAge          Int     @default(120)
@@ -279,8 +269,6 @@ model Study {
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  // Catálogos por sucursal; deben ser de la misma sucursal del estudio
-  // (validado en studies.service.ts).
   sectionId    Int?            @map("section_id")
   section      StudySection?   @relation(fields: [sectionId], references: [id])
   sampleTypeId Int?            @map("sample_type_id")
@@ -294,9 +282,7 @@ model Study {
 
   quotationItems QuotationItem[]
 
-  // Solo con isPanel = true: estudios hijos del perfil (pueden ser a su vez perfiles)
   panelItems   StudyPanelItem[] @relation("PanelItems")
-  // Perfiles que incluyen a este estudio (un estudio puede estar en varios)
   parentPanels StudyPanelItem[] @relation("PanelChild")
 
   createdAt DateTime @default(now())
@@ -311,8 +297,6 @@ model Study {
   @@map("studies")
 }
 
-// Catálogos de estudio (por sucursal). Mismo shape en los tres; la lógica
-// compartida vive en src/study-catalogs/.
 model StudySection {
   id       Int     @id @default(autoincrement())
   name     String
@@ -367,8 +351,6 @@ model StudyTechnique {
   @@map("study_techniques")
 }
 
-// Relación perfil -> estudio hijo. Reglas (misma sucursal, el padre debe ser
-// isPanel, sin ciclos) se validan en src/studies/utils/panel-tree.util.ts.
 model StudyPanelItem {
   id    String @id @default(uuid())
   order Int    @default(0)
@@ -527,8 +509,6 @@ model QuotationItem {
   code       String?
   price      Decimal @db.Decimal(10, 2)
   quantity   Int
-  // Snapshot del desglose de un perfil al momento de cotizar
-  // (PanelComponentSnapshot[]); null para estudios simples o líneas ad-hoc.
   components Json?
 
   studyId String?
@@ -578,17 +558,11 @@ enum SafeguardUsageType {
   PERMANENT
 }
 
-// Estado físico Nuevo/Seminuevo. Se captura una sola vez en DeviceItem/
-// VehicleItem al dar de alta el equipo/vehículo (inventario); los detalles de
-// un Safeguard/VehicleSafeguard solo copian ese mismo valor al generarse,
-// nunca lo piden de nuevo.
 enum SafeguardConditionState {
   NEW
   SEMINUEVO
 }
 
-// Compartido por Safeguard (IT, ya sin sección de vehículo) y por
-// VehicleSafeguard — el checklist fijo del formato ADM.F.00 es el mismo.
 enum SafeguardVehicleInspectionSection {
   DOCUMENTS
   BODY
@@ -637,10 +611,6 @@ model Employee {
   position                String?
   department              String
   hasSignedResponsibility Boolean @default(false) @map("has_signed_responsibility")
-  // Archivado en vez de borrado: un empleado dado de baja (offboard) nunca se
-  // puede eliminar por integridad referencial en cuanto tiene resguardos
-  // (vigentes o históricos), así que isActive=false lo saca del listado sin
-  // perder su historial — ver EmployeesService.offboard().
   isActive                Boolean @default(true) @map("is_active")
 
   branchId String @map("branch_id")
@@ -665,10 +635,6 @@ model DeviceCatalog {
   type     DeviceType
   brand    String
   model    String
-  // Archivado en vez de borrado: un modelo con equipos dados de alta (incluso
-  // retirados) nunca se puede eliminar por integridad referencial, así que
-  // isActive=false es la forma de sacarlo del listado sin perder el historial
-  // de los DeviceItem que lo referencian.
   isActive Boolean    @default(true) @map("is_active")
 
   items DeviceItem[]
@@ -682,23 +648,16 @@ model DeviceCatalog {
 model DeviceItem {
   id            String                  @id @default(uuid())
   internalCode  String                  @unique @map("internal_code")
-  // Número de serie del equipo, para cualquier DeviceType (incluido MOBILE).
   serialNumber  String?                 @unique @map("serial_number")
   ownershipType OwnershipType           @default(INTERNAL) @map("ownership_type")
   providerFolio String?                 @map("provider_folio")
   status        DeviceStatus            @default(AVAILABLE)
-  // Estado físico del equipo, obligatorio para todo DeviceItem. Se captura
-  // una sola vez al dar de alta (o se corrige por PATCH); SafeguardsService
-  // lo copia tal cual al generar/regenerar un safeguard, nunca se vuelve a
-  // pedir en assign().
   condition     SafeguardConditionState
   notes         String?                 @db.Text
 
-  // Solo aplica cuando catalog.type = COMPUTER (validado en DevicesService).
   hardDrive String? @map("hard_drive")
   processor String?
 
-  // Solo aplican cuando catalog.type = MOBILE (validado en DevicesService).
   imei        String? @unique
   phoneNumber String? @map("phone_number")
 
@@ -714,12 +673,6 @@ model DeviceItem {
   locationId String?   @map("location_id")
   location   Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
-  // Solo aplica cuando catalog.type es MONITOR/KEYBOARD/MOUSE, y solo puede
-  // apuntar a una DeviceItem con catalog.type = COMPUTER (validado en
-  // DevicesService, no a nivel DB). employeeId/locationId/status/
-  // currentBranchId de un accesorio SIEMPRE se derivan de su mainDevice —
-  // nunca se asignan de forma independiente (ver DevicesService.assign()/
-  // unassign()/retire()/receiveTransfer(), que hacen cascade a accessories).
   mainDeviceId String?      @map("main_device_id")
   mainDevice   DeviceItem?  @relation("DeviceAccessories", fields: [mainDeviceId], references: [id], onDelete: SetNull)
   accessories  DeviceItem[] @relation("DeviceAccessories")
@@ -801,12 +754,6 @@ model DeviceMovementHistory {
   @@map("device_movement_history")
 }
 
-// Un empleado puede tener varias filas de Safeguard a lo largo del tiempo:
-// employeeId ya NO es @unique. En cualquier momento hay a lo más UNA vigente
-// por empleado (supersededAt: null) — SafeguardsService.createFromEmployeeDevices
-// nunca sobrescribe esa fila, la marca supersededAt y crea una nueva, así el
-// contenido exacto que se pudo haber firmado antes queda intacto como
-// historial.
 model Safeguard {
   id String @id @default(uuid())
 
@@ -816,8 +763,6 @@ model Safeguard {
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
-  // Snapshot del momento en que se generó esta versión — no sigue en vivo el
-  // nombre/puesto/área del empleado.
   employeeName String  @map("employee_name")
   position     String?
   area         String
@@ -829,18 +774,8 @@ model Safeguard {
   createdByUserId String? @map("created_by_user_id")
   createdByUser   User?   @relation("SafeguardCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
-  // null = esta es la versión vigente del resguardo del empleado. Se marca
-  // con la fecha en que se generó la siguiente versión (o en que se cerró
-  // por offboarding, ver EmployeesService.offboard) — la fila y sus secciones
-  // nunca se tocan después de eso, quedan como evidencia histórica.
   supersededAt DateTime? @map("superseded_at")
 
-  // Firma física/evidencia de esta versión específica del documento — se
-  // resetea (signedAt: null) cada vez que se genera una versión nueva, nunca
-  // se hereda de la anterior. signedDocumentPublicId es el public_id de
-  // Cloudinary (type: authenticated, resource_type: raw) del PDF firmado
-  // escaneado; puede quedar null si la firma se confirmó manualmente sin
-  // adjuntar documento.
   signedAt               DateTime? @map("signed_at")
   signedByUserId         String?   @map("signed_by_user_id")
   signedByUser           User?     @relation("SafeguardSignedBy", fields: [signedByUserId], references: [id], onDelete: SetNull)
@@ -864,8 +799,6 @@ model SafeguardComputerDetail {
   safeguardId String    @unique @map("safeguard_id")
   safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
 
-  // El equipo puede reaparecer en varios safeguards a lo largo del tiempo
-  // (reasignaciones), por eso la relación es 1:N desde DeviceItem.
   deviceId String     @map("device_id")
   device   DeviceItem @relation(fields: [deviceId], references: [id])
 
@@ -910,10 +843,6 @@ model SafeguardMobileDetail {
   @@map("safeguard_mobile_details")
 }
 
-// Fila de "Accesorios incluidos" (sección computer o mobile de un safeguard).
-// deviceId presente = accesorio rastreado en inventario (monitor/teclado/mouse,
-// con marca/modelo/serie/código propios). deviceId null = accesorio sin
-// identificador propio (p.ej. cargador de celular), solo un nombre libre.
 model SafeguardAccessoryDetail {
   id String @id @default(uuid())
 
@@ -938,20 +867,11 @@ model SafeguardAccessoryDetail {
   @@map("safeguard_accessory_details")
 }
 
-// ============================================================================
-// Vehículos — módulo independiente de devices/safeguards (administrado por
-// un equipo distinto a IT). Mismo patrón de negocio (catálogo + unidades +
-// traspasos + resguardo con historial/firma), pero completamente desacoplado:
-// su propio catálogo, su propio ciclo de vida de asignación, y su propio
-// documento de resguardo (VehicleSafeguard), nunca combinado con el de IT.
-// ============================================================================
-
 model VehicleCatalog {
   id       String  @id @default(uuid())
   name     String
   brand    String
   model    String
-  // Archivado en vez de borrado — mismo patrón que DeviceCatalog.isActive.
   isActive Boolean @default(true) @map("is_active")
 
   items VehicleItem[]
@@ -1061,11 +981,6 @@ model VehicleMovementHistory {
   @@map("vehicle_movement_history")
 }
 
-// Documento de resguardo de vehículo — independiente de Safeguard (IT). Nace
-// ya con historial de versiones (supersededAt) y firma con evidencia
-// (signedAt/signedByUserId/signedDocumentPublicId vía Cloudinary), mismo
-// patrón que Safeguard: employeeId ya no es @unique, a lo más una fila por
-// empleado tiene supersededAt: null (la vigente) en un momento dado.
 model VehicleSafeguard {
   id String @id @default(uuid())
 
@@ -1078,13 +993,10 @@ model VehicleSafeguard {
   branchId String @map("branch_id")
   branch   Branch @relation("VehicleSafeguardBranch", fields: [branchId], references: [id])
 
-  // Snapshot del momento en que se generó esta versión.
   employeeName String  @map("employee_name")
   position     String?
   area         String
 
-  // Snapshot del vehículo en ese momento (se lee en vivo de VehicleItem al
-  // generar/regenerar, igual que Safeguard hace con DeviceItem).
   brand        String
   model        String
   mileage      String?
@@ -1133,16 +1045,6 @@ model VehicleSafeguardInspectionItem {
   @@map("vehicle_safeguard_inspection_items")
 }
 
-// ============================================================================
-// Tickets — soporte de TI general y soporte especializado para COGNITI
-// (sistema del laboratorio). Cada ticket pertenece a una única sucursal
-// (branchId requerido, misma convención que Service/Author/Post/Study) — la
-// que reporta el problema, no necesariamente la del personal de TI que lo
-// atiende. TicketsService.create valida con assertBranchAccess que el
-// usuario autenticado tenga acceso a esa sucursal, igual que en quotations/
-// price-sheets/reviews.
-// ============================================================================
-
 enum Category {
   HARDWARE
   SOFTWARE
@@ -1168,14 +1070,6 @@ enum TicketPriority {
   CRITICAL
 }
 
-// Catálogo de subcategorías, agrupado por Category — p. ej. dentro de
-// COGNITI: "Crear cliente", "Crear parámetro", "Actualizar parámetro",
-// "Actualizar precio de parámetro". Es una tabla (no un enum) para que
-// tickets:update pueda ampliar el catálogo sin un deploy, igual que otros
-// catálogos del sistema. Ticket.subcategoryId es opcional — no todas las
-// categorías tienen subcategorías definidas todavía — pero cuando se manda,
-// TicketsService valida que pertenezca a la misma Category del ticket
-// (assertSubcategoryBelongsToCategory, en la capa de servicio, no en la DB).
 model TicketSubcategory {
   id       String   @id @default(uuid())
   category Category
@@ -1191,13 +1085,6 @@ model TicketSubcategory {
   @@map("ticket_subcategories")
 }
 
-// Trazabilidad estructurada: una fila por cada hecho relevante del ciclo de
-// vida de un ticket (creación, cambio de estado/prioridad/categoría/
-// subcategoría, asignación, comentario). Es la fuente de datos para
-// analytics — a diferencia de TicketComment(isSystem:true), que es el texto
-// legible para el timeline de la UI. TicketsService escribe ambos a la vez
-// desde el mismo punto (recordChangeAndNotify) para no duplicar la lógica de
-// diffing.
 enum TicketEventType {
   CREATED
   STATUS_CHANGED
@@ -1250,26 +1137,12 @@ model Ticket {
   createdById String @map("created_by_id")
   createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
 
-  // N usuarios asignados (cualquier usuario activo con acceso a la sucursal
-  // del ticket, no solo TI) — ver TicketAssignee.
   assignees TicketAssignee[]
 
   comments      TicketComment[]
   notifications TicketNotification[]
   events        TicketEvent[]
 
-  // Trazabilidad/analytics — ver TicketsService para cómo se calculan:
-  // firstResponseAt: primera asignación o primer comentario de
-  // alguien distinto al creador (lo que ocurra primero).
-  // resolvedAt/closedAt: se fijan al entrar a RESOLVED/CLOSED y se limpian
-  // si el ticket se reabre (por eso son nullable, no basta con updatedAt).
-  // reopenedCount: cuántas veces salió de RESOLVED/CLOSED de vuelta a
-  // IN_PROGRESS.
-  // dueAt: vencimiento de SLA según la prioridad vigente (ver
-  // SLA_HOURS_BY_PRIORITY) — se recalcula si la prioridad cambia.
-  // overdueNotifiedAt: evita que el cron de SLA reenvíe el mismo aviso de
-  // vencido en cada corrida; se limpia cuando dueAt se recalcula o el
-  // ticket se reabre.
   firstResponseAt   DateTime? @map("first_response_at")
   resolvedAt        DateTime? @map("resolved_at")
   closedAt          DateTime? @map("closed_at")
@@ -1292,12 +1165,6 @@ model Ticket {
   @@map("tickets")
 }
 
-// Usuarios asignados a atender un ticket. Todos valen lo mismo (no hay
-// responsable principal). Solo TI (tickets:update) asigna/desasigna, vía
-// PUT /tickets/:id/assignees. Reglas validadas en TicketsService (no en la
-// DB): el asignado debe estar activo, tener acceso a la sucursal del ticket
-// y no ser quien lo creó. Estar asignado da acceso al ticket (verlo y
-// comentarlo, sin notas internas) solo mientras dure la asignación.
 model TicketAssignee {
   id String @id @default(uuid())
 
@@ -1321,9 +1188,6 @@ model TicketComment {
   id         String  @id @default(uuid())
   body       String  @db.Text
   isInternal Boolean @default(false) @map("is_internal")
-  // true para el registro automático de auditoría (cambios de estado/
-  // prioridad/asignación hechos por update()) — false para comentarios
-  // escritos por una persona.
   isSystem   Boolean @default(false) @map("is_system")
 
   ticketId String @map("ticket_id")
@@ -1339,10 +1203,6 @@ model TicketComment {
   @@map("ticket_comments")
 }
 
-// Copia persistida de lo que TicketsGateway.notifyUsers emite por socket —
-// sin esto, un usuario desconectado en el momento del evento se pierde el
-// aviso para siempre. El socket sigue siendo el canal "en vivo"; esta tabla
-// es el respaldo que el frontend puede listar al reconectarse.
 model TicketNotification {
   id      String  @id @default(uuid())
   message String  @db.Text

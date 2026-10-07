@@ -6,9 +6,6 @@ import {
 } from '../../src/study-catalogs/utils/study-catalog.util';
 
 export async function seedStudies(prisma: PrismaClient) {
-  // Get a default service (Análisis Clínicos) to use if the hardcoded one fails.
-  // `slug` is scoped per sucursal now, so several branches may have one —
-  // any of them works fine as a fallback.
   const defaultService = await prisma.service.findFirst({
     where: { slug: 'analisis-clinicos' },
   });
@@ -19,9 +16,6 @@ export async function seedStudies(prisma: PrismaClient) {
     );
   }
 
-  // Un estudio pertenece a la misma sucursal que su Service — es ajeno al
-  // resto de sucursales, incluso si otra sucursal tiene un estudio con el
-  // mismo código.
   for (const study of STUDIES) {
     const { price, serviceId, sampleType, ...studyData } = study;
 
@@ -39,7 +33,6 @@ export async function seedStudies(prisma: PrismaClient) {
       );
     }
 
-    // El tipo de muestra es un catálogo por sucursal: se crea si no existe.
     const sampleTypeIds = await resolveStudyCatalogIds(
       prisma,
       'sampleType',

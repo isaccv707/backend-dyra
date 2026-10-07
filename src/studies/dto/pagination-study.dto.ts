@@ -29,8 +29,6 @@ export class PaginationDto extends PaginatedQueryDto {
   @IsBoolean()
   isPanel?: boolean;
 
-  // El catálogo público debe enviar isOrderable=true para ocultar los
-  // parámetros que solo existen dentro de un perfil.
   @IsOptional()
   @Transform(toBoolean)
   @IsBoolean()

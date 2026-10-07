@@ -40,8 +40,6 @@ export class ImportStudyRowDto {
   @IsOptional()
   description?: string;
 
-  // sampleType, section y technique son nombres de catálogo (por sucursal);
-  // si no existen se crean al importar.
   @IsString()
   @IsOptional()
   @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)

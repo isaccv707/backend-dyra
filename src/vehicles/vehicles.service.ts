@@ -33,9 +33,6 @@ import {
 import { VehicleSafeguardsService } from 'src/vehicle-safeguards/vehicle-safeguards.service';
 import { VehicleSafeguardInspectionItemDto } from 'src/vehicle-safeguards/dto/vehicle-safeguard-inspection-item.dto';
 
-// Forma mínima compartida por AssignVehicleDto y los campos de resguardo de
-// CreateVehicleItemDto: lo que triggerVehicleSafeguardForAssignment necesita
-// para generar/regenerar el resguardo, sin acoplarse a un DTO en particular.
 interface VehicleSafeguardAssignmentFields {
   usageType?: SafeguardUsageType;
   startDate?: string;
@@ -76,10 +73,6 @@ export class VehiclesService {
     private readonly prisma: PrismaService,
     private readonly vehicleSafeguardsService: VehicleSafeguardsService,
   ) {}
-
-  // ---------------------------------------------------------------------
-  // Alta / lectura de vehículos
-  // ---------------------------------------------------------------------
 
   async create(dto: CreateVehicleItemDto, user: AuthUser) {
     assertBranchAccess(user, dto.currentBranchId);
@@ -238,9 +231,6 @@ export class VehiclesService {
       );
     }
 
-    // usageType/startDate/endDate/inspectionItems son términos de resguardo
-    // heredados de CreateVehicleItemDto, no columnas de VehicleItem — se
-    // descartan aquí; PATCH nunca toca employeeId ni regenera resguardos.
     const {
       usageType: _usageType,
       startDate: _startDate,
@@ -259,10 +249,6 @@ export class VehiclesService {
       handleDatabaseErrors(error, 'VehicleItem');
     }
   }
-
-  // ---------------------------------------------------------------------
-  // Asignación exclusiva
-  // ---------------------------------------------------------------------
 
   async assign(vehicleId: string, dto: AssignVehicleDto, user: AuthUser) {
     const vehicle = await this.getVehicleOrThrow(vehicleId);
@@ -413,10 +399,6 @@ export class VehiclesService {
     }
   }
 
-  // Libera todo el equipo (aquí: el vehículo) que un empleado tiene
-  // actualmente asignado. Usado por EmployeesService.offboard — corre dentro
-  // de la misma transacción que la baja del empleado y el cierre de su
-  // resguardo vigente.
   async releaseAllForEmployee(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -439,10 +421,6 @@ export class VehiclesService {
       });
     }
   }
-
-  // ---------------------------------------------------------------------
-  // Traspasos entre sucursales (2 pasos, transaccional)
-  // ---------------------------------------------------------------------
 
   async createTransfer(dto: CreateVehicleTransferDto, user: BranchScopedUser) {
     if (dto.originBranchId === dto.destinationBranchId) {
@@ -712,10 +690,6 @@ export class VehiclesService {
   async findOneTransfer(id: string) {
     return this.getTransferOrThrow(id);
   }
-
-  // ---------------------------------------------------------------------
-  // Helpers privados
-  // ---------------------------------------------------------------------
 
   private async triggerVehicleSafeguardForAssignment(
     tx: Prisma.TransactionClient,

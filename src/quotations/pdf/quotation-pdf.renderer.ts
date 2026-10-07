@@ -1,4 +1,3 @@
-// quotation-pdf.renderer.ts
 import { Injectable } from '@nestjs/common';
 import {
   PdfLayout,
@@ -31,10 +30,8 @@ export class QuotationPdfRenderer {
       marginRight: doc.page.margins.right,
     };
 
-    // Encabezado
     const headerLineY = this.drawHeader(doc, layout, data);
 
-    // Datos del cliente
     const clientBottomY = this.drawClientSection(
       doc,
       layout,
@@ -42,7 +39,6 @@ export class QuotationPdfRenderer {
       data.client,
     );
 
-    // Tabla de estudios
     const tableBottomY = this.drawStudiesTable(
       doc,
       layout,
@@ -50,16 +46,11 @@ export class QuotationPdfRenderer {
       data.studies,
     );
 
-    // Totales
     this.drawTotals(doc, layout, tableBottomY, data.totals);
 
-    // Notas
     this.drawNotes(doc, layout);
   }
 
-  // ===========================
-  // HEADER
-  // ===========================
   private drawHeader(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -68,15 +59,12 @@ export class QuotationPdfRenderer {
     const { pageWidth, marginLeft, marginRight } = layout;
     const { meta, company } = data;
 
-    // Referencia: margen superior de la página
     const topMarginY = doc.page.margins.top || 40;
 
-    // Posiciones
-    const logoTopY = topMarginY + 5; // logo
-    const headerTopY = topMarginY + 25; // título + datos laboratorio
-    const folioTopY = topMarginY; // 👈 folio/fecha más arriba
+    const logoTopY = topMarginY + 5;
+    const headerTopY = topMarginY + 25;
+    const folioTopY = topMarginY;
 
-    // Logo
     try {
       if (meta.logoPath) {
         doc.image(meta.logoPath, marginLeft, logoTopY, { width: 80 });
@@ -85,7 +73,6 @@ export class QuotationPdfRenderer {
       console.warn('Error al cargar el logo para el PDF:', error);
     }
 
-    // Título principal
     doc
       .font('Helvetica-Bold')
       .fontSize(18)
@@ -95,7 +82,6 @@ export class QuotationPdfRenderer {
         align: 'left',
       });
 
-    // Subtítulo y datos de la empresa
     doc
       .font('Helvetica')
       .fontSize(10)
@@ -105,7 +91,6 @@ export class QuotationPdfRenderer {
       .text(`Teléfono: ${company.phone}`, marginLeft + 90, headerTopY + 55)
       .text(`Correo: ${company.email}`, marginLeft + 90, headerTopY + 70);
 
-    // Folio y fecha en la esquina superior derecha, más arriba
     const rightBlockX = pageWidth - marginRight - 140;
 
     doc
@@ -121,7 +106,6 @@ export class QuotationPdfRenderer {
         align: 'right',
       });
 
-    // Línea divisoria
     const lineY = headerTopY + 90;
 
     doc
@@ -136,9 +120,6 @@ export class QuotationPdfRenderer {
     return lineY;
   }
 
-  // ===========================
-  // CLIENTE
-  // ===========================
   private drawClientSection(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -170,9 +151,6 @@ export class QuotationPdfRenderer {
     return doc.y;
   }
 
-  // ===========================
-  // TABLA DE ESTUDIOS
-  // ===========================
   private drawStudiesTable(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -193,7 +171,6 @@ export class QuotationPdfRenderer {
     const { colStudyX, colUnitPriceX, colQuantityX, colSubtotalX, colTotalX } =
       this.computeTableColumns(layout);
 
-    // Encabezados
     doc.font('Helvetica-Bold').fontSize(11);
     doc.text('Estudio', colStudyX, tableTop);
     doc.text('P. unitario', colUnitPriceX, tableTop, {
@@ -221,7 +198,6 @@ export class QuotationPdfRenderer {
       .strokeColor('#CCCCCC')
       .stroke();
 
-    // Filas
     doc.font('Helvetica').fontSize(10).fillColor('#333333');
 
     let rowY = headerBottomY + 5;
@@ -232,17 +208,9 @@ export class QuotationPdfRenderer {
         rowY = TABLE_START_Y;
       }
 
-      // El precio unitario ya incluye IVA; el total de línea es
-      // precio * cantidad, y el subtotal de línea se desglosa de ahí.
       const lineTotal = study.price * study.quantity;
       const lineSubtotal = this.roundCurrency(lineTotal / (1 + IVA_RATE));
 
-      // Estudio: código a la izquierda del nombre, truncado a una sola
-      // línea (con "…" si no cabe) para que nunca invada la fila de
-      // abajo, sin importar qué tan largo sea el nombre del estudio.
-      // (pdfkit solo trunca automáticamente con `ellipsis` cuando se
-      // fija `height`; sin eso, `width` por sí solo sigue partiendo el
-      // texto en varias líneas, así que truncamos a mano.)
       const codePrefix = study.code ? `${study.code} - ` : '';
       const studyLabel = `${index + 1}. ${codePrefix}${study.name}`;
       const studyColumnWidth = colUnitPriceX - colStudyX - 10;
@@ -256,7 +224,6 @@ export class QuotationPdfRenderer {
         },
       );
 
-      // Precio unitario
       doc.text(
         `$${this.formatCurrency(study.price)} MXN`,
         colUnitPriceX,
@@ -267,13 +234,11 @@ export class QuotationPdfRenderer {
         },
       );
 
-      // Cantidad
       doc.text(String(study.quantity), colQuantityX, rowY, {
         width: QUANTITY_COLUMN_WIDTH,
         align: 'right',
       });
 
-      // Subtotal de línea (precio * cantidad, sin IVA)
       doc.text(
         `$${this.formatCurrency(lineSubtotal)} MXN`,
         colSubtotalX,
@@ -284,7 +249,6 @@ export class QuotationPdfRenderer {
         },
       );
 
-      // Total de línea (precio * cantidad, con IVA)
       doc.text(`$${this.formatCurrency(lineTotal)} MXN`, colTotalX, rowY, {
         width: PRICE_COLUMN_WIDTH,
         align: 'right',
@@ -292,8 +256,6 @@ export class QuotationPdfRenderer {
 
       rowY += 18;
 
-      // Desglose del perfil: solo nombres, sin importes (el precio es el
-      // del perfil completo), con sangría según el nivel de anidamiento.
       if (study.components.length) {
         doc.fontSize(8.5).fillColor('#777777');
         for (const component of study.components) {
@@ -330,9 +292,6 @@ export class QuotationPdfRenderer {
     return rowY + 5;
   }
 
-  // ===========================
-  // TOTALES
-  // ===========================
   private drawTotals(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -341,7 +300,6 @@ export class QuotationPdfRenderer {
   ): void {
     const { subtotal, total } = totals;
 
-    // Alineado bajo la columna "Total" de la tabla de estudios.
     const { colTotalX: colPriceX } = this.computeTableColumns(layout);
     const totalsY = tableBottomY + 20;
 
@@ -422,10 +380,6 @@ export class QuotationPdfRenderer {
       );
   }
 
-  // Columnas de la tabla de estudios ancladas a la izquierda (a partir del
-  // nombre del estudio) en vez de al margen derecho de la página, para no
-  // dejar un hueco enorme entre "Estudio" y las columnas de importes
-  // cuando los nombres de los estudios son cortos.
   private computeTableColumns(layout: PdfLayout): TableColumns {
     const { marginLeft } = layout;
 
@@ -438,9 +392,6 @@ export class QuotationPdfRenderer {
     return { colStudyX, colUnitPriceX, colQuantityX, colSubtotalX, colTotalX };
   }
 
-  // Recorta `text` carácter por carácter (según el ancho real de fuente
-  // activo en `doc`) hasta que quepa en `maxWidth`, agregando "…" al
-  // final si hubo que recortar.
   private truncateToWidth(
     doc: PDFKit.PDFDocument,
     text: string,

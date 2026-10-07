@@ -1,18 +1,9 @@
-// One-off script. Run after the additive migration that adds
-// Service.branchId (nullable), and BEFORE the closing migration that drops
-// the _BranchToService join table and makes Service.branchId required.
-//
-// For every Service still linked via the legacy _BranchToService m2m table:
-// takes its (single) linked branch. Services with no branch linked (the
-// former "global" services) fall back to DEFAULT_BRANCH_ID.
-//
-// Usage: npx ts-node prisma/scripts/backfill-service-branch.ts
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const DEFAULT_BRANCH_ID = 'a1b2c3d4-0001-4000-8000-000000000001'; // Sucursal Guadalajara
+const DEFAULT_BRANCH_ID = 'a1b2c3d4-0001-4000-8000-000000000001';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);

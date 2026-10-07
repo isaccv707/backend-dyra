@@ -32,8 +32,6 @@ import {
 type CatalogService =
   StudySectionsService | SampleTypesService | StudyTechniquesService;
 
-// Genera un controller CRUD idéntico para cada catálogo; `route` es también
-// el prefijo de permisos (`<route>:create/read/update/delete`).
 function createStudyCatalogController(
   route: string,
   serviceClass: Type<CatalogService>,
@@ -126,8 +124,6 @@ function createStudyCatalogController(
     }
   }
 
-  // Nest resuelve la dependencia por el tipo declarado en el constructor;
-  // aquí se fija explícitamente al servicio de este catálogo.
   Reflect.defineMetadata(
     'design:paramtypes',
     [serviceClass],

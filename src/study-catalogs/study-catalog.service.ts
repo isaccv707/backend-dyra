@@ -25,9 +25,6 @@ import {
 
 const CATALOG_ALLOWED_FIELDS = ['name', 'isActive', 'createdAt'];
 
-// CRUD compartido por los tres catálogos de estudio; cada subclase solo
-// indica cuál es (ver STUDY_CATALOGS). El @Injectable() de la base es
-// necesario para que TS emita los tipos del constructor que heredan.
 @Injectable()
 abstract class StudyCatalogService {
   protected abstract readonly config: StudyCatalogConfig;
@@ -38,8 +35,6 @@ abstract class StudyCatalogService {
     return studyCatalogDelegate(this.prisma, this.config.kind);
   }
 
-  // El nombre es único por sucursal sin distinguir mayúsculas; la DB solo
-  // garantiza la versión exacta (@@unique([branchId, name])).
   private async assertNameAvailable(
     branchId: string,
     name: string,
@@ -132,8 +127,6 @@ abstract class StudyCatalogService {
     }
   }
 
-  // Un registro en uso no se borra (los estudios perderían el dato); para
-  // retirarlo de los selects se desactiva con isActive = false.
   async remove(id: number, user: BranchScopedUser) {
     await this.findOne(id, user);
 

@@ -55,9 +55,6 @@ export const TICKET_STATUS_LABELS: Record<TicketStatus, string> = {
   CANCELLED: 'Cancelado',
 };
 
-// Transiciones válidas de estado. OPEN puede resolverse directo (arreglos
-// rápidos no necesitan pasar por IN_PROGRESS); RESOLVED y CLOSED se pueden
-// reabrir a IN_PROGRESS si el problema reaparece; CANCELLED es terminal.
 const TICKET_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
   OPEN: ['IN_PROGRESS', 'ON_HOLD', 'RESOLVED', 'CANCELLED'],
   IN_PROGRESS: ['ON_HOLD', 'RESOLVED', 'CANCELLED'],
@@ -85,8 +82,6 @@ export const CATEGORY_LABELS: Record<Category, string> = {
 
 const COMMENT_PREVIEW_LENGTH = 140;
 
-// Estados desde los que "volver a IN_PROGRESS" cuenta como reapertura
-// (incrementa Ticket.reopenedCount y limpia resolvedAt/closedAt).
 const REOPENABLE_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED'];
 
 const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()({
@@ -204,14 +199,6 @@ export class TicketsService {
     return user.role.permissions.includes(TICKET_UPDATE_PERMISSION);
   }
 
-  // Punto único de autorización para operar sobre un ticket ya existente
-  // (verlo, comentarlo, adjuntar). Con tickets:update (TI) el criterio sigue
-  // siendo de sucursal, como siempre. Sin ese permiso, el criterio es
-  // exclusivamente "eres quien lo creó o estás asignado ahora" —
-  // deliberadamente *sin* pasar por assertBranchAccess: el reportero
-  // conserva el control de todo lo que ha levantado aunque después lo
-  // reasignen a otra sucursal. El asignado, en cambio, pierde el acceso en
-  // cuanto TI lo quita de la lista.
   private assertTicketAccess(
     ticket: { branchId: string; createdById: string },
     assigneeIds: string[],
@@ -238,12 +225,6 @@ export class TicketsService {
       allowedFields: TICKET_ALLOWED_FIELDS,
     });
 
-    // Sin tickets:update (personal de TI), el usuario solo ve los tickets
-    // que levantó (su histórico) más los que tiene asignados ahora — nunca
-    // otros tickets, aunque compartan sucursal. Ese conjunto tampoco se
-    // filtra por las sucursales del usuario. branchId como query param
-    // sigue aceptándose como un filtro más, no como una restricción de
-    // acceso.
     const canSeeAllTickets = this.hasTicketUpdatePermission(user);
 
     const conditions: Prisma.TicketWhereInput[] = [
@@ -409,9 +390,6 @@ export class TicketsService {
       },
     });
 
-    // "Primera respuesta" = primer comentario (interno o público) de
-    // alguien distinto a quien reportó el ticket. Si ya hubo una asignación
-    // antes, firstResponseAt ya estaba fijo y esto no lo toca.
     if (!ticket.firstResponseAt && user.id !== ticket.createdById) {
       await this.prisma.ticket.update({
         where: { id: ticketId },
@@ -424,9 +402,6 @@ export class TicketsService {
       ...assigneeIds,
     ]);
 
-    // Las notas internas solo le importan a TI (ya llegan por
-    // emitNewComment a ti_staff_room) — un comentario público sí debe
-    // avisarle a quien reportó el ticket y a todos sus asignados.
     if (!comment.isInternal) {
       const preview =
         dto.body.length > COMMENT_PREVIEW_LENGTH
@@ -443,9 +418,6 @@ export class TicketsService {
     return comment;
   }
 
-  // Calcula los campos de trazabilidad/SLA a fusionar en el `data` de
-  // prisma.ticket.update, a partir del ticket previo y lo que cambia en el
-  // dto. No hace ninguna escritura por sí solo.
   private computeTraceabilityFields(
     ticket: Ticket,
     dto: UpdateTicketDto,
@@ -546,8 +518,6 @@ export class TicketsService {
     return entries;
   }
 
-  // Calcula qué cambió en este update() y lo registra/avisa vía
-  // recordEntriesAndNotify.
   private async recordChangeAndNotify(
     previousTicket: Pick<
       Ticket,
@@ -589,11 +559,6 @@ export class TicketsService {
     );
   }
 
-  // Deja un comentario de sistema (isSystem:true) con los cambios — es el
-  // historial legible para la UI — y, por cada cambio, una fila
-  // estructurada en TicketEvent (la fuente de datos para analytics).
-  // También avisa en vivo a `recipientIds` (quien reportó el ticket y sus
-  // asignados) — no solo a ti_staff_room.
   private async recordEntriesAndNotify(
     ticketId: string,
     entries: ChangeEntry[],
@@ -629,11 +594,6 @@ export class TicketsService {
     await this.persistAndNotify(recipientIds, ticketId, message);
   }
 
-  // Candidatos para el selector de asignados (solo TI, ver controller): los
-  // mismos usuarios que assertAssigneesAreValid aceptaría — activos, con
-  // acceso a la sucursal del ticket (o globales, sin sucursales) y distintos
-  // de quien lo reportó. Existe porque el rol de TI no tiene users:read.
-  // isAssigned marca a los que ya están asignados.
   async findAssignableUsers(
     id: string,
     dto: FindAssignableUsersDto,
@@ -688,11 +648,6 @@ export class TicketsService {
     }));
   }
 
-  // Reemplaza la lista completa de asignados (solo TI, ver controller). Los
-  // que salen de la lista pierden el acceso al ticket de inmediato; los que
-  // entran reciben, además del aviso in-app, un correo de asignación que se
-  // envía en segundo plano: si falla, la asignación ya quedó guardada y
-  // solo se registra el error.
   async setAssignees(
     id: string,
     dto: SetTicketAssigneesDto,
@@ -734,8 +689,6 @@ export class TicketsService {
             assignedById: user.id,
           })),
         }),
-        // "Primera respuesta" = primera asignación o primer comentario de
-        // alguien distinto a quien reportó el ticket.
         ...(addedIds.length > 0 && !ticket.firstResponseAt
           ? [
               this.prisma.ticket.update({
@@ -808,11 +761,6 @@ export class TicketsService {
     }
   }
 
-  // Cualquier usuario de la plataforma (no solo TI) puede quedar asignado,
-  // siempre que esté activo, tenga acceso a la sucursal del ticket — mismo
-  // criterio que assertBranchAccess pero evaluado sobre el asignado, no
-  // sobre quien hace la petición — y no sea quien reportó el ticket.
-  // Devuelve los usuarios en el mismo orden que `userIds`.
   private async assertAssigneesAreValid(
     userIds: string[],
     ticket: { branchId: string; createdById: string },
@@ -860,10 +808,6 @@ export class TicketsService {
     });
   }
 
-  // La subcategoría, cuando se manda, debe pertenecer a la misma Category
-  // del ticket — mismo espíritu que assertServiceBelongsToBranch en
-  // studies.service.ts: relación cruzada validada en la capa de servicio,
-  // no a nivel DB.
   private async assertSubcategoryBelongsToCategory(
     subcategoryId: string,
     category: Category,
@@ -885,9 +829,6 @@ export class TicketsService {
     }
   }
 
-  // Deja constancia en TicketNotification antes de emitir por socket, para
-  // que un usuario desconectado en ese momento pueda listar el aviso al
-  // volver a entrar (ver GET /tickets/notifications) en vez de perderlo.
   private async persistAndNotify(
     userIds: (string | null | undefined)[],
     ticketId: string,
@@ -959,14 +900,6 @@ export class TicketsService {
     return { updated: count };
   }
 
-  // Llamado por TicketsSlaCron (una vez por hora). Busca tickets con SLA
-  // vencido (dueAt < ahora) en un estado no terminal que todavía no se
-  // notificaron (overdueNotifiedAt null), avisa a quien reportó el ticket
-  // (los asignados no reciben este aviso), transmite en vivo a
-  // ti_staff_room, y
-  // marca overdueNotifiedAt para no repetir el mismo aviso en la próxima
-  // corrida. Se limpia (vuelve a null) cuando el ticket cambia de
-  // prioridad o se reabre — ver computeTraceabilityFields.
   async notifyOverdueTickets(): Promise<{ notified: number }> {
     const now = new Date();
     const overdue = await this.prisma.ticket.findMany({

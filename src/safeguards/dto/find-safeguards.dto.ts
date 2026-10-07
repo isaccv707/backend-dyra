@@ -11,8 +11,6 @@ export class FindSafeguardsDto extends PaginatedQueryDto {
   @IsUUID()
   employeeId?: string;
 
-  // Por defecto el listado solo muestra la versión vigente de cada resguardo
-  // (supersededAt: null); pasar true incluye también las versiones históricas.
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()

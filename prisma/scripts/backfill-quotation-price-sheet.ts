@@ -1,16 +1,3 @@
-// One-off script. Run after the additive `npx prisma db push` that adds
-// Quotation.priceSheetId (nullable), and BEFORE the closing schema change
-// that makes it required.
-//
-// Every pre-existing quotation was created through the old public flow,
-// which always priced catalog studies against the branch's public price
-// sheet (see the old resolveQuotationItems fallback). Backfill assigns each
-// quotation its branch's current public+active price sheet. Quotations
-// whose branch has no public price sheet configured are logged for manual
-// review — running the closing `db push` step will fail for them until
-// fixed.
-//
-// Usage: npx ts-node prisma/scripts/backfill-quotation-price-sheet.ts
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';

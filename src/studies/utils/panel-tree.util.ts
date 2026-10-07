@@ -1,9 +1,7 @@
 import { Prisma } from '@prisma/client';
 
-// Acepta tanto PrismaService como el cliente de una $transaction.
 type Db = Prisma.TransactionClient;
 
-// panelId -> childIds (en el orden de StudyPanelItem.order)
 export type PanelGraph = Map<string, string[]>;
 
 const PANEL_CHILD_SELECT = {
@@ -24,8 +22,6 @@ export type PanelTreeNode = PanelChild & {
   children: PanelTreeNode[];
 };
 
-// Desglose plano de un perfil que se guarda en QuotationItem.components;
-// `level` 1 = hijo directo, 2 = hijo de un sub-perfil, etc.
 export type PanelComponentSnapshot = {
   studyId: string;
   code: string;
@@ -33,8 +29,6 @@ export type PanelComponentSnapshot = {
   level: number;
 };
 
-// Los perfiles nunca cruzan sucursal, así que el grafo de una sucursal
-// basta para detectar ciclos.
 export async function loadPanelGraph(
   db: Db,
   branchId: string,
@@ -54,8 +48,6 @@ export async function loadPanelGraph(
   return graph;
 }
 
-// Devuelve los perfiles de `panelIds` que, siguiendo a sus hijos, terminan
-// conteniéndose a sí mismos (A -> B -> A).
 export function findPanelsInCycle(
   graph: PanelGraph,
   panelIds: Iterable<string>,
@@ -81,8 +73,6 @@ export function findPanelsInCycle(
   return inCycle;
 }
 
-// Carga los descendientes de `rootIds` nivel por nivel (una consulta por
-// nivel de anidamiento, no por perfil).
 async function loadChildrenByPanel(
   db: Db,
   rootIds: string[],
@@ -128,7 +118,6 @@ export async function loadPanelTree(
 ): Promise<PanelTreeNode[]> {
   const childrenByPanel = await loadChildrenByPanel(db, [panelId]);
 
-  // `path` evita recursión infinita si algún día se colara un ciclo.
   const build = (id: string, path: Set<string>): PanelTreeNode[] =>
     (childrenByPanel.get(id) ?? []).map((child) => ({
       ...child,

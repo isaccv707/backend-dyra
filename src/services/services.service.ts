@@ -25,8 +25,6 @@ export class ServicesService {
     private readonly branchesService: BranchesService,
   ) {}
 
-  // Una hoja de precios solo puede vincularse como la pública de un servicio
-  // si es isPublic=true y pertenece a la misma sucursal que el servicio.
   private async assertPriceSheetIsEligible(
     priceSheetId: string,
     branchId: string,
@@ -122,10 +120,6 @@ export class ServicesService {
   private async findAllByBranch(branchId: string, dto: FindServicesDto) {
     const { priceSheetId } = dto;
 
-    // priceSheetId explícito = override admin: se usa esa hoja para TODOS
-    // los servicios de la sucursal (vista de "qué se ve con este tarifario").
-    // Sin override, cada servicio usa su propia hoja pública (priceSheetId
-    // en Service) — los que no tienen ninguna no muestran precio.
     let overridePriceSheetId: string | undefined;
     if (priceSheetId) {
       const priceSheet = await this.prisma.priceSheets.findFirst({
@@ -260,8 +254,6 @@ export class ServicesService {
         benefits: true,
         details: true,
         branch: true,
-        // Datos de la hoja de precios pública asignada (nombre/descripción)
-        // para renderizar el encabezado del tarifario en la página pública.
         priceSheet: {
           select: { id: true, name: true, description: true },
         },
@@ -273,9 +265,6 @@ export class ServicesService {
     if (!service)
       throw new NotFoundException(`The Service with id: ${id} not found`);
 
-    // Los estudios de un servicio se paginan aparte del propio servicio:
-    // un servicio puede tener cientos de estudios (import masivo por
-    // Excel), así que la página de detalle no trae todos de un jalón.
     const skip = (page - 1) * limit;
     const term = search?.trim();
     const studiesWhere: Prisma.StudyWhereInput = {
@@ -300,15 +289,11 @@ export class ServicesService {
           name: true,
           code: true,
           slug: true,
-          // No traemos 'preparation' o 'description' aquí para que la
-          // respuesta no sea gigante si hay 500 estudios.
         },
       }),
       this.prisma.study.count({ where: studiesWhere }),
     ]);
 
-    // El servicio renderiza los precios de SU hoja pública (si tiene una
-    // asignada) para cada uno de los estudios de esta página.
     const priceEntries = service.priceSheetId
       ? await this.prisma.studyOnPriceSheet.findMany({
           where: {
@@ -346,7 +331,6 @@ export class ServicesService {
   }
 
   async update(id: string, updateServiceDto: UpdateServiceDto) {
-    // 1. Verificación de existencia del DTO
     if (!updateServiceDto) return;
 
     const { benefits, details, branchId, priceSheetId, ...serviceData } =
@@ -370,7 +354,6 @@ export class ServicesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Solo borramos si el usuario envió explícitamente el arreglo (aunque sea vacío)
         if (benefits !== undefined) {
           await tx.benefit.deleteMany({ where: { serviceId: id } });
         }
@@ -382,7 +365,6 @@ export class ServicesService {
           where: { id },
           data: {
             ...serviceData,
-            // Solo creamos si el arreglo existe y tiene contenido
             benefits:
               benefits && benefits.length > 0
                 ? { create: benefits }

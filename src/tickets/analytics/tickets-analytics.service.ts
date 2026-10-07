@@ -156,9 +156,6 @@ export class TicketsAnalyticsService {
       .sort((a, b) => b.total - a.total);
   }
 
-  // Un ticket con N asignados cuenta (y aporta su tiempo de resolución) a
-  // cada uno de ellos — todos los asignados valen lo mismo. Los tickets sin
-  // ningún asignado se agrupan en una fila "Sin asignar" (assigneeId null).
   async getByAssignee(
     dto: FindTicketAnalyticsDto,
     user: RequestUser,
@@ -221,10 +218,6 @@ export class TicketsAnalyticsService {
     return rows.sort((a, b) => b.total - a.total);
   }
 
-  // Desglose por Category y, dentro de cada una, por subcategoría — p. ej.
-  // dentro de COGNITI: cuántos tickets son "Crear cliente" vs. "Crear
-  // parámetro" vs. "Actualizar parámetro" vs. "Actualizar precio de
-  // parámetro". Responde directamente "qué se levanta más".
   async getByCategory(
     dto: FindTicketAnalyticsDto,
     user: RequestUser,
@@ -279,11 +272,6 @@ export class TicketsAnalyticsService {
       .sort((a, b) => b.count - a.count);
   }
 
-  // Serie temporal de tickets creados vs. resueltos por bucket (día/semana/
-  // mes). "Resueltos" se agrupa por resolved_at (cuándo se cerró), no por
-  // created_at, aunque el rango de fechas del dto se sigue evaluando sobre
-  // created_at — así se compara, en el mismo periodo, cuántos entraron
-  // contra cuántos se resolvieron.
   async getTrend(
     dto: FindTicketTrendDto,
     user: RequestUser,
@@ -354,8 +342,6 @@ export class TicketsAnalyticsService {
     return this.buildXlsxReport(summary, byCategory, byUser);
   }
 
-  // Mismo criterio que QuotationsService/SafeguardsService: el logo se
-  // publica junto al build (dist/assets) o vive en src/assets en dev.
   private resolveLogoPath(): string | null {
     const rootDir = process.cwd();
     const candidatePaths = [
@@ -521,9 +507,6 @@ export class TicketsAnalyticsService {
     };
   }
 
-  // Resuelve el filtro de sucursales efectivo para las consultas $queryRaw
-  // (que no pueden reusar directamente el objeto de Prisma.TicketWhereInput
-  // que arma userBranchFilter). Devuelve null si no hay restricción.
   private resolveEffectiveBranchIds(
     user: RequestUser,
     branchId?: string,
@@ -568,10 +551,6 @@ export class TicketsAnalyticsService {
     return Prisma.sql`WHERE ${Prisma.join(fragments, ' AND ')}`;
   }
 
-  // Genérico: promedio de tiempo de resolución (segundos) agrupado por una
-  // columna fija del modelo tickets. `column` nunca viene del usuario —
-  // siempre un literal de las llamadas internas de este servicio — así que
-  // interpolarlo con Prisma.raw es seguro.
   private async getAvgResolutionByGroup(
     column: 'created_by_id',
     dto: FindTicketAnalyticsDto,
@@ -595,11 +574,6 @@ export class TicketsAnalyticsService {
     }));
   }
 
-  // Promedio de tiempo de resolución por usuario asignado (vía
-  // ticket_assignees): un ticket aporta su duración a cada asignado. Los
-  // fragmentos de buildRawWhereFragments no van calificados, pero sus
-  // columnas (branch_id, "createdAt", category, priority) solo existen en
-  // tickets, así que no son ambiguas con el JOIN.
   private async getAvgResolutionByAssignee(
     dto: FindTicketAnalyticsDto,
     user: RequestUser,

@@ -19,10 +19,6 @@ import {
 const TI_STAFF_ROOM = 'ti_staff_room';
 const TI_STAFF_PERMISSION = 'tickets:update';
 
-// Cada socket autenticado se une a su propia sala personal (ver
-// handleConnection) — así podemos avisarle directo a un usuario específico
-// (el que reportó el ticket, sus asignados) sin depender de que esté
-// en ti_staff_room, que solo une a quienes tienen tickets:update.
 const userRoom = (userId: string) => `user:${userId}`;
 
 interface TicketsSocketData {
@@ -54,9 +50,6 @@ export class TicketsGateway implements OnGatewayConnection {
     private readonly prisma: PrismaService,
   ) {}
 
-  // Autentica el socket contra el mismo JWT que usa la API REST. Un token
-  // ausente/inválido/expirado, o un usuario inactivo, desconecta el socket
-  // de inmediato — nunca queda conectado sin identidad resuelta.
   async handleConnection(client: TicketsSocket) {
     try {
       const token = this.extractToken(client);
@@ -86,10 +79,6 @@ export class TicketsGateway implements OnGatewayConnection {
     }
   }
 
-  // join_ti_room queda reservado al personal con permiso tickets:update
-  // (mismo permiso que exige PATCH /tickets/:id) — cualquier otro usuario
-  // autenticado puede seguir usando la API REST, pero no ve el tráfico en
-  // vivo de la sala de TI.
   @SubscribeMessage('join_ti_room')
   handleJoinTiRoom(@ConnectedSocket() client: TicketsSocket) {
     const permissions: string[] = client.data.permissions ?? [];
@@ -112,15 +101,6 @@ export class TicketsGateway implements OnGatewayConnection {
     this.server.to(TI_STAFF_ROOM).emit('ticket_updated', ticket);
   }
 
-  // TI siempre ve el comentario (incluidas las notas internas, porque nadie
-  // fuera de TI se une a ti_staff_room). Además, si el comentario NO es
-  // interno, también se emite a las salas personales de quien reportó el
-  // ticket y de sus asignados — así un comentario de un usuario
-  // normal se renderiza en vivo para TI, y un comentario de TI se renderiza
-  // en vivo para el usuario normal, simétricamente. Se arma un solo set de
-  // salas y se emite una vez para que un socket presente en varias (p. ej.
-  // un técnico de TI que además es el asignado) no reciba el evento
-  // duplicado.
   emitNewComment(
     ticketId: string,
     comment: TicketCommentWithAuthor,
@@ -140,11 +120,6 @@ export class TicketsGateway implements OnGatewayConnection {
     });
   }
 
-  // Avisa directo al creador y/o a los asignados de un ticket (a
-  // diferencia de emitNewTicket/emitTicketUpdated/emitNewComment, que solo
-  // llegan a ti_staff_room). Los IDs duplicados o vacíos no generan
-  // problema: socket.io emite una sola vez por socket aunque esté en varias
-  // de las salas indicadas.
   notifyUsers(
     userIds: (string | null | undefined)[],
     ticketId: string,
@@ -158,9 +133,6 @@ export class TicketsGateway implements OnGatewayConnection {
     this.server.to(rooms).emit('ticket_notification', { ticketId, message });
   }
 
-  // Aviso en vivo de SLA vencido, transmitido a ti_staff_room sin importar
-  // si el ticket tiene asignados (a diferencia de notifyUsers, que requiere
-  // IDs de usuario concretos) — así cualquier técnico conectado se entera.
   emitOverdueTicket(ticket: { id: string; code: number; title: string }) {
     this.server.to(TI_STAFF_ROOM).emit('ticket_overdue', ticket);
   }

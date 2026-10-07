@@ -1,4 +1,3 @@
-// @ts-check
 import eslint from '@eslint/js';
 import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
 import globals from 'globals';
@@ -36,9 +35,6 @@ export default tseslint.config(
     },
   },
   {
-    // Jest's matcher API (expect.objectContaining, etc.) and supertest's
-    // request() chain are typed loosely (any/error) by design, which
-    // otherwise trips the strict type-checked rules on every test file.
     files: ['**/*.spec.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-assignment': 'off',

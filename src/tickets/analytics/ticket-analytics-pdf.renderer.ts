@@ -29,9 +29,6 @@ interface TableColumn {
   align?: 'left' | 'right' | 'center';
 }
 
-// Paleta institucional DYRA — mismo verde que ya usan los formatos de
-// resguardo (PdfDrawingKit.SECTION_HEADER_COLOR), para que todos los PDFs
-// del sistema se sientan de la misma familia visual.
 const BRAND_GREEN = '#8DC63F';
 const BRAND_GREEN_DARK = '#5B9B23';
 const TEXT_DARK = '#1F2937';
@@ -43,11 +40,6 @@ const CARD_BG = '#F8FAF5';
 const MARGIN = 45;
 const COMPANY_NAME = 'DYRA Analítica';
 const ROW_HEIGHT = 20;
-// Banda reservada al pie de página. pdfkit pagina automáticamente en
-// cuanto un doc.text() cae más allá de pageHeight - marginBottom, así que
-// TODO el contenido (incluido el propio footer) debe quedar dentro de ese
-// límite — nunca por debajo — o cada línea de texto del footer dispara un
-// salto de página fantasma.
 const FOOTER_HEIGHT = 30;
 
 @Injectable()
@@ -80,9 +72,6 @@ export class TicketAnalyticsPdfRenderer {
     });
   }
 
-  // ===========================
-  // ENCABEZADO
-  // ===========================
   private drawHeader(doc: PDFKit.PDFDocument, meta: ReportMeta): number {
     const { marginLeft: x, pageWidth, marginRight } = this.layout(doc);
     const topY = doc.page.margins.top;
@@ -138,9 +127,6 @@ export class TicketAnalyticsPdfRenderer {
     return bottomY + 18;
   }
 
-  // ===========================
-  // TARJETAS DE KPI
-  // ===========================
   private drawKpiCards(
     doc: PDFKit.PDFDocument,
     summary: TicketAnalyticsSummary,
@@ -188,9 +174,6 @@ export class TicketAnalyticsPdfRenderer {
     doc.y = y + cardHeight + 22;
   }
 
-  // ===========================
-  // POR ESTADO / POR PRIORIDAD (lado a lado)
-  // ===========================
   private drawStatusAndPriority(
     doc: PDFKit.PDFDocument,
     summary: TicketAnalyticsSummary,
@@ -236,9 +219,6 @@ export class TicketAnalyticsPdfRenderer {
     doc.y = Math.max(statusBottom, priorityBottom) + 22;
   }
 
-  // ===========================
-  // POR CATEGORÍA Y SUBCATEGORÍA
-  // ===========================
   private drawByCategory(
     doc: PDFKit.PDFDocument,
     byCategory: TicketsByCategoryRow[],
@@ -293,9 +273,6 @@ export class TicketAnalyticsPdfRenderer {
     return indexes;
   }
 
-  // ===========================
-  // POR USUARIO
-  // ===========================
   private drawByUser(
     doc: PDFKit.PDFDocument,
     byUser: TicketsByUserRow[],
@@ -328,9 +305,6 @@ export class TicketAnalyticsPdfRenderer {
     );
   }
 
-  // ===========================
-  // PRIMITIVAS
-  // ===========================
   private drawSectionTitle(
     doc: PDFKit.PDFDocument,
     title: string,
@@ -354,9 +328,6 @@ export class TicketAnalyticsPdfRenderer {
     doc.y += 20;
   }
 
-  // Tabla genérica con encabezado en verde institucional y zebra-striping,
-  // reutilizada por las 4 secciones tabulares del reporte. Repite el
-  // encabezado al saltar de página.
   private drawTable(
     doc: PDFKit.PDFDocument,
     x: number,
@@ -386,10 +357,6 @@ export class TicketAnalyticsPdfRenderer {
       return headerY + ROW_HEIGHT;
     };
 
-    // La tabla puede partirse en varias páginas — el borde de cada tramo se
-    // dibuja al cerrarlo (page break o fin de filas), nunca calculado hacia
-    // atrás desde el total de filas, porque eso da una altura incorrecta en
-    // cuanto hay un salto de página de por medio.
     let segmentStartY = y;
     const closeSegment = (endY: number) => {
       doc
@@ -457,10 +424,6 @@ export class TicketAnalyticsPdfRenderer {
       pageHeight,
       marginBottom,
     } = this.layout(doc);
-    // Debe quedar en o antes de pageHeight - marginBottom: pdfkit pagina
-    // solo con que un doc.text() caiga más allá de ese límite (ver
-    // FOOTER_HEIGHT), así que el footer vive pegado a ese borde, no en el
-    // hueco en blanco debajo de él.
     const y = pageHeight - marginBottom - FOOTER_HEIGHT + 10;
 
     doc

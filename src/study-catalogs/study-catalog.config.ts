@@ -1,13 +1,10 @@
-// Los tres catálogos de estudio (sección, tipo de muestra, técnica) comparten
-// shape y reglas; esto describe lo único que cambia entre ellos.
 export type StudyCatalogKind = 'section' | 'sampleType' | 'technique';
 
 export interface StudyCatalogConfig {
   kind: StudyCatalogKind;
-  // FK en Study que apunta a este catálogo
   studyField: 'sectionId' | 'sampleTypeId' | 'techniqueId';
-  entityName: string; // para mensajes de error en inglés (handleDatabaseErrors)
-  label: string; // para mensajes de negocio en español
+  entityName: string;
+  label: string;
 }
 
 export const STUDY_CATALOGS: Record<StudyCatalogKind, StudyCatalogConfig> = {
