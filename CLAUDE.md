@@ -41,7 +41,7 @@ All routes are prefixed with `/api`. The app uses a standard NestJS module-per-f
 
 **Adding a new entity:**
 
-1. Add model to `prisma/schema.prisma`
+1. Add model to the matching module file in `prisma/schema/` (multi-file schema: one `.prisma` per module, `generator`/`datasource` live in `prisma/schema/schema.prisma`; shared inventory enums in `inventory-enums.prisma`). Models reference each other across files without imports
 2. Run `npx prisma generate` (and `npx prisma db push` for local dev)
 3. Create a NestJS module under `src/<entity>/` with `controller`, `service`, and `dto/` subdirectory
 4. Import the module in `src/app.module.ts`

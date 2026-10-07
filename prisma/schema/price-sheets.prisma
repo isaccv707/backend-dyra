@@ -1,0 +1,31 @@
+model PriceSheets {
+  id                 String              @id @default(uuid())
+  name               String
+  description        String
+  isActive           Boolean             @default(true)
+  isPublic           Boolean             @default(false) @map("is_public")
+  studyOnPriceSheets StudyOnPriceSheet[]
+  quotations         Quotation[]
+  publicForService   Service?
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
+  @@map("price_sheets")
+}
+
+model StudyOnPriceSheet {
+  id        String  @id @default(uuid())
+  price     Decimal @db.Decimal(10, 2)
+  showPrice Boolean @default(true)
+  studyId   String
+  study     Study   @relation(fields: [studyId], references: [id])
+
+  priceSheetId String
+  priceSheet   PriceSheets @relation(fields: [priceSheetId], references: [id])
+
+  @@unique([studyId, priceSheetId])
+  @@index([priceSheetId])
+  @@map("study_on_price_list")
+}

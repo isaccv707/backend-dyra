@@ -1,0 +1,20 @@
+model Banner {
+  id             String          @id @default(uuid())
+  placement      BannerPlacement @default(HOME)
+  imageUrl       String          @map("image_url")
+  mobileImageUrl String          @map("mobile_image_url")
+  order          Int             @default(0)
+  isActive       Boolean?        @default(true)
+  startAt        DateTime?
+  endAt          DateTime?
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, placement, isActive, order])
+  @@map("banners")
+}
+
+enum BannerPlacement {
+  HOME
+}

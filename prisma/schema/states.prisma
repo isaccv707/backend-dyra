@@ -1,0 +1,7 @@
+model State {
+  id       Int      @id @default(autoincrement())
+  name     String   @unique
+  branches Branch[]
+
+  @@map("states")
+}

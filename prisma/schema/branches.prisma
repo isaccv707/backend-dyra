@@ -1,0 +1,92 @@
+model Address {
+  id           Int     @id @default(autoincrement())
+  zipCode      String  @map("zip_code")
+  extNumber    String  @map("ext_number")
+  intNumber    String? @map("int_number")
+  references   String? @db.Text
+  street       String
+  neighborhood String?
+  city         String
+
+  branch Branch?
+
+  @@map("addresses")
+}
+
+model Branch {
+  id         String  @id @default(uuid())
+  name       String  @unique
+  phone      String?
+  email      String?
+  isActive   Boolean @default(true)
+  isVisible  Boolean @default(true)
+  urlResults String
+
+  stateId Int   @map("state_id")
+  state   State @relation(fields: [stateId], references: [id])
+
+  addressId Int     @unique @map("address_id")
+  address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
+
+  priceSheets PriceSheets[]
+
+  authors         Author[]
+  banners         Banner[]
+  posts           Post[]
+  reviews         Review[]
+  services        Service[]
+  studies         Study[]
+  studySections   StudySection[]
+  sampleTypes     SampleType[]
+  studyTechniques StudyTechnique[]
+  schedules       BranchSchedule[]
+  users           User[]
+  quotations      Quotation[]
+
+  locations                   Location[]
+  employees                   Employee[]
+  safeguards                  Safeguard[]
+  deviceItems                 DeviceItem[]            @relation("DeviceCurrentBranch")
+  transferRequestsOrigin      TransferRequest[]       @relation("TransferOrigin")
+  transferRequestsDestination TransferRequest[]       @relation("TransferDestination")
+  movementHistoryOrigin       DeviceMovementHistory[] @relation("MovementOrigin")
+  movementHistoryDestination  DeviceMovementHistory[] @relation("MovementDestination")
+
+  vehicleItems                       VehicleItem[]            @relation("VehicleCurrentBranch")
+  vehicleTransferRequestsOrigin      VehicleTransferRequest[] @relation("VehicleTransferOrigin")
+  vehicleTransferRequestsDestination VehicleTransferRequest[] @relation("VehicleTransferDestination")
+  vehicleMovementHistoryOrigin       VehicleMovementHistory[] @relation("VehicleMovementOrigin")
+  vehicleMovementHistoryDestination  VehicleMovementHistory[] @relation("VehicleMovementDestination")
+  vehicleSafeguards                  VehicleSafeguard[]       @relation("VehicleSafeguardBranch")
+
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("branches")
+}
+
+model BranchSchedule {
+  id        String    @id @default(uuid())
+  dayOfWeek DayOfWeek @map("day_of_week")
+  openTime  String?   @map("open_time")
+  closeTime String?   @map("close_time")
+  isClosed  Boolean   @default(false) @map("is_closed")
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, dayOfWeek])
+  @@map("branch_schedules")
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
