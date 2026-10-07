@@ -1,0 +1,53 @@
+model StudySection {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("study_sections")
+}
+
+model SampleType {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("sample_types")
+}
+
+model StudyTechnique {
+  id       Int     @id @default(autoincrement())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("study_techniques")
+}

@@ -1,0 +1,14 @@
+model Role {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  users       User[]
+  permissions Permission[]
+}
+
+model Permission {
+  id          String  @id @default(uuid())
+  action      String  @unique
+  description String?
+  roles       Role[]
+}

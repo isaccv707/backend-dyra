@@ -1,0 +1,68 @@
+model Study {
+  id               String  @id @default(uuid())
+  name             String
+  slug             String
+  code             String
+  description      String?
+  legacySampleType String? @map("sampleType")
+  deliveryTime     Int?
+  preparation      String?
+  isActive         Boolean @default(true)
+
+  abbreviation    String?
+  title           String?
+  legacySection   String  @default("General") @map("section")
+  legacyTechnique String? @map("technique")
+  isPanel         Boolean @default(false)
+  isOrderable     Boolean @default(true)
+  gender          String  @default("A")
+  ageFormat       String  @default("AÑOS")
+  minAge          Int     @default(0)
+  maxAge          Int     @default(120)
+  decimals        Int     @default(0)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  sectionId    Int?            @map("section_id")
+  section      StudySection?   @relation(fields: [sectionId], references: [id])
+  sampleTypeId Int?            @map("sample_type_id")
+  sampleType   SampleType?     @relation(fields: [sampleTypeId], references: [id])
+  techniqueId  Int?            @map("technique_id")
+  technique    StudyTechnique? @relation(fields: [techniqueId], references: [id])
+
+  priceSheets StudyOnPriceSheet[]
+  serviceId   String
+  service     Service             @relation(fields: [serviceId], references: [id])
+
+  quotationItems QuotationItem[]
+
+  panelItems   StudyPanelItem[] @relation("PanelItems")
+  parentPanels StudyPanelItem[] @relation("PanelChild")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, code])
+  @@unique([branchId, slug])
+  @@index([branchId])
+  @@index([sectionId])
+  @@index([sampleTypeId])
+  @@index([techniqueId])
+  @@map("studies")
+}
+
+model StudyPanelItem {
+  id    String @id @default(uuid())
+  order Int    @default(0)
+
+  panelId String @map("panel_id")
+  panel   Study  @relation("PanelItems", fields: [panelId], references: [id], onDelete: Cascade)
+
+  childId String @map("child_id")
+  child   Study  @relation("PanelChild", fields: [childId], references: [id], onDelete: Restrict)
+
+  @@unique([panelId, childId])
+  @@index([childId])
+  @@map("study_panel_items")
+}

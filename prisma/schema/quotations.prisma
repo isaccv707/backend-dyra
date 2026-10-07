@@ -1,0 +1,45 @@
+model Quotation {
+  id          String  @id @default(uuid())
+  folio       String  @unique
+  clientType  String  @map("client_type")
+  name        String
+  lastName    String? @map("last_name")
+  phoneNumber String  @map("phone_number")
+  email       String?
+
+  subtotal Decimal @db.Decimal(10, 2)
+  tax      Decimal @db.Decimal(10, 2)
+  total    Decimal @db.Decimal(10, 2)
+
+  branchId String
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  priceSheetId String
+  priceSheet   PriceSheets @relation(fields: [priceSheetId], references: [id])
+
+  items QuotationItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([priceSheetId])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id         String  @id @default(uuid())
+  name       String
+  code       String?
+  price      Decimal @db.Decimal(10, 2)
+  quantity   Int
+  components Json?
+
+  studyId String?
+  study   Study?  @relation(fields: [studyId], references: [id], onDelete: SetNull)
+
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  @@map("quotation_items")
+}
