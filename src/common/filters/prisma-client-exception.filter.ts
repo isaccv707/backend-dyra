@@ -2,6 +2,7 @@ import { ArgumentsHost, Catch, HttpStatus } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { Response } from 'express';
+import { getUniqueViolationFields } from '../utils/unique-violation-fields';
 
 @Catch(Prisma.PrismaClientKnownRequestError)
 export class PrismaClientExceptionFilter extends BaseExceptionFilter {
@@ -12,10 +13,7 @@ export class PrismaClientExceptionFilter extends BaseExceptionFilter {
     switch (exception.code) {
       case 'P2002': {
         const status = HttpStatus.CONFLICT;
-        const target = exception.meta?.target;
-        const fields = Array.isArray(target)
-          ? target.join(', ')
-          : (target as string | undefined);
+        const fields = getUniqueViolationFields(exception).join(', ');
         const message = fields
           ? `Unique constraint failed on the fields: ${fields}`
           : 'Unique constraint failed';
