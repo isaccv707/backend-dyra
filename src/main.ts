@@ -7,7 +7,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import type { Application } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule);
 
   const httpAdapterInstance = app.getHttpAdapter().getInstance() as Application;
   httpAdapterInstance.set('query parser', 'extended');
