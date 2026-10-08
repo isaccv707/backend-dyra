@@ -6,6 +6,19 @@ export type StudyAgeFormat = (typeof STUDY_AGE_FORMATS)[number];
 
 export const STUDY_MAX_DECIMALS = 6;
 
+export const STUDY_DEFAULT_MIN_AGE = 0;
+export const STUDY_DEFAULT_MAX_AGE = 120;
+
+export const REFERENCE_VALUE_GENDERS = [
+  'MASCULINO',
+  'FEMENINO',
+  'AMBOS',
+] as const;
+export type ReferenceValueGender = (typeof REFERENCE_VALUE_GENDERS)[number];
+
+export const REFERENCE_VALUE_AGE_UNITS = ['Años', 'Dias'] as const;
+export type ReferenceValueAgeUnit = (typeof REFERENCE_VALUE_AGE_UNITS)[number];
+
 export function normalizeAgeFormat(value?: string): string | undefined {
   if (value === undefined) return undefined;
   const upper = value.trim().toUpperCase();

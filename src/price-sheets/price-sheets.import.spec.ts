@@ -36,7 +36,12 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
     sampleType: ReturnType<typeof catalogDelegate>;
     studyTechnique: ReturnType<typeof catalogDelegate>;
   };
-  let existingCodes: string[];
+  let existingStudies: Array<{
+    code: string;
+    isPanel?: boolean;
+    isActive?: boolean;
+    _count?: { referenceValues: number; parentPanels?: number };
+  }>;
 
   const branchId = 'branch-1';
   const user = { branches: [] };
@@ -53,7 +58,7 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
   });
 
   beforeEach(async () => {
-    existingCodes = [];
+    existingStudies = [];
     prisma = {
       priceSheets: {
         findUnique: jest.fn().mockResolvedValue({ id: 'ps-1', branchId }),
@@ -65,9 +70,7 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
       },
       study: {
         findMany: jest.fn(({ where }: { where: { panelItems?: unknown } }) =>
-          Promise.resolve(
-            where.panelItems ? [] : existingCodes.map((code) => ({ code })),
-          ),
+          Promise.resolve(where.panelItems ? [] : existingStudies),
         ),
         upsert: jest.fn(({ create }: { create: { code: string } }) =>
           Promise.resolve({ id: `study-${create.code}` }),
@@ -130,8 +133,112 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
     );
   });
 
+  it('rechaza un perfil con units o decimals', async () => {
+    const result = await service.importStudiesFromExcel(
+      'ps-1',
+      toExcel([
+        row('P1', { isPanel: 'true', units: 'mg/dL' }),
+        row('P2', { isPanel: 'true', decimals: 2 }),
+        row('A1', { units: 'mg/dL', decimals: 1 }),
+      ]),
+      user,
+    );
+
+    expect(result.processed).toBe(1);
+    expect(result.invalid).toEqual([
+      {
+        row: 2,
+        code: 'P1',
+        errors: ['Un perfil (isPanel = true) no puede tener units'],
+      },
+      {
+        row: 3,
+        code: 'P2',
+        errors: ['Un perfil (isPanel = true) no puede tener decimals'],
+      },
+    ]);
+    expect(prisma.study.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          code: 'A1',
+          units: 'mg/dL',
+          decimals: 1,
+        }),
+      }),
+    );
+  });
+
+  it('no convierte en perfil un estudio existente con valores de referencia', async () => {
+    existingStudies = [
+      { code: 'A1', isPanel: false, _count: { referenceValues: 1 } },
+    ];
+
+    const result = await service.importStudiesFromExcel(
+      'ps-1',
+      toExcel([row('A1', { isPanel: 'true' })]),
+      user,
+    );
+
+    expect(result.processed).toBe(0);
+    expect(result.invalid).toEqual([
+      {
+        row: 2,
+        code: 'A1',
+        errors: [
+          'No se puede marcar como perfil: el estudio tiene valores de referencia',
+        ],
+      },
+    ]);
+  });
+
+  it('no desactiva un estudio existente que forma parte de un perfil', async () => {
+    existingStudies = [
+      {
+        code: 'A1',
+        isPanel: false,
+        isActive: true,
+        _count: { referenceValues: 0, parentPanels: 1 },
+      },
+    ];
+
+    const result = await service.importStudiesFromExcel(
+      'ps-1',
+      toExcel([row('A1', { isActive: 'false' })]),
+      user,
+    );
+
+    expect(result.processed).toBe(0);
+    expect(result.invalid).toEqual([
+      {
+        row: 2,
+        code: 'A1',
+        errors: [
+          'No se puede desactivar: el estudio forma parte de uno o más perfiles',
+        ],
+      },
+    ]);
+  });
+
+  it('una fila con precio vacío guarda el estudio sin asignarle precio', async () => {
+    const result = await service.importStudiesFromExcel(
+      'ps-1',
+      toExcel([row('A1', { price: '' }), row('B2')]),
+      user,
+    );
+
+    expect(result.invalid).toEqual([]);
+    expect(result.processed).toBe(2);
+    expect(prisma.study.upsert).toHaveBeenCalledTimes(2);
+    expect(prisma.studyOnPriceSheet.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.studyOnPriceSheet.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ studyId: 'study-B2' }),
+      }),
+    );
+  });
+
   it('permite columnas vacías al actualizar un estudio existente y conserva sus catálogos', async () => {
-    existingCodes = ['B2'];
+    existingStudies = [{ code: 'B2' }];
 
     const result = await service.importStudiesFromExcel(
       'ps-1',

@@ -10,16 +10,16 @@ model Study {
   isActive         Boolean @default(true)
 
   abbreviation    String?
-  title           String?
   legacySection   String  @default("General") @map("section")
   legacyTechnique String? @map("technique")
   isPanel         Boolean @default(false)
-  isOrderable     Boolean @default(true)
-  gender          String  @default("A")
-  ageFormat       String  @default("AÑOS")
-  minAge          Int     @default(0)
-  maxAge          Int     @default(120)
-  decimals        Int     @default(0)
+  units           String?
+  decimals        Int?
+
+  gender    String @default("A")
+  ageFormat String @default("AÑOS")
+  minAge    Int    @default(0)
+  maxAge    Int    @default(120)
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
@@ -35,7 +35,8 @@ model Study {
   serviceId   String
   service     Service             @relation(fields: [serviceId], references: [id])
 
-  quotationItems QuotationItem[]
+  quotationItems  QuotationItem[]
+  referenceValues ReferenceValue[]
 
   panelItems   StudyPanelItem[] @relation("PanelItems")
   parentPanels StudyPanelItem[] @relation("PanelChild")
@@ -65,4 +66,29 @@ model StudyPanelItem {
   @@unique([panelId, childId])
   @@index([childId])
   @@map("study_panel_items")
+}
+
+model ReferenceValue {
+  id    String @id @default(uuid())
+  order Int    @default(0)
+
+  studyId String @map("study_id")
+  study   Study  @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  gender   String?
+  unitAge  String?  @map("unit_age")
+  minAge   Int?     @map("min_age")
+  maxAge   Int?     @map("max_age")
+  minValue Decimal? @map("min_value") @db.Decimal(18, 6)
+  maxValue Decimal? @map("max_value") @db.Decimal(18, 6)
+
+  text String?
+
+  date DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([studyId])
+  @@map("study_reference_values")
 }

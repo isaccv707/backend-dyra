@@ -10,7 +10,6 @@ const PANEL_CHILD_SELECT = {
   name: true,
   abbreviation: true,
   isPanel: true,
-  isOrderable: true,
 } satisfies Prisma.StudySelect;
 
 type PanelChild = Prisma.StudyGetPayload<{

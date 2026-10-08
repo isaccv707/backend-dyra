@@ -8,6 +8,7 @@ const isProvided = (_dto: object, value: unknown) => value !== undefined;
 export class UpdateStudyDto extends PartialType(
   OmitType(CreateStudyDto, [
     'studyPrices',
+    'branchId',
     'sectionId',
     'sampleTypeId',
     'techniqueId',

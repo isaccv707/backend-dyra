@@ -225,16 +225,15 @@ export class PriceSheetsService {
       'price',
       'showPrice',
       'abbreviation',
-      'title',
       'section',
       'technique',
       'isPanel',
       'parametros',
-      'isOrderable',
       'gender',
       'ageFormat',
       'minAge',
       'maxAge',
+      'units',
       'decimals',
     ];
 
@@ -250,16 +249,15 @@ export class PriceSheetsService {
       price: 150,
       showPrice: 'true',
       abbreviation: 'BH',
-      title: 'Biometría Hemática Completa',
       section: 'Hematología',
       technique: 'Citometría de flujo',
       isPanel: 'false',
       parametros: '',
-      isOrderable: 'true',
       gender: 'A',
       ageFormat: 'AÑOS',
       minAge: 0,
       maxAge: 120,
+      units: 'g/dL',
       decimals: 2,
     };
 
@@ -336,10 +334,10 @@ export class PriceSheetsService {
       return messages;
     };
 
-    const getPriceValue = (val: ExcelCellValue): number => {
-      if (val === null || val === undefined) return 0;
+    const getPriceValue = (val: ExcelCellValue): number | undefined => {
+      if (val === null || val === undefined) return undefined;
       const cleaned = String(val).trim();
-      return cleaned === '' ? 0 : Number(cleaned);
+      return cleaned === '' ? undefined : toRequiredNumber(cleaned);
     };
 
     const cellToString = (val: ExcelCellValue): string | undefined =>
@@ -355,20 +353,19 @@ export class PriceSheetsService {
       preparation?: string;
       deliveryTime?: number;
       isActive?: boolean;
-      price: number;
+      price?: number;
       showPrice?: boolean;
       serviceId: string;
       abbreviation?: string;
-      title?: string;
       section?: string;
       technique?: string;
       isPanel?: boolean;
-      isOrderable?: boolean;
       panelCodes?: string[];
       gender?: string;
       ageFormat?: string;
       minAge?: number;
       maxAge?: number;
+      units?: string;
       decimals?: number;
     };
 
@@ -380,7 +377,7 @@ export class PriceSheetsService {
       const initialRow = i + 2;
       const row = rows[i];
 
-      const code = cellToString(row.code);
+      const code = cellToString(row.code)?.toUpperCase();
       const name = cellToString(row.name);
 
       if (!name && !code) continue;
@@ -396,7 +393,7 @@ export class PriceSheetsService {
 
       const panelCodes = (cellToString(row.parametros) ?? '')
         .split(',')
-        .map((c) => c.trim())
+        .map((c) => c.trim().toUpperCase())
         .filter(Boolean);
       const rowIsPanel = toOptionalBool(row.isPanel);
       if (panelCodes.length) {
@@ -432,18 +429,17 @@ export class PriceSheetsService {
         serviceName,
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,
-        price: toRequiredNumber(getPriceValue(row.price)),
+        price: getPriceValue(row.price),
         showPrice: toOptionalBool(row.showPrice) ?? true,
         abbreviation: cellToString(row.abbreviation),
-        title: cellToString(row.title),
         section: cellToString(row.section),
         technique: cellToString(row.technique),
         isPanel: rowIsPanel,
-        isOrderable: toOptionalBool(row.isOrderable),
         gender: normalizeGender(cellToString(row.gender)),
         ageFormat: normalizeAgeFormat(cellToString(row.ageFormat)),
         minAge: toOptionalInt(row.minAge),
         maxAge: toOptionalInt(row.maxAge),
+        units: cellToString(row.units) || undefined,
         decimals: toOptionalInt(row.decimals),
       };
 
@@ -483,42 +479,79 @@ export class PriceSheetsService {
           showPrice: dto.showPrice,
           serviceId,
           abbreviation: dto.abbreviation,
-          title: dto.title,
           section: dto.section || undefined,
           technique: dto.technique,
           isPanel: dto.isPanel,
-          isOrderable: dto.isOrderable,
           panelCodes: panelCodes.length ? panelCodes : undefined,
           gender: dto.gender,
           ageFormat: dto.ageFormat,
           minAge: dto.minAge,
           maxAge: dto.maxAge,
+          units: dto.units,
           decimals: dto.decimals,
         });
       }
     }
 
-    const existingCodes = new Set(
+    const existingByCode = new Map(
       (
         await this.prisma.study.findMany({
           where: { branchId, code: { in: valid.map((v) => v.code) } },
-          select: { code: true },
+          select: {
+            code: true,
+            isPanel: true,
+            isActive: true,
+            _count: { select: { referenceValues: true, parentPanels: true } },
+          },
         })
-      ).map((s) => s.code),
+      ).map((s) => [s.code, s]),
     );
     for (let i = valid.length - 1; i >= 0; i--) {
       const item = valid[i];
-      if (existingCodes.has(item.code)) continue;
+      const errors: string[] = [];
 
-      const missing = REQUIRED_CATALOG_COLUMNS.filter((field) => !item[field]);
-      if (missing.length > 0) {
-        invalid.push({
-          row: item.row,
-          code: item.code,
-          errors: [
+      const existing = existingByCode.get(item.code);
+      if (!existing) {
+        const missing = REQUIRED_CATALOG_COLUMNS.filter(
+          (field) => !item[field],
+        );
+        if (missing.length > 0) {
+          errors.push(
             `Para crear un estudio nuevo son obligatorias las columnas: ${missing.join(', ')}`,
-          ],
-        });
+          );
+        }
+      }
+
+      if (
+        item.isActive === false &&
+        existing?.isActive &&
+        existing._count.parentPanels > 0
+      ) {
+        errors.push(
+          'No se puede desactivar: el estudio forma parte de uno o más perfiles',
+        );
+      }
+
+      item.isPanel ??= existing?.isPanel;
+      if (item.isPanel) {
+        const measurement = [
+          ...(item.units !== undefined ? ['units'] : []),
+          ...(item.decimals !== undefined ? ['decimals'] : []),
+        ];
+        if (measurement.length) {
+          errors.push(
+            `Un perfil (isPanel = true) no puede tener ${measurement.join(' ni ')}`,
+          );
+        }
+        if (existing?._count?.referenceValues) {
+          errors.push(
+            'No se puede marcar como perfil: el estudio tiene valores de referencia',
+          );
+        }
+      }
+
+      if (errors.length) {
+        invalid.push({ row: item.row, code: item.code, errors });
         valid.splice(i, 1);
       }
     }
@@ -595,16 +628,16 @@ export class PriceSheetsService {
             deliveryTime: item.deliveryTime,
             isActive: item.isActive,
             abbreviation: item.abbreviation,
-            title: item.title,
             section: connectCatalog(sectionIds, item.section),
             technique: connectCatalog(techniqueIds, item.technique),
             isPanel: item.isPanel,
-            isOrderable: item.isOrderable,
             gender: item.gender,
             ageFormat: item.ageFormat,
             minAge: item.minAge,
             maxAge: item.maxAge,
-            decimals: item.decimals,
+            ...(item.isPanel
+              ? { units: null, decimals: null }
+              : { units: item.units, decimals: item.decimals }),
             service: { connect: { id: item.serviceId } },
           },
           create: {
@@ -617,36 +650,37 @@ export class PriceSheetsService {
             deliveryTime: item.deliveryTime,
             isActive: item.isActive ?? true,
             abbreviation: item.abbreviation,
-            title: item.title,
             section: connectCatalog(sectionIds, item.section),
             technique: connectCatalog(techniqueIds, item.technique),
             isPanel: item.isPanel,
-            isOrderable: item.isOrderable,
             gender: item.gender,
             ageFormat: item.ageFormat,
             minAge: item.minAge,
             maxAge: item.maxAge,
-            decimals: item.decimals,
+            units: item.isPanel ? null : item.units,
+            decimals: item.isPanel ? null : item.decimals,
             service: { connect: { id: item.serviceId } },
             branch: { connect: { id: branchId } },
           },
         });
 
-        await this.prisma.studyOnPriceSheet.upsert({
-          where: {
-            studyId_priceSheetId: { studyId: study.id, priceSheetId: id },
-          },
-          update: {
-            price: new Prisma.Decimal(item.price),
-            showPrice: item.showPrice ?? true,
-          },
-          create: {
-            studyId: study.id,
-            priceSheetId: id,
-            price: new Prisma.Decimal(item.price),
-            showPrice: item.showPrice ?? true,
-          },
-        });
+        if (item.price !== undefined) {
+          await this.prisma.studyOnPriceSheet.upsert({
+            where: {
+              studyId_priceSheetId: { studyId: study.id, priceSheetId: id },
+            },
+            update: {
+              price: new Prisma.Decimal(item.price),
+              showPrice: item.showPrice ?? true,
+            },
+            create: {
+              studyId: study.id,
+              priceSheetId: id,
+              price: new Prisma.Decimal(item.price),
+              showPrice: item.showPrice ?? true,
+            },
+          });
+        }
 
         processed++;
         processedCodes.add(item.code);
@@ -687,9 +721,12 @@ export class PriceSheetsService {
     );
     const studies = await this.prisma.study.findMany({
       where: { branchId, code: { in: [...neededCodes] } },
-      select: { id: true, code: true },
+      select: { id: true, code: true, isActive: true },
     });
     const idByCode = new Map(studies.map((s) => [s.code, s.id]));
+    const inactiveCodes = new Set(
+      studies.filter((s) => !s.isActive).map((s) => s.code),
+    );
 
     const graph = await loadPanelGraph(this.prisma, branchId);
     const pending = new Map<string, { code: string; childIds: string[] }>();
@@ -700,6 +737,14 @@ export class PriceSheetsService {
         panelErrors.push({
           code: row.code,
           error: `Parámetros no encontrados en la sucursal: ${missing.join(', ')}`,
+        });
+        continue;
+      }
+      const inactive = row.panelCodes.filter((c) => inactiveCodes.has(c));
+      if (inactive.length) {
+        panelErrors.push({
+          code: row.code,
+          error: `Un perfil solo puede contener estudios activos: ${inactive.join(', ')}`,
         });
         continue;
       }

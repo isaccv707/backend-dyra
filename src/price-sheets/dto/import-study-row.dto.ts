@@ -67,7 +67,9 @@ export class ImportStudyRowDto {
   isActive?: boolean;
 
   @IsNumber({ maxDecimalPlaces: 2 })
-  price!: number;
+  @Min(0)
+  @IsOptional()
+  price?: number;
 
   @IsBoolean()
   @IsOptional()
@@ -77,11 +79,6 @@ export class ImportStudyRowDto {
   @IsOptional()
   @MaxLength(50)
   abbreviation?: string;
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(300)
-  title?: string;
 
   @IsString()
   @IsOptional()
@@ -97,9 +94,10 @@ export class ImportStudyRowDto {
   @IsBoolean()
   isPanel?: boolean;
 
+  @IsString()
   @IsOptional()
-  @IsBoolean()
-  isOrderable?: boolean;
+  @MaxLength(50)
+  units?: string;
 
   @IsOptional()
   @IsIn(STUDY_GENDERS, {

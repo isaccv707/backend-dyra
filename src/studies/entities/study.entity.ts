@@ -1,4 +1,6 @@
 import type {
+  ReferenceValueAgeUnit,
+  ReferenceValueGender,
   StudyAgeFormat,
   StudyGender,
 } from '../constants/study-fields.const';
@@ -14,17 +16,31 @@ export class Study {
   preparation?: string;
   isActive?: boolean;
   abbreviation?: string;
-  title?: string;
   sectionId?: number | null;
   techniqueId?: number | null;
   isPanel!: boolean;
-  isOrderable!: boolean;
+  units?: string | null;
+  decimals?: number | null;
   gender!: StudyGender;
   ageFormat!: StudyAgeFormat;
   minAge!: number;
   maxAge!: number;
-  decimals!: number;
   priceSheets?: StudyOnPriceSheet[];
+  referenceValues?: ReferenceValue[];
+}
+
+export class ReferenceValue {
+  id?: string;
+  order!: number;
+  studyId?: string;
+  gender?: ReferenceValueGender | null;
+  unitAge?: ReferenceValueAgeUnit | null;
+  minAge?: number | null;
+  maxAge?: number | null;
+  minValue?: number | null;
+  maxValue?: number | null;
+  text?: string | null;
+  date!: Date;
 }
 
 export class StudyOnPriceSheet {

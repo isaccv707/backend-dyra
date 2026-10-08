@@ -1,11 +1,10 @@
 import {
   IsArray,
   IsBoolean,
-  IsIn,
   IsInt,
-  IsLowercase,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsPositive,
   IsString,
@@ -16,17 +15,14 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
-import {
-  STUDY_AGE_FORMATS,
-  STUDY_GENDERS,
-  STUDY_MAX_DECIMALS,
-  type StudyAgeFormat,
-  type StudyGender,
-} from '../constants/study-fields.const';
+import { Transform, Type } from 'class-transformer';
+import { STUDY_MAX_DECIMALS } from '../constants/study-fields.const';
+import { EligiblePatientsDto } from './eligible-patients.dto';
+import { CreateReferenceValueDto } from './reference-value.dto';
 
 export class StudyPriceDto {
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
   price!: number;
 
   @IsString()
@@ -47,10 +43,14 @@ export class CreateStudyDto {
   name!: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
   @IsOptional()
-  @IsLowercase()
   slug?: string;
 
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
@@ -117,42 +117,15 @@ export class CreateStudyDto {
   @MaxLength(50)
   abbreviation?: string;
 
-  @IsString()
-  @IsOptional()
-  @MaxLength(300)
-  title?: string;
-
   @IsOptional()
   @IsBoolean()
   isPanel?: boolean;
 
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
   @IsOptional()
-  @IsBoolean()
-  isOrderable?: boolean;
-
-  @IsOptional()
-  @IsIn(STUDY_GENDERS, {
-    message: `gender debe ser uno de: ${STUDY_GENDERS.join(', ')}`,
-  })
-  gender?: StudyGender;
-
-  @IsOptional()
-  @IsIn(STUDY_AGE_FORMATS, {
-    message: `ageFormat debe ser uno de: ${STUDY_AGE_FORMATS.join(', ')}`,
-  })
-  ageFormat?: StudyAgeFormat;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @IsOptional()
-  minAge?: number;
-
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  @IsOptional()
-  maxAge?: number;
+  units?: string;
 
   @Type(() => Number)
   @IsInt()
@@ -160,4 +133,16 @@ export class CreateStudyDto {
   @Max(STUDY_MAX_DECIMALS)
   @IsOptional()
   decimals?: number;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => EligiblePatientsDto)
+  eligiblePatients?: EligiblePatientsDto;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateReferenceValueDto)
+  referenceValues?: CreateReferenceValueDto[];
 }
