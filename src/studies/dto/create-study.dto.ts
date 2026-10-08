@@ -73,20 +73,17 @@ export class CreateStudyDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @IsOptional()
-  sampleTypeId?: number | null;
+  sampleTypeId!: number;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @IsOptional()
-  sectionId?: number | null;
+  sectionId!: number;
 
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @IsOptional()
-  techniqueId?: number | null;
+  techniqueId!: number;
 
   @Type(() => Number)
   @IsInt()

@@ -49,6 +49,12 @@ const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'price',
   'showPrice',
 ];
+const REQUIRED_CATALOG_COLUMNS = [
+  'section',
+  'sampleType',
+  'technique',
+] as const;
+
 const PRICE_SHEET_ALLOWED_FIELDS = [
   'name',
   'description',
@@ -340,6 +346,7 @@ export class PriceSheetsService {
       val === null || val === undefined ? undefined : String(val).trim();
 
     type ValidRow = {
+      row: number;
       code: string;
       name: string;
       slug: string;
@@ -463,6 +470,7 @@ export class PriceSheetsService {
         });
       } else {
         valid.push({
+          row: initialRow,
           code: dto.code,
           name: dto.name,
           slug: generateSlug(dto.name),
@@ -489,6 +497,32 @@ export class PriceSheetsService {
         });
       }
     }
+
+    const existingCodes = new Set(
+      (
+        await this.prisma.study.findMany({
+          where: { branchId, code: { in: valid.map((v) => v.code) } },
+          select: { code: true },
+        })
+      ).map((s) => s.code),
+    );
+    for (let i = valid.length - 1; i >= 0; i--) {
+      const item = valid[i];
+      if (existingCodes.has(item.code)) continue;
+
+      const missing = REQUIRED_CATALOG_COLUMNS.filter((field) => !item[field]);
+      if (missing.length > 0) {
+        invalid.push({
+          row: item.row,
+          code: item.code,
+          errors: [
+            `Para crear un estudio nuevo son obligatorias las columnas: ${missing.join(', ')}`,
+          ],
+        });
+        valid.splice(i, 1);
+      }
+    }
+    invalid.sort((a, b) => a.row - b.row);
 
     let processed = 0;
     const importErrors: Array<{ code: string; error: string }> = [];
