@@ -186,16 +186,16 @@ export class QuotationsService {
               name: true,
               code: true,
               isPanel: true,
-              isOrderable: true,
+              isActive: true,
             },
           },
         },
       });
 
-      const notOrderable = entries.filter((entry) => !entry.study.isOrderable);
-      if (notOrderable.length > 0) {
+      const inactive = entries.filter((entry) => !entry.study.isActive);
+      if (inactive.length > 0) {
         throw new BadRequestException(
-          `Los siguientes estudios solo se pueden cotizar como parte de un perfil: ${notOrderable
+          `Los siguientes estudios están desactivados y no se pueden cotizar: ${inactive
             .map((entry) => entry.study.code)
             .join(', ')}`,
         );
