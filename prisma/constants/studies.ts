@@ -20,7 +20,7 @@ const rawStudies = [
     description:
       'Evaluación detallada de colesterol total, HDL, LDL, VLDL y triglicéridos para determinar el riesgo cardiovascular.',
     sampleType: 'Sangre (Suero)',
-    deliveryTime: 1, // 24 horas
+    deliveryTime: 1,
     preparation:
       'Ayuno estricto de 12 horas. No ingerir alcohol 24 horas antes.',
     isActive: true,
@@ -62,7 +62,7 @@ const rawStudies = [
     description:
       'Medición de hormonas T3, T4 y TSH para evaluar el funcionamiento de la glándula tiroides.',
     sampleType: 'Sangre (Suero)',
-    deliveryTime: 2, // 48 horass
+    deliveryTime: 2,
     preparation:
       'Ayuno de 8 horas. Informar si toma medicamentos para la tiroides.',
     isActive: true,

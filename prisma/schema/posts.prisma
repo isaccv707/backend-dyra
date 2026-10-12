@@ -1,0 +1,55 @@
+model Post {
+  id              String         @id @default(uuid())
+  title           String
+  slug            String
+  description     String
+  excerpt         String
+  image           String?
+  imageMobile     String?
+  readingTime     Int?
+  metaDescription String?
+  tags            String[]
+  category        String
+  status          PostStatus     @default(DRAFT)
+  contentBlocks   ContentBlock[]
+  authorId        String?
+
+  author Author? @relation(fields: [authorId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, slug])
+  @@index([branchId])
+  @@map("posts")
+}
+
+model ContentBlock {
+  id      String    @id @default(uuid())
+  type    BlockType
+  order   Int
+  content String?
+  src     String?
+  alt     String?
+
+  postId String
+  post   Post   @relation(fields: [postId], references: [id])
+
+  @@map("content_blocks")
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum BlockType {
+  PARAGRAPH
+  LIST
+  SUBTITLE
+  QUOTE
+  IMAGE
+}

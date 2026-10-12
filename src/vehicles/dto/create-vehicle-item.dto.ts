@@ -66,9 +66,6 @@ export class CreateVehicleItemDto {
   })
   providerFolio?: string;
 
-  // Estado físico del vehículo (Nuevo/Seminuevo), obligatorio. Se reutiliza
-  // tal cual al generar el resguardo del empleado que lo tenga asignado —
-  // nunca se vuelve a pedir en assign().
   @IsEnum(SafeguardConditionState)
   condition!: SafeguardConditionState;
 
@@ -86,10 +83,6 @@ export class CreateVehicleItemDto {
   @IsUUID()
   locationId?: string;
 
-  // Términos del resguardo que se genera automáticamente cuando el alta ya
-  // trae employeeId (misma regla que POST /vehicles/:id/assign). No son
-  // datos del vehículo: usageType/fechas describen la asignación,
-  // inspectionItems es el checklist capturado al momento de firmar.
   @IsOptional()
   @IsEnum(SafeguardUsageType)
   usageType?: SafeguardUsageType;

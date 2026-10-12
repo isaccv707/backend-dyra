@@ -20,7 +20,6 @@ interface RawPost {
   category: string;
   authorName: string;
   contentBlocks: RawContentBlock[];
-  /** Sucursal a la que pertenece este post — el contenido no se comparte entre sucursales. */
   branchName: string;
 }
 

@@ -22,11 +22,6 @@ const ROW_HEIGHT = 18;
 const WIDE_LABEL_WIDTH = 190;
 const CHECKBOX_COLOR = '#5B9B23';
 
-// Primitivas de dibujo genéricas (celdas, grillas, checkboxes, tablas de
-// inspección) para documentos PDF con pdfkit — sin conocimiento de dominio.
-// Las usan tanto SafeguardPdfRenderer (IT) como VehicleSafeguardPdfRenderer
-// (Flotilla); lo que sí varía entre documentos (encabezado, texto legal,
-// composición de secciones) vive en cada renderer, no aquí.
 @Injectable()
 export class PdfDrawingKit {
   readonly rowHeight = ROW_HEIGHT;
@@ -166,8 +161,6 @@ export class PdfDrawingKit {
     return y + ROW_HEIGHT;
   }
 
-  // Celda genérica con borde, relleno gris opcional (para etiquetas) y texto
-  // en una o varias líneas — bloque base de toda la grilla del documento.
   drawCell(
     doc: PDFKit.PDFDocument,
     x: number,
@@ -207,8 +200,6 @@ export class PdfDrawingKit {
     });
   }
 
-  // Segmentos de una fila de 4 celdas (label/value/label/value) tipo "Nombre
-  // de usuario / Fecha" — cada segmento define su propio ancho y estilo.
   drawFourCellRow(
     doc: PDFKit.PDFDocument,
     x: number,
@@ -260,10 +251,6 @@ export class PdfDrawingKit {
       .text(label, x + boxSize + 5, y - 1);
   }
 
-  // Fila "Herramientas a asignar": lista de opciones (Computadora/Celular
-  // para equipo, Automóvil para vehículo) repartidas en partes iguales sobre
-  // el ancho de la celda de contenido — cada documento pasa solo las opciones
-  // que le aplican.
   drawToolsRow(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -297,8 +284,6 @@ export class PdfDrawingKit {
     return y + rowHeight;
   }
 
-  // Fila "Uso": tres subceldas con sus propios bordes — Temporal | fechas de
-  // inicio/término | Permanente — igual en ambos documentos.
   drawUsageRow(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -384,9 +369,6 @@ export class PdfDrawingKit {
       .text(label, x, y + 4, { width, align: 'center' });
   }
 
-  // Pie de página fijo del formato físico: aviso de propiedad (izquierda) +
-  // fechas de elaboración/próxima revisión (derecha) — igual en ambos
-  // documentos (equipo y vehículo), tal como en el formato impreso.
   drawDocumentFooter(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -431,10 +413,6 @@ export class PdfDrawingKit {
     return Math.max(doc.y, y + 20);
   }
 
-  // Bloque de firmas: texto legal + dos líneas de firma + pie de propiedad,
-  // siempre anclado al fondo de la página (como un verdadero pie de página)
-  // sin importar cuánto contenido lo precede. Si el contenido ya invadió el
-  // espacio reservado, se recorre a una página nueva y se ancla ahí.
   drawAcknowledgementFooter(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -503,9 +481,6 @@ export class PdfDrawingKit {
     );
   }
 
-  // Encabezado del formato físico: logo | razón social + FORMATOS + subtítulo
-  // | caja Código/Página/Revisión, las tres columnas dentro de un único
-  // recuadro — igual en ambos documentos (equipo y vehículo).
   drawFormHeader(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -625,7 +600,6 @@ export class PdfDrawingKit {
     return topY + headerHeight + 15;
   }
 
-  // Tabla de una sola columna de rubros (usada para "Revisión").
   drawInspectionTable(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -709,8 +683,6 @@ export class PdfDrawingKit {
     return y;
   }
 
-  // Tabla de dos columnas de rubros lado a lado (usada para "Inspección"):
-  // Inspección|Estado|Observaciones repetido dos veces, izquierda y derecha.
   drawTwoColumnInspectionTable(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,

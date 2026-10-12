@@ -1,0 +1,54 @@
+model Service {
+  id             String  @id @default(uuid())
+  name           String
+  slug           String
+  description    String?
+  icon           String?
+  imageUrl       String  @map("image_url")
+  mobileImageUrl String? @map("mobile_image_url")
+  isActive       Boolean @default(true)
+
+  studies Study[]
+
+  benefits Benefit[]
+  details  ServiceDetail[]
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  priceSheetId String?      @unique @map("price_sheet_id")
+  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@unique([branchId, slug])
+  @@index([branchId])
+  @@map("services")
+}
+
+model ServiceDetail {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  image       String?
+  imageMobile String?
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("service_details")
+}
+
+model Benefit {
+  id          String  @id @default(uuid())
+  title       String
+  description String? @db.Text
+  icon        String?
+  serviceId   String
+
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@map("benefits")
+}

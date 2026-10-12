@@ -1,15 +1,24 @@
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsPositive,
   IsString,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import {
+  STUDY_AGE_FORMATS,
+  STUDY_GENDERS,
+  STUDY_MAX_DECIMALS,
+} from 'src/studies/constants/study-fields.const';
+import { STUDY_CATALOG_NAME_MAX_LENGTH } from 'src/study-catalogs/study-catalog.config';
 
 export class ImportStudyRowDto {
   @IsString()
@@ -33,9 +42,7 @@ export class ImportStudyRowDto {
 
   @IsString()
   @IsOptional()
-  @MaxLength(500, {
-    message: 'El tipo de muestra es demasiado largo (máximo 500 caracteres).',
-  })
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
   sampleType?: string;
 
   @IsString()
@@ -60,9 +67,66 @@ export class ImportStudyRowDto {
   isActive?: boolean;
 
   @IsNumber({ maxDecimalPlaces: 2 })
-  price!: number;
+  @Min(0)
+  @IsOptional()
+  price?: number;
 
   @IsBoolean()
   @IsOptional()
   showPrice?: boolean = true;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  abbreviation?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
+  section?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(STUDY_CATALOG_NAME_MAX_LENGTH)
+  technique?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isPanel?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  units?: string;
+
+  @IsOptional()
+  @IsIn(STUDY_GENDERS, {
+    message: `gender debe ser uno de: ${STUDY_GENDERS.join(', ')}`,
+  })
+  gender?: string;
+
+  @IsOptional()
+  @IsIn(STUDY_AGE_FORMATS, {
+    message: `ageFormat debe ser uno de: ${STUDY_AGE_FORMATS.join(', ')}`,
+  })
+  ageFormat?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  minAge?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  maxAge?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(STUDY_MAX_DECIMALS)
+  @IsOptional()
+  decimals?: number;
 }

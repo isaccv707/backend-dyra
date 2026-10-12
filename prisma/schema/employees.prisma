@@ -1,0 +1,23 @@
+model Employee {
+  id                      String  @id @default(uuid())
+  name                    String
+  position                String?
+  department              String
+  hasSignedResponsibility Boolean @default(false) @map("has_signed_responsibility")
+  isActive                Boolean @default(true) @map("is_active")
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  devices    DeviceItem[]
+  safeguards Safeguard[]
+
+  vehicles          VehicleItem[]
+  vehicleSafeguards VehicleSafeguard[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@map("employees")
+}

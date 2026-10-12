@@ -1,0 +1,175 @@
+enum Category {
+  HARDWARE
+  SOFTWARE
+  NETWORK
+  ACCESS
+  COGNITI
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ON_HOLD
+  RESOLVED
+  CLOSED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model TicketSubcategory {
+  id       String   @id @default(uuid())
+  category Category
+  name     String
+  isActive Boolean  @default(true) @map("is_active")
+
+  tickets Ticket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([category, name])
+  @@map("ticket_subcategories")
+}
+
+enum TicketEventType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  CATEGORY_CHANGED
+  SUBCATEGORY_CHANGED
+  ASSIGNED
+  UNASSIGNED
+  COMMENTED
+  REOPENED
+}
+
+model TicketEvent {
+  id   String          @id @default(uuid())
+  type TicketEventType
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  actorId String @map("actor_id")
+  actor   User   @relation("TicketEventActor", fields: [actorId], references: [id])
+
+  fromValue String? @map("from_value")
+  toValue   String? @map("to_value")
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, createdAt])
+  @@index([type, createdAt])
+  @@index([actorId])
+  @@map("ticket_events")
+}
+
+model Ticket {
+  id          String @id @default(uuid())
+  code        Int    @unique @default(autoincrement())
+  title       String
+  description String @db.Text
+
+  status   TicketStatus   @default(OPEN)
+  priority TicketPriority @default(MEDIUM)
+  category Category
+
+  subcategoryId String?            @map("subcategory_id")
+  subcategory   TicketSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id])
+
+  assignees TicketAssignee[]
+
+  comments      TicketComment[]
+  notifications TicketNotification[]
+  events        TicketEvent[]
+
+  firstResponseAt   DateTime? @map("first_response_at")
+  resolvedAt        DateTime? @map("resolved_at")
+  closedAt          DateTime? @map("closed_at")
+  reopenedCount     Int       @default(0) @map("reopened_count")
+  dueAt             DateTime? @map("due_at")
+  overdueNotifiedAt DateTime? @map("overdue_notified_at")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([createdById])
+  @@index([status])
+  @@index([subcategoryId])
+  @@index([branchId, createdAt])
+  @@index([createdById, createdAt])
+  @@index([category, createdAt])
+  @@index([resolvedAt])
+  @@index([dueAt])
+  @@map("tickets")
+}
+
+model TicketAssignee {
+  id String @id @default(uuid())
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation("TicketAssigneeUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  assignedById String? @map("assigned_by_id")
+  assignedBy   User?   @relation("TicketAssigneeAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@unique([ticketId, userId])
+  @@index([userId])
+  @@map("ticket_assignees")
+}
+
+model TicketComment {
+  id         String  @id @default(uuid())
+  body       String  @db.Text
+  isInternal Boolean @default(false) @map("is_internal")
+  isSystem   Boolean @default(false) @map("is_system")
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  authorId String @map("author_id")
+  author   User   @relation("TicketCommentAuthor", fields: [authorId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([authorId])
+  @@map("ticket_comments")
+}
+
+model TicketNotification {
+  id      String  @id @default(uuid())
+  message String  @db.Text
+  read    Boolean @default(false)
+
+  ticketId String @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([ticketId])
+  @@map("ticket_notifications")
+}

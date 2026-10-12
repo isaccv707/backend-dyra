@@ -30,7 +30,6 @@ export class CreateBranchDto {
   @IsString()
   urlResults!: string;
 
-  // Controla si la sucursal se muestra en el listado de la página web.
   @IsBoolean()
   @IsOptional()
   isVisible?: boolean;

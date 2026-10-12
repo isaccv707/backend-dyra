@@ -28,41 +28,11 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🚀 Starting the process of seeding...');
 
-  // 1. Primero los Estados (Nivel base, no dependen de nadie)
-  // await seedStates(prisma);
-  // console.log('✅ States seeded.');
-
-  // 2. Sucursales (dependen de States; crean también sus PriceSheets)
-  // await seedBranches(prisma);
-
-  // 3. Servicios (cada servicio requiere un branchId de una sucursal existente)
-  // await seedServices(prisma);
-  // console.log('✅ Services seeded.');
-
-  // 4. Estudios (dependen de Services y de las PriceSheets de las sucursales)
-  // await seedStudies(prisma);
-  // console.log('✅ Studies (with prices) seeded.');
-
-  // 5. Banners (dependen de las sucursales)
-  // await seedBanners(prisma);
-
-  // 6. Autores (dependen de las sucursales)
-  // await seedAuthors(prisma);
-
-  // 7. Posts (dependen de Authors y Branches)
-  // await seedPosts(prisma);
-
-  // 8. Reseñas (dependen de Branches)
-  // await seedReviews(prisma);
-
-  // 9. Roles y permisos (independientes)
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
-  // 10. Usuario administrador (depende del rol Administrador)
   await seedAdminUser(prisma);
 
-  // 11. Subcategorías de tickets (independiente — solo depende del enum Category)
   await seedTicketSubcategories(prisma);
 
   console.log('All seeds completed successfully!');

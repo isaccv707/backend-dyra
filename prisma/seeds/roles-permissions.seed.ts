@@ -2,7 +2,6 @@ import { PrismaClient } from '@prisma/client';
 import { PERMISSIONS, ROLES } from '../constants/roles-permissions';
 
 export async function seedRolesAndPermissions(prisma: PrismaClient) {
-  // 1. Upsert all permissions
   for (const perm of PERMISSIONS) {
     await prisma.permission.upsert({
       where: { action: perm.action },
@@ -11,7 +10,6 @@ export async function seedRolesAndPermissions(prisma: PrismaClient) {
     });
   }
 
-  // 2. Create or update roles and assign their permissions via implicit M:M
   for (const roleData of ROLES) {
     const permissionsToConnect = await prisma.permission.findMany({
       where: { action: { in: roleData.permissions } },

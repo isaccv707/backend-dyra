@@ -1,0 +1,112 @@
+model Safeguard {
+  id String @id @default(uuid())
+
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  employeeName String  @map("employee_name")
+  position     String?
+  area         String
+
+  usageType SafeguardUsageType @map("usage_type")
+  startDate DateTime?          @map("start_date")
+  endDate   DateTime?          @map("end_date")
+
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation("SafeguardCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  supersededAt DateTime? @map("superseded_at")
+
+  signedAt               DateTime? @map("signed_at")
+  signedByUserId         String?   @map("signed_by_user_id")
+  signedByUser           User?     @relation("SafeguardSignedBy", fields: [signedByUserId], references: [id], onDelete: SetNull)
+  signedDocumentPublicId String?   @map("signed_document_public_id")
+
+  computer SafeguardComputerDetail?
+  mobile   SafeguardMobileDetail?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([createdByUserId])
+  @@index([employeeId, supersededAt])
+  @@map("safeguards")
+}
+
+model SafeguardComputerDetail {
+  id String @id @default(uuid())
+
+  safeguardId String    @unique @map("safeguard_id")
+  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  brand        String
+  model        String
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+  hardDrive    String? @map("hard_drive")
+  processor    String?
+
+  condition    SafeguardConditionState
+  observations String?                 @db.Text
+
+  accessoryDetails SafeguardAccessoryDetail[]
+
+  @@index([deviceId])
+  @@map("safeguard_computer_details")
+}
+
+model SafeguardMobileDetail {
+  id String @id @default(uuid())
+
+  safeguardId String    @unique @map("safeguard_id")
+  safeguard   Safeguard @relation(fields: [safeguardId], references: [id], onDelete: Cascade)
+
+  deviceId String     @map("device_id")
+  device   DeviceItem @relation(fields: [deviceId], references: [id])
+
+  brand        String
+  model        String
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+  imei         String?
+  phoneNumber  String? @map("phone_number")
+
+  condition    SafeguardConditionState
+  observations String?                 @db.Text
+
+  accessoryDetails SafeguardAccessoryDetail[]
+
+  @@index([deviceId])
+  @@map("safeguard_mobile_details")
+}
+
+model SafeguardAccessoryDetail {
+  id String @id @default(uuid())
+
+  computerDetailId String?                  @map("computer_detail_id")
+  computerDetail   SafeguardComputerDetail? @relation(fields: [computerDetailId], references: [id], onDelete: Cascade)
+
+  mobileDetailId String?                @map("mobile_detail_id")
+  mobileDetail   SafeguardMobileDetail? @relation(fields: [mobileDetailId], references: [id], onDelete: Cascade)
+
+  deviceId String?     @map("device_id")
+  device   DeviceItem? @relation(fields: [deviceId], references: [id])
+
+  name         String
+  brand        String?
+  model        String?
+  serialNumber String? @map("serial_number")
+  internalCode String? @map("internal_code")
+
+  @@index([computerDetailId])
+  @@index([mobileDetailId])
+  @@index([deviceId])
+  @@map("safeguard_accessory_details")
+}

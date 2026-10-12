@@ -7,7 +7,6 @@ interface RawService {
     mobileImageUrl: string;
     benefits: { title: string; description: string; icon: string }[];
     details: { title: string; description: string }[];
-    /** Sucursal a la que pertenece este servicio. */
     branchName: string;
 }
 

@@ -30,6 +30,18 @@ import {
   toOptionalInt,
   toRequiredNumber,
 } from 'src/common/utils/excel-normalizers';
+import {
+  normalizeAgeFormat,
+  normalizeGender,
+} from 'src/studies/constants/study-fields.const';
+import {
+  findPanelsInCycle,
+  loadPanelGraph,
+} from 'src/studies/utils/panel-tree.util';
+import {
+  catalogNameKey,
+  resolveStudyCatalogIds,
+} from 'src/study-catalogs/utils/study-catalog.util';
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
@@ -37,6 +49,12 @@ const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'price',
   'showPrice',
 ];
+const REQUIRED_CATALOG_COLUMNS = [
+  'section',
+  'sampleType',
+  'technique',
+] as const;
+
 const PRICE_SHEET_ALLOWED_FIELDS = [
   'name',
   'description',
@@ -206,6 +224,17 @@ export class PriceSheetsService {
       'isActive',
       'price',
       'showPrice',
+      'abbreviation',
+      'section',
+      'technique',
+      'isPanel',
+      'parametros',
+      'gender',
+      'ageFormat',
+      'minAge',
+      'maxAge',
+      'units',
+      'decimals',
     ];
 
     const exampleRow: Record<string, string | number> = {
@@ -219,6 +248,17 @@ export class PriceSheetsService {
       isActive: 'true',
       price: 150,
       showPrice: 'true',
+      abbreviation: 'BH',
+      section: 'Hematología',
+      technique: 'Citometría de flujo',
+      isPanel: 'false',
+      parametros: '',
+      gender: 'A',
+      ageFormat: 'AÑOS',
+      minAge: 0,
+      maxAge: 120,
+      units: 'g/dL',
+      decimals: 2,
     };
 
     const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], {
@@ -294,16 +334,17 @@ export class PriceSheetsService {
       return messages;
     };
 
-    const getPriceValue = (val: ExcelCellValue): number => {
-      if (val === null || val === undefined) return 0;
+    const getPriceValue = (val: ExcelCellValue): number | undefined => {
+      if (val === null || val === undefined) return undefined;
       const cleaned = String(val).trim();
-      return cleaned === '' ? 0 : Number(cleaned);
+      return cleaned === '' ? undefined : toRequiredNumber(cleaned);
     };
 
     const cellToString = (val: ExcelCellValue): string | undefined =>
       val === null || val === undefined ? undefined : String(val).trim();
 
     type ValidRow = {
+      row: number;
       code: string;
       name: string;
       slug: string;
@@ -312,9 +353,20 @@ export class PriceSheetsService {
       preparation?: string;
       deliveryTime?: number;
       isActive?: boolean;
-      price: number;
+      price?: number;
       showPrice?: boolean;
       serviceId: string;
+      abbreviation?: string;
+      section?: string;
+      technique?: string;
+      isPanel?: boolean;
+      panelCodes?: string[];
+      gender?: string;
+      ageFormat?: string;
+      minAge?: number;
+      maxAge?: number;
+      units?: string;
+      decimals?: number;
     };
 
     const valid: ValidRow[] = [];
@@ -325,7 +377,7 @@ export class PriceSheetsService {
       const initialRow = i + 2;
       const row = rows[i];
 
-      const code = cellToString(row.code);
+      const code = cellToString(row.code)?.toUpperCase();
       const name = cellToString(row.name);
 
       if (!name && !code) continue;
@@ -337,6 +389,25 @@ export class PriceSheetsService {
           rowErrors.push(`El código '${code}' está duplicado en el archivo`);
         }
         seenCodes.add(code);
+      }
+
+      const panelCodes = (cellToString(row.parametros) ?? '')
+        .split(',')
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean);
+      const rowIsPanel = toOptionalBool(row.isPanel);
+      if (panelCodes.length) {
+        if (rowIsPanel !== true) {
+          rowErrors.push(
+            'La columna parametros solo aplica a filas con isPanel = true',
+          );
+        }
+        if (new Set(panelCodes).size !== panelCodes.length) {
+          rowErrors.push('La columna parametros tiene códigos repetidos');
+        }
+        if (code && panelCodes.includes(code)) {
+          rowErrors.push('Un perfil no puede contenerse a sí mismo');
+        }
       }
 
       const serviceName = cellToString(row.serviceName);
@@ -358,9 +429,31 @@ export class PriceSheetsService {
         serviceName,
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,
-        price: toRequiredNumber(getPriceValue(row.price)),
+        price: getPriceValue(row.price),
         showPrice: toOptionalBool(row.showPrice) ?? true,
+        abbreviation: cellToString(row.abbreviation),
+        section: cellToString(row.section),
+        technique: cellToString(row.technique),
+        isPanel: rowIsPanel,
+        gender: normalizeGender(cellToString(row.gender)),
+        ageFormat: normalizeAgeFormat(cellToString(row.ageFormat)),
+        minAge: toOptionalInt(row.minAge),
+        maxAge: toOptionalInt(row.maxAge),
+        units: cellToString(row.units) || undefined,
+        decimals: toOptionalInt(row.decimals),
       };
+
+      const hasMinAge = normalizedData.minAge !== undefined;
+      const hasMaxAge = normalizedData.maxAge !== undefined;
+      if (hasMinAge !== hasMaxAge) {
+        rowErrors.push('minAge y maxAge deben capturarse juntos');
+      } else if (
+        typeof normalizedData.minAge === 'number' &&
+        typeof normalizedData.maxAge === 'number' &&
+        normalizedData.minAge > normalizedData.maxAge
+      ) {
+        rowErrors.push('minAge no puede ser mayor que maxAge');
+      }
 
       const dto = plainToInstance(ImportStudyRowDto, normalizedData);
       const errors = await validate(dto, { whitelist: true });
@@ -373,6 +466,7 @@ export class PriceSheetsService {
         });
       } else {
         valid.push({
+          row: initialRow,
           code: dto.code,
           name: dto.name,
           slug: generateSlug(dto.name),
@@ -384,14 +478,144 @@ export class PriceSheetsService {
           price: dto.price,
           showPrice: dto.showPrice,
           serviceId,
+          abbreviation: dto.abbreviation,
+          section: dto.section || undefined,
+          technique: dto.technique,
+          isPanel: dto.isPanel,
+          panelCodes: panelCodes.length ? panelCodes : undefined,
+          gender: dto.gender,
+          ageFormat: dto.ageFormat,
+          minAge: dto.minAge,
+          maxAge: dto.maxAge,
+          units: dto.units,
+          decimals: dto.decimals,
         });
       }
     }
 
+    const existingByCode = new Map(
+      (
+        await this.prisma.study.findMany({
+          where: { branchId, code: { in: valid.map((v) => v.code) } },
+          select: {
+            code: true,
+            isPanel: true,
+            isActive: true,
+            _count: { select: { referenceValues: true, parentPanels: true } },
+          },
+        })
+      ).map((s) => [s.code, s]),
+    );
+    for (let i = valid.length - 1; i >= 0; i--) {
+      const item = valid[i];
+      const errors: string[] = [];
+
+      const existing = existingByCode.get(item.code);
+      if (!existing) {
+        const missing = REQUIRED_CATALOG_COLUMNS.filter(
+          (field) => !item[field],
+        );
+        if (missing.length > 0) {
+          errors.push(
+            `Para crear un estudio nuevo son obligatorias las columnas: ${missing.join(', ')}`,
+          );
+        }
+      }
+
+      if (
+        item.isActive === false &&
+        existing?.isActive &&
+        existing._count.parentPanels > 0
+      ) {
+        errors.push(
+          'No se puede desactivar: el estudio forma parte de uno o más perfiles',
+        );
+      }
+
+      item.isPanel ??= existing?.isPanel;
+      if (item.isPanel) {
+        const measurement = [
+          ...(item.units !== undefined ? ['units'] : []),
+          ...(item.decimals !== undefined ? ['decimals'] : []),
+        ];
+        if (measurement.length) {
+          errors.push(
+            `Un perfil (isPanel = true) no puede tener ${measurement.join(' ni ')}`,
+          );
+        }
+        if (existing?._count?.referenceValues) {
+          errors.push(
+            'No se puede marcar como perfil: el estudio tiene valores de referencia',
+          );
+        }
+      }
+
+      if (errors.length) {
+        invalid.push({ row: item.row, code: item.code, errors });
+        valid.splice(i, 1);
+      }
+    }
+    invalid.sort((a, b) => a.row - b.row);
+
     let processed = 0;
     const importErrors: Array<{ code: string; error: string }> = [];
+    const processedCodes = new Set<string>();
+
+    const panelsWithChildren = new Set(
+      (
+        await this.prisma.study.findMany({
+          where: {
+            branchId,
+            code: {
+              in: valid.filter((v) => v.isPanel === false).map((v) => v.code),
+            },
+            panelItems: { some: {} },
+          },
+          select: { code: true },
+        })
+      ).map((s) => s.code),
+    );
+
+    const catalogNames = (field: 'section' | 'sampleType' | 'technique') =>
+      valid.flatMap((v) => (v[field] ? [v[field]] : []));
+    const [sectionIds, sampleTypeIds, techniqueIds] = await Promise.all([
+      resolveStudyCatalogIds(
+        this.prisma,
+        'section',
+        branchId,
+        catalogNames('section'),
+        { createMissing: true },
+      ),
+      resolveStudyCatalogIds(
+        this.prisma,
+        'sampleType',
+        branchId,
+        catalogNames('sampleType'),
+        { createMissing: true },
+      ),
+      resolveStudyCatalogIds(
+        this.prisma,
+        'technique',
+        branchId,
+        catalogNames('technique'),
+        { createMissing: true },
+      ),
+    ]);
+    const connectCatalog = (ids: Map<string, number>, name?: string) => {
+      const id = name ? ids.get(catalogNameKey(name)) : undefined;
+      return id ? { connect: { id } } : undefined;
+    };
 
     for (const item of valid) {
+      if (panelsWithChildren.has(item.code)) {
+        importErrors.push({
+          code: item.code,
+          error:
+            'No se puede desmarcar como perfil: aún tiene estudios hijos. Elimínalos primero.',
+        });
+        continue;
+      }
+
       try {
         const study = await this.prisma.study.upsert({
           where: { branchId_code: { branchId, code: item.code } },
@@ -399,10 +623,21 @@ export class PriceSheetsService {
             name: item.name,
             slug: item.slug,
             description: item.description,
-            sampleType: item.sampleType,
+            sampleType: connectCatalog(sampleTypeIds, item.sampleType),
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive,
+            abbreviation: item.abbreviation,
+            section: connectCatalog(sectionIds, item.section),
+            technique: connectCatalog(techniqueIds, item.technique),
+            isPanel: item.isPanel,
+            gender: item.gender,
+            ageFormat: item.ageFormat,
+            minAge: item.minAge,
+            maxAge: item.maxAge,
+            ...(item.isPanel
+              ? { units: null, decimals: null }
+              : { units: item.units, decimals: item.decimals }),
             service: { connect: { id: item.serviceId } },
           },
           create: {
@@ -410,43 +645,146 @@ export class PriceSheetsService {
             slug: item.slug,
             code: item.code,
             description: item.description,
-            sampleType: item.sampleType,
+            sampleType: connectCatalog(sampleTypeIds, item.sampleType),
             preparation: item.preparation,
             deliveryTime: item.deliveryTime,
             isActive: item.isActive ?? true,
+            abbreviation: item.abbreviation,
+            section: connectCatalog(sectionIds, item.section),
+            technique: connectCatalog(techniqueIds, item.technique),
+            isPanel: item.isPanel,
+            gender: item.gender,
+            ageFormat: item.ageFormat,
+            minAge: item.minAge,
+            maxAge: item.maxAge,
+            units: item.isPanel ? null : item.units,
+            decimals: item.isPanel ? null : item.decimals,
             service: { connect: { id: item.serviceId } },
             branch: { connect: { id: branchId } },
           },
         });
 
-        await this.prisma.studyOnPriceSheet.upsert({
-          where: {
-            studyId_priceSheetId: { studyId: study.id, priceSheetId: id },
-          },
-          update: {
-            price: new Prisma.Decimal(item.price),
-            showPrice: item.showPrice ?? true,
-          },
-          create: {
-            studyId: study.id,
-            priceSheetId: id,
-            price: new Prisma.Decimal(item.price),
-            showPrice: item.showPrice ?? true,
-          },
-        });
+        if (item.price !== undefined) {
+          await this.prisma.studyOnPriceSheet.upsert({
+            where: {
+              studyId_priceSheetId: { studyId: study.id, priceSheetId: id },
+            },
+            update: {
+              price: new Prisma.Decimal(item.price),
+              showPrice: item.showPrice ?? true,
+            },
+            create: {
+              studyId: study.id,
+              priceSheetId: id,
+              price: new Prisma.Decimal(item.price),
+              showPrice: item.showPrice ?? true,
+            },
+          });
+        }
 
         processed++;
+        processedCodes.add(item.code);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         importErrors.push({ code: item.code, error: message });
       }
     }
 
+    const { panelsUpdated, panelErrors } = await this.importPanelItems(
+      branchId,
+      valid.flatMap((v) =>
+        v.panelCodes && processedCodes.has(v.code)
+          ? [{ code: v.code, panelCodes: v.panelCodes }]
+          : [],
+      ),
+    );
+
     return {
       totalRows: rows.length,
       processed,
+      panelsUpdated,
       invalid,
       importErrors: importErrors.length > 0 ? importErrors : undefined,
+      panelErrors: panelErrors.length > 0 ? panelErrors : undefined,
     };
+  }
+
+  private async importPanelItems(
+    branchId: string,
+    panelRows: Array<{ code: string; panelCodes: string[] }>,
+  ) {
+    const panelErrors: Array<{ code: string; error: string }> = [];
+    if (!panelRows.length) return { panelsUpdated: 0, panelErrors };
+
+    const neededCodes = new Set(
+      panelRows.flatMap((r) => [r.code, ...r.panelCodes]),
+    );
+    const studies = await this.prisma.study.findMany({
+      where: { branchId, code: { in: [...neededCodes] } },
+      select: { id: true, code: true, isActive: true },
+    });
+    const idByCode = new Map(studies.map((s) => [s.code, s.id]));
+    const inactiveCodes = new Set(
+      studies.filter((s) => !s.isActive).map((s) => s.code),
+    );
+
+    const graph = await loadPanelGraph(this.prisma, branchId);
+    const pending = new Map<string, { code: string; childIds: string[] }>();
+
+    for (const row of panelRows) {
+      const missing = row.panelCodes.filter((c) => !idByCode.has(c));
+      if (missing.length) {
+        panelErrors.push({
+          code: row.code,
+          error: `Parámetros no encontrados en la sucursal: ${missing.join(', ')}`,
+        });
+        continue;
+      }
+      const inactive = row.panelCodes.filter((c) => inactiveCodes.has(c));
+      if (inactive.length) {
+        panelErrors.push({
+          code: row.code,
+          error: `Un perfil solo puede contener estudios activos: ${inactive.join(', ')}`,
+        });
+        continue;
+      }
+      const panelId = idByCode.get(row.code)!;
+      const childIds = row.panelCodes.map((c) => idByCode.get(c)!);
+      graph.set(panelId, childIds);
+      pending.set(panelId, { code: row.code, childIds });
+    }
+
+    const cyclic = new Set(findPanelsInCycle(graph, pending.keys()));
+    let panelsUpdated = 0;
+
+    for (const [panelId, { code, childIds }] of pending) {
+      if (cyclic.has(panelId)) {
+        panelErrors.push({
+          code,
+          error:
+            'Los parámetros forman un ciclo: algún perfil hijo contiene (directa o indirectamente) a este perfil',
+        });
+        continue;
+      }
+
+      try {
+        await this.prisma.$transaction([
+          this.prisma.studyPanelItem.deleteMany({ where: { panelId } }),
+          this.prisma.studyPanelItem.createMany({
+            data: childIds.map((childId, order) => ({
+              panelId,
+              childId,
+              order,
+            })),
+          }),
+        ]);
+        panelsUpdated++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        panelErrors.push({ code, error: message });
+      }
+    }
+
+    return { panelsUpdated, panelErrors };
   }
 }

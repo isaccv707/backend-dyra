@@ -1,10 +1,5 @@
 import { TicketPriority } from '@prisma/client';
 
-// Horas objetivo de resolución por prioridad — usadas por TicketsService
-// para calcular Ticket.dueAt al crear el ticket o al cambiar su prioridad,
-// y por TicketsSlaService para decidir qué tickets están vencidos. Son un
-// valor por defecto razonable, no una política contractual con el cliente;
-// ajustar aquí si el negocio define otros tiempos.
 export const SLA_HOURS_BY_PRIORITY: Record<TicketPriority, number> = {
   CRITICAL: 4,
   HIGH: 8,

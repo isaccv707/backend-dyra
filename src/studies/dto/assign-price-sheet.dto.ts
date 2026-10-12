@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Min,
 } from 'class-validator';
 
 export class AssignPriceSheetDto {
@@ -14,6 +15,7 @@ export class AssignPriceSheetDto {
   priceSheetId!: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
   price!: number;
 
   @IsBoolean()

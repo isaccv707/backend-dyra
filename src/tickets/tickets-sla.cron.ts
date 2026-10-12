@@ -8,9 +8,6 @@ export class TicketsSlaCron {
 
   constructor(private readonly ticketsService: TicketsService) {}
 
-  // Corre cada hora: delega en TicketsService.notifyOverdueTickets, que
-  // encuentra los tickets con SLA vencido aún no notificados, avisa y marca
-  // overdueNotifiedAt para no repetir el aviso en la siguiente corrida.
   @Cron(CronExpression.EVERY_HOUR)
   async handleOverdueTickets() {
     const { notified } = await this.ticketsService.notifyOverdueTickets();

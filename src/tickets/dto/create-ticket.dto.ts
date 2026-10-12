@@ -27,8 +27,6 @@ export class CreateTicketDto {
   @IsEnum(Category)
   category: Category;
 
-  // Debe pertenecer a la misma `category` — validado en TicketsService
-  // (assertSubcategoryBelongsToCategory), no a nivel DB.
   @IsOptional()
   @IsUUID()
   subcategoryId?: string;

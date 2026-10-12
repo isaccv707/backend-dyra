@@ -1,7 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { SERVICES } from '../constants/services';
 
-/** Debe ejecutarse después de seedBranches: cada servicio requiere un branchId. */
 export async function seedServices(prisma: PrismaClient) {
   const branches = await prisma.branch.findMany({ select: { id: true, name: true } });
   const branchIdByName = new Map(branches.map((b) => [b.name, b.id]));
@@ -14,8 +13,6 @@ export async function seedServices(prisma: PrismaClient) {
       );
     }
 
-    // Vinculamos el servicio a la hoja pública de su sucursal (si existe) para
-    // que los estudios sembrados en seedStudies muestren precio de inmediato.
     const publicPriceSheet = await prisma.priceSheets.findFirst({
       where: { branchId, isPublic: true },
       select: { id: true },

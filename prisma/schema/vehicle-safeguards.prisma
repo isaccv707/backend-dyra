@@ -1,0 +1,68 @@
+enum SafeguardVehicleInspectionSection {
+  DOCUMENTS
+  BODY
+}
+
+model VehicleSafeguard {
+  id String @id @default(uuid())
+
+  employeeId String   @map("employee_id")
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  vehicleId String      @map("vehicle_id")
+  vehicle   VehicleItem @relation(fields: [vehicleId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation("VehicleSafeguardBranch", fields: [branchId], references: [id])
+
+  employeeName String  @map("employee_name")
+  position     String?
+  area         String
+
+  brand        String
+  model        String
+  mileage      String?
+  plateNumber  String?                 @map("plate_number")
+  fuelType     String?                 @map("fuel_type")
+  transmission String?
+  condition    SafeguardConditionState
+
+  usageType SafeguardUsageType @map("usage_type")
+  startDate DateTime?          @map("start_date")
+  endDate   DateTime?          @map("end_date")
+
+  createdByUserId String? @map("created_by_user_id")
+  createdByUser   User?   @relation("VehicleSafeguardCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  supersededAt DateTime? @map("superseded_at")
+
+  signedAt               DateTime? @map("signed_at")
+  signedByUserId         String?   @map("signed_by_user_id")
+  signedByUser           User?     @relation("VehicleSafeguardSignedBy", fields: [signedByUserId], references: [id], onDelete: SetNull)
+  signedDocumentPublicId String?   @map("signed_document_public_id")
+
+  inspectionItems VehicleSafeguardInspectionItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([branchId])
+  @@index([vehicleId])
+  @@index([employeeId, supersededAt])
+  @@map("vehicle_safeguards")
+}
+
+model VehicleSafeguardInspectionItem {
+  id String @id @default(uuid())
+
+  vehicleSafeguardId String           @map("vehicle_safeguard_id")
+  vehicleSafeguard   VehicleSafeguard @relation(fields: [vehicleSafeguardId], references: [id], onDelete: Cascade)
+
+  section      SafeguardVehicleInspectionSection
+  itemKey      String                            @map("item_key")
+  state        String?
+  observations String?                           @db.Text
+
+  @@unique([vehicleSafeguardId, itemKey])
+  @@map("vehicle_safeguard_inspection_items")
+}

@@ -1,4 +1,3 @@
-// quotations.service.ts
 import {
   BadRequestException,
   Injectable,
@@ -31,9 +30,11 @@ import {
   Totals,
 } from './interfaces/quotations-interfaces';
 import { QuotationPdfRenderer } from './pdf/quotation-pdf.renderer';
+import {
+  loadPanelSnapshots,
+  PanelComponentSnapshot,
+} from 'src/studies/utils/panel-tree.util';
 
-// Subtítulo del documento (no es dato de la sucursal, es la etiqueta fija
-// del tipo de documento).
 const QUOTATION_SUBTITLE = 'Cotización de estudios de laboratorio';
 
 const QUOTATION_ALLOWED_FIELDS = [
@@ -79,6 +80,7 @@ type ResolvedQuotationItem = {
   price: number;
   quantity: number;
   studyId: string | null;
+  components?: PanelComponentSnapshot[];
 };
 
 @Injectable()
@@ -88,14 +90,10 @@ export class QuotationsService {
     private readonly pdfRenderer: QuotationPdfRenderer,
   ) {}
 
-  // Flujo público (usuarios de la página web, sin login): solo puede
-  // cotizar contra la hoja de precios pública de la sucursal.
   async create(dto: CreateQuotationDto): Promise<QuotationWithItems> {
     return this.createQuotation(dto, { requirePublicPriceSheet: true });
   }
 
-  // Flujo admin (staff autenticado con `quotations:create`): puede cotizar
-  // contra cualquier hoja de precios activa de una sucursal a la que tenga acceso.
   async createForAdmin(
     dto: CreateQuotationDto,
     user: BranchScopedUser,
@@ -157,14 +155,6 @@ export class QuotationsService {
     return { ...quotation, branch };
   }
 
-  // ===========================
-  // RESOLUCIÓN DE PRECIOS
-  // ===========================
-  // Los estudios de catálogo (con `id`) nunca confían en el precio/nombre
-  // enviado por el cliente: se resuelven contra el StudyOnPriceSheet de la
-  // hoja de precios (ya validada en `createQuotation`) para evitar que la
-  // cotización se manipule desde el frontend. Solo las líneas ad-hoc (sin
-  // `id`, fuera de catálogo) usan lo enviado.
   private async resolveQuotationItems(
     dto: CreateQuotationDto,
   ): Promise<ResolvedQuotationItem[]> {
@@ -182,6 +172,7 @@ export class QuotationsService {
       string,
       { name: string; code: string; price: Prisma.Decimal }
     >();
+    let componentsByPanelId = new Map<string, PanelComponentSnapshot[]>();
 
     if (catalogStudyIds.length > 0) {
       const entries = await this.prisma.studyOnPriceSheet.findMany({
@@ -189,8 +180,31 @@ export class QuotationsService {
           studyId: { in: catalogStudyIds },
           priceSheetId: dto.priceSheetId,
         },
-        include: { study: { select: { name: true, code: true } } },
+        include: {
+          study: {
+            select: {
+              name: true,
+              code: true,
+              isPanel: true,
+              isActive: true,
+            },
+          },
+        },
       });
+
+      const inactive = entries.filter((entry) => !entry.study.isActive);
+      if (inactive.length > 0) {
+        throw new BadRequestException(
+          `Los siguientes estudios están desactivados y no se pueden cotizar: ${inactive
+            .map((entry) => entry.study.code)
+            .join(', ')}`,
+        );
+      }
+
+      componentsByPanelId = await loadPanelSnapshots(
+        this.prisma,
+        entries.filter((entry) => entry.study.isPanel).map((e) => e.studyId),
+      );
 
       priceByStudyId = new Map(
         entries.map((entry) => [
@@ -220,6 +234,7 @@ export class QuotationsService {
         price: resolved ? Number(resolved.price) : study.price,
         quantity: study.quantity,
         studyId: study.id ?? null,
+        components: study.id ? componentsByPanelId.get(study.id) : undefined,
       };
     });
   }
@@ -319,14 +334,14 @@ export class QuotationsService {
         code: item.code,
         price: Number(item.price),
         quantity: item.quantity,
+        components: Array.isArray(item.components)
+          ? (item.components as PanelComponentSnapshot[])
+          : [],
       })),
       company: this.buildCompanyInfo(quotation.branch),
     };
   }
 
-  // La cotización pertenece a una sola sucursal (branchId requerido); la
-  // identidad mostrada en el PDF es siempre la de esa sucursal, no un dato
-  // de "empresa" global.
   private buildCompanyInfo(branch: QuotationBranch): CompanyInfo {
     return {
       name: branch.name,
@@ -347,12 +362,6 @@ export class QuotationsService {
       .join(', ');
   }
 
-  // ===========================
-  // CÁLCULOS Y METADATOS
-  // ===========================
-  // Los precios cargados en las hojas de precios ya son el total con IVA
-  // incluido (16%), no el subtotal antes de impuesto. El subtotal e IVA se
-  // desglosan a partir de ese total: subtotal = total / 1.16.
   private calculateTotals(
     studies: { price: number; quantity: number }[],
   ): Totals {

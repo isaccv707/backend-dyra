@@ -8,8 +8,6 @@ export class FindDeviceCatalogDto extends PaginatedQueryDto {
   @IsEnum(DeviceType)
   type?: DeviceType;
 
-  // Por defecto el listado solo muestra catálogos activos (isActive=true);
-  // pasar true incluye también los archivados, para poder reactivarlos.
   @IsOptional()
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()

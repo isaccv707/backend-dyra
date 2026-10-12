@@ -45,7 +45,7 @@ This document provides context and guidelines for Gemini CLI when working on the
 - `npm run test:e2e`: Run end-to-end tests.
 
 ## Development Guidelines
-- When adding a new entity, update `prisma/schema.prisma`, run `npx prisma generate`, and create a corresponding module in `src/`.
+- When adding a new entity, update the matching module file in `prisma/schema/`, run `npx prisma generate`, and create a corresponding module in `src/`.
 - Ensure all new controllers follow the `/api` prefix and include proper validation via DTOs.
 - For business logic involving laboratory studies or quotations, check `src/studies/` and `src/quotations/`.
 - Maintain the existing pattern of separating entities, DTOs, and services within each module.

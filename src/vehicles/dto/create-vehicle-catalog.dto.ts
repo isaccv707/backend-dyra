@@ -13,8 +13,6 @@ export class CreateVehicleCatalogDto {
   @IsNotEmpty()
   model!: string;
 
-  // Archivado en vez de borrado: false lo oculta del listado por defecto
-  // (GET /vehicle-catalog) sin afectar los VehicleItem que ya lo referencian.
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

@@ -161,56 +161,63 @@ export class TicketsAnalyticsService {
     user: RequestUser,
   ): Promise<TicketsByAssigneeRow[]> {
     const where = this.buildPrismaWhere(dto, user);
+    const unassignedWhere: Prisma.TicketWhereInput = {
+      ...where,
+      assignees: { none: {} },
+    };
 
-    const grouped = await this.prisma.ticket.groupBy({
-      by: ['assignedToId'],
-      where,
-      _count: { _all: true },
+    const [grouped, reopenCounts, unassigned, unassignedReopened, durations] =
+      await Promise.all([
+        this.prisma.ticketAssignee.groupBy({
+          by: ['userId'],
+          where: { ticket: where },
+          _count: { _all: true },
+        }),
+        this.prisma.ticketAssignee.groupBy({
+          by: ['userId'],
+          where: { ticket: { ...where, reopenedCount: { gt: 0 } } },
+          _count: { _all: true },
+        }),
+        this.prisma.ticket.count({ where: unassignedWhere }),
+        this.prisma.ticket.count({
+          where: { ...unassignedWhere, reopenedCount: { gt: 0 } },
+        }),
+        this.getAvgResolutionByAssignee(dto, user),
+      ]);
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: grouped.map((g) => g.userId) } },
+      select: { id: true, name: true },
     });
-    if (grouped.length === 0) return [];
-
-    const assigneeIds = grouped
-      .map((g) => g.assignedToId)
-      .filter((id): id is string => !!id);
-
-    const [users, durations, reopenCounts] = await Promise.all([
-      this.prisma.user.findMany({
-        where: { id: { in: assigneeIds } },
-        select: { id: true, name: true },
-      }),
-      this.getAvgResolutionByGroup('assigned_to_id', dto, user),
-      this.prisma.ticket.groupBy({
-        by: ['assignedToId'],
-        where: { ...where, reopenedCount: { gt: 0 } },
-        _count: { _all: true },
-      }),
-    ]);
 
     const userMap = new Map(users.map((u) => [u.id, u]));
     const durationMap = new Map(durations.map((d) => [d.groupKey, d]));
     const reopenMap = new Map(
-      reopenCounts.map((r) => [r.assignedToId, r._count._all]),
+      reopenCounts.map((r) => [r.userId, r._count._all]),
     );
 
-    return grouped
-      .map((g) => ({
-        assigneeId: g.assignedToId,
-        name: g.assignedToId
-          ? (userMap.get(g.assignedToId)?.name ?? 'Usuario eliminado')
-          : 'Sin asignar',
-        total: g._count._all,
-        reopenedCount: reopenMap.get(g.assignedToId) ?? 0,
-        avgResolutionSeconds: g.assignedToId
-          ? (durationMap.get(g.assignedToId)?.avgResolutionSeconds ?? null)
-          : null,
-      }))
-      .sort((a, b) => b.total - a.total);
+    const rows: TicketsByAssigneeRow[] = grouped.map((g) => ({
+      assigneeId: g.userId,
+      name: userMap.get(g.userId)?.name ?? 'Usuario eliminado',
+      total: g._count._all,
+      reopenedCount: reopenMap.get(g.userId) ?? 0,
+      avgResolutionSeconds:
+        durationMap.get(g.userId)?.avgResolutionSeconds ?? null,
+    }));
+
+    if (unassigned > 0) {
+      rows.push({
+        assigneeId: null,
+        name: 'Sin asignar',
+        total: unassigned,
+        reopenedCount: unassignedReopened,
+        avgResolutionSeconds: null,
+      });
+    }
+
+    return rows.sort((a, b) => b.total - a.total);
   }
 
-  // Desglose por Category y, dentro de cada una, por subcategoría — p. ej.
-  // dentro de COGNITI: cuántos tickets son "Crear cliente" vs. "Crear
-  // parámetro" vs. "Actualizar parámetro" vs. "Actualizar precio de
-  // parámetro". Responde directamente "qué se levanta más".
   async getByCategory(
     dto: FindTicketAnalyticsDto,
     user: RequestUser,
@@ -265,11 +272,6 @@ export class TicketsAnalyticsService {
       .sort((a, b) => b.count - a.count);
   }
 
-  // Serie temporal de tickets creados vs. resueltos por bucket (día/semana/
-  // mes). "Resueltos" se agrupa por resolved_at (cuándo se cerró), no por
-  // created_at, aunque el rango de fechas del dto se sigue evaluando sobre
-  // created_at — así se compara, en el mismo periodo, cuántos entraron
-  // contra cuántos se resolvieron.
   async getTrend(
     dto: FindTicketTrendDto,
     user: RequestUser,
@@ -340,8 +342,6 @@ export class TicketsAnalyticsService {
     return this.buildXlsxReport(summary, byCategory, byUser);
   }
 
-  // Mismo criterio que QuotationsService/SafeguardsService: el logo se
-  // publica junto al build (dist/assets) o vive en src/assets en dev.
   private resolveLogoPath(): string | null {
     const rootDir = process.cwd();
     const candidatePaths = [
@@ -507,9 +507,6 @@ export class TicketsAnalyticsService {
     };
   }
 
-  // Resuelve el filtro de sucursales efectivo para las consultas $queryRaw
-  // (que no pueden reusar directamente el objeto de Prisma.TicketWhereInput
-  // que arma userBranchFilter). Devuelve null si no hay restricción.
   private resolveEffectiveBranchIds(
     user: RequestUser,
     branchId?: string,
@@ -554,12 +551,8 @@ export class TicketsAnalyticsService {
     return Prisma.sql`WHERE ${Prisma.join(fragments, ' AND ')}`;
   }
 
-  // Genérico: promedio de tiempo de resolución (segundos) agrupado por una
-  // columna fija del modelo tickets. `column` nunca viene del usuario —
-  // siempre uno de los dos literales de las llamadas internas de este
-  // servicio — así que interpolarlo con Prisma.raw es seguro.
   private async getAvgResolutionByGroup(
-    column: 'created_by_id' | 'assigned_to_id',
+    column: 'created_by_id',
     dto: FindTicketAnalyticsDto,
     user: RequestUser,
   ): Promise<
@@ -573,6 +566,29 @@ export class TicketsAnalyticsService {
       FROM tickets
       ${whereSql}
       GROUP BY ${Prisma.raw(column)}
+    `);
+
+    return rows.map((r) => ({
+      groupKey: r.group_key,
+      avgResolutionSeconds: r.avg_resolution_seconds,
+    }));
+  }
+
+  private async getAvgResolutionByAssignee(
+    dto: FindTicketAnalyticsDto,
+    user: RequestUser,
+  ): Promise<
+    { groupKey: string | null; avgResolutionSeconds: number | null }[]
+  > {
+    const whereSql = this.whereSql(this.buildRawWhereFragments(dto, user));
+
+    const rows = await this.prisma.$queryRaw<GroupDurationRow[]>(Prisma.sql`
+      SELECT ta.user_id AS group_key,
+        AVG(EXTRACT(EPOCH FROM (t.resolved_at - t."createdAt"))) AS avg_resolution_seconds
+      FROM tickets t
+      JOIN ticket_assignees ta ON ta.ticket_id = t.id
+      ${whereSql}
+      GROUP BY ta.user_id
     `);
 
     return rows.map((r) => ({

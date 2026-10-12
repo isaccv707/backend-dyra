@@ -1,5 +1,4 @@
-// src/prisma/prisma.service.ts
-import 'dotenv/config';  // 👈 IMPORTANTE: carga .env al inicio
+import 'dotenv/config';
 
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
@@ -12,7 +11,6 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   constructor() {
-    
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL is not defined');
     }
@@ -23,7 +21,16 @@ export class PrismaService
 
     const adapter = new PrismaPg(pool);
 
-    super({ adapter });
+    super({
+      adapter,
+      omit: {
+        study: {
+          legacySection: true,
+          legacySampleType: true,
+          legacyTechnique: true,
+        },
+      },
+    });
   }
 
   async onModuleInit() {

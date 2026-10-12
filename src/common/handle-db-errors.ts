@@ -8,16 +8,27 @@ import {
 import { Prisma } from '@prisma/client';
 import { getUniqueViolationFields } from './utils/unique-violation-fields';
 
+export interface DatabaseErrorMessages {
+  notFound?: string;
+  conflict?: (fields: string[]) => string | undefined;
+  foreignKey?: string;
+}
+
 export const handleDatabaseErrors = (
   error: any,
   entityName: string = 'Record',
+  messages: DatabaseErrorMessages = {},
 ) => {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2025') {
-      throw new NotFoundException(`${entityName} not found`);
+      throw new NotFoundException(
+        messages.notFound ?? `${entityName} not found`,
+      );
     }
     if (error.code === 'P2002') {
       const fields = getUniqueViolationFields(error);
+      const custom = messages.conflict?.(fields);
+      if (custom) throw new ConflictException(custom);
       throw new ConflictException(
         fields.length
           ? `There is already an ${entityName.toLocaleLowerCase()} with that unique value (${fields.join(', ')})`
@@ -26,15 +37,12 @@ export const handleDatabaseErrors = (
     }
     if (error.code === 'P2003') {
       throw new BadRequestException(
-        `Cannot delete ${entityName} because it has related records (e.g., posts)`,
+        messages.foreignKey ??
+          `Cannot delete ${entityName} because it has related records (e.g., posts)`,
       );
     }
   }
 
-  // Errores intencionales (BadRequestException, NotFoundException, etc.) lanzados
-  // dentro del try/catch -p. ej. validaciones de negocio dentro de una
-  // transacción de Prisma- deben propagarse tal cual; no son errores de base
-  // de datos inesperados y no deben convertirse en un 500 genérico.
   if (error instanceof HttpException) {
     throw error;
   }

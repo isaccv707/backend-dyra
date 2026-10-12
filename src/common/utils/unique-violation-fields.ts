@@ -1,7 +1,5 @@
 import { Prisma } from '@prisma/client';
 
-// Campos que violaron el unique de un P2002. Prisma 7 + adapter-pg ya no
-// llena meta.target: los reporta en meta.driverAdapterError.cause.constraint.
 export const getUniqueViolationFields = (
   error: Prisma.PrismaClientKnownRequestError,
 ): string[] => {

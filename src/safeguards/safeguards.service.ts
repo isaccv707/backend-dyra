@@ -55,10 +55,6 @@ type SafeguardWithDetails = Prisma.SafeguardGetPayload<{
   include: typeof SAFEGUARD_INCLUDE;
 }>;
 
-// Todo lo que NO vive en DeviceItem: términos de la asignación (usageType/
-// fechas) y accesorios de celular sin identificador propio, capturados al
-// momento de generar el resguardo. Marca/modelo/serie/condición/
-// observaciones siempre se leen en vivo del DeviceItem correspondiente.
 export interface CreateFromEmployeeDevicesInput {
   usageType?: SafeguardUsageType;
   startDate?: Date;
@@ -75,25 +71,6 @@ export class SafeguardsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  // ===========================
-  // Generación desde inventario
-  // ===========================
-
-  // Punto central: arma la VIGENTE responsiva del empleado (supersededAt:
-  // null) a partir de lo que tiene ASSIGNED en DeviceItem en este momento.
-  // Marca/modelo/serie/placa/condición/observaciones se leen en vivo del
-  // DeviceItem — nunca se piden ni se heredan de una versión previa, porque
-  // son datos permanentes del equipo, no del momento de la firma. Los
-  // "Accesorios incluidos" (monitor/teclado/mouse) también se recalculan en
-  // vivo.
-  // `input.inspectionItems`/`input.mobileAccessories` sí son datos de la
-  // firma (no viven en DeviceItem): si se omiten, se heredan de la sección
-  // actual de ESE MISMO deviceId dentro de la responsiva vigente del
-  // empleado ("carry-forward") — si el vehículo/celular cambió, no hay nada
-  // que heredar y hay que capturarlos de nuevo.
-  // Si ya existía una vigente, se marca supersededAt (queda intacta como
-  // evidencia histórica de lo que se pudo haber firmado) y se crea una fila
-  // nueva — nunca se sobreescribe ni se le borran sus secciones.
   async createFromEmployeeDevices(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -150,8 +127,6 @@ export class SafeguardsService {
       ? this.buildMobileSection(mobileDevice, existing, input.mobileAccessories)
       : undefined;
 
-    // Si ya había una vigente, se cierra (queda intacta con sus secciones,
-    // es evidencia histórica) y se crea una fila nueva — nunca se sobreescribe.
     if (existing) {
       await tx.safeguard.update({
         where: { id: existing.id },
@@ -180,10 +155,6 @@ export class SafeguardsService {
       include: SAFEGUARD_INCLUDE,
     });
 
-    // La versión nueva nunca hereda la firma de la anterior: si el contenido
-    // cambió, hay que volver a firmar. hasSignedResponsibility es un flag
-    // denormalizado en Employee que solo esta clase mantiene en sync (ver
-    // también sign()); ya no se togglea a mano desde fuera.
     await tx.employee.update({
       where: { id: employeeId },
       data: { hasSignedResponsibility: false },
@@ -281,9 +252,6 @@ export class SafeguardsService {
     }
   }
 
-  // Cierra la responsiva vigente del empleado sin generar una nueva — se usa
-  // al hacer offboard (el empleado ya no tiene equipo asignado, así que no
-  // hay contenido para una versión nueva).
   async closeCurrentForEmployee(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -294,9 +262,6 @@ export class SafeguardsService {
     });
   }
 
-  // Confirma la firma de la versión VIGENTE de un resguardo, con o sin
-  // documento adjunto (signedDocumentPublicId). Es la única forma soportada
-  // de marcar Employee.hasSignedResponsibility en true.
   async sign(
     id: string,
     dto: SignSafeguardDto,
@@ -348,10 +313,6 @@ export class SafeguardsService {
     );
   }
 
-  // Firma los parámetros para que el frontend suba el PDF firmado escaneado
-  // directo a Cloudinary (carpeta "safeguards", prefijo "device-" para no
-  // chocar con los public_id de resguardos de vehículo). El public_id
-  // resultante se manda después a sign().
   async createUploadSignature(id: string, user: BranchScopedUser) {
     const safeguard = await this.findOne(id, user);
 
@@ -373,17 +334,10 @@ export class SafeguardsService {
     this.pdfRenderer.render(doc, data);
   }
 
-  // ===========================
-  // Helpers privados: armado de secciones
-  // ===========================
-
   private async buildComputerSection(
     tx: Prisma.TransactionClient,
     device: Prisma.DeviceItemGetPayload<{ include: { catalog: true } }>,
   ) {
-    // Los accesorios de "Accesorios incluidos" se enlazan a ESTA computadora
-    // por mainDeviceId (no por employeeId) — ver DevicesService (create/
-    // update con mainDeviceId, y el cascade en assign/unassign/retire/traspaso).
     const accessoryDevices = await tx.deviceItem.findMany({
       where: {
         mainDeviceId: device.id,
@@ -422,9 +376,6 @@ export class SafeguardsService {
     existing: SafeguardWithDetails | null,
     mobileAccessoriesInput?: string[],
   ) {
-    // Carry-forward solo si la responsiva vigente ya tenía sección mobile
-    // para ESTE MISMO deviceId — si el celular cambió, no hay nada que
-    // heredar y mobileAccessories se queda vacío hasta que se capture de nuevo.
     let mobileAccessories: string[];
     if (mobileAccessoriesInput) {
       mobileAccessories = mobileAccessoriesInput;
@@ -451,10 +402,6 @@ export class SafeguardsService {
       }),
     };
   }
-
-  // ===========================
-  // Helpers privados: PDF
-  // ===========================
 
   private buildPdfData(safeguard: SafeguardWithDetails): SafeguardPdfData {
     return {

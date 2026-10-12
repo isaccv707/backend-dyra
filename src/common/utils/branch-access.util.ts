@@ -8,10 +8,6 @@ function getUserBranchIds(user: BranchScopedUser): string[] {
   return user.branches?.map((b) => b.id) ?? [];
 }
 
-/**
- * Throws if the user has restricted branches assigned and `branchId` isn't
- * one of them. A user with no branches assigned is global (unrestricted).
- */
 export function assertBranchAccess(
   user: BranchScopedUser,
   branchId?: string | null,
@@ -24,12 +20,6 @@ export function assertBranchAccess(
   }
 }
 
-/**
- * Resolves a Prisma `branchId` filter scoped to the user's assigned branches.
- * - Global user (no branches assigned): uses `branchId` as-is (or no filter).
- * - Branch-restricted user + explicit `branchId`: must be one of their branches.
- * - Branch-restricted user + no `branchId`: defaults to all their branches.
- */
 export function userBranchFilter(user: BranchScopedUser, branchId?: string) {
   const allowedIds = getUserBranchIds(user);
 

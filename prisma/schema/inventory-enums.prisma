@@ -1,0 +1,42 @@
+enum OwnershipType {
+  INTERNAL
+  PROVIDER
+}
+
+enum DeviceStatus {
+  AVAILABLE
+  ASSIGNED
+  IN_TRANSFER
+  MAINTENANCE
+  RETIRED_DISPOSED
+  LOST
+}
+
+enum SafeguardUsageType {
+  TEMPORARY
+  PERMANENT
+}
+
+enum SafeguardConditionState {
+  NEW
+  SEMINUEVO
+}
+
+enum TransferStatus {
+  PENDING
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
+enum MovementType {
+  ENTRY_PURCHASE
+  TRANSFER_OUT
+  TRANSFER_IN
+  ASSIGNMENT
+  UNASSIGNMENT
+  UNLINK
+  MAINTENANCE
+  DISPOSAL
+}

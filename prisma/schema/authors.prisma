@@ -1,0 +1,20 @@
+model Author {
+  id      String  @id @default(uuid())
+  name    String
+  nameKey String
+  avatar  String?
+  bio     String?
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  posts Post[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@unique([branchId, nameKey])
+  @@index([branchId])
+  @@map("authors")
+}

@@ -104,11 +104,6 @@ export class EmployeesService {
     }
   }
 
-  // Baja de un empleado: libera todo su equipo asignado, sin importar quién
-  // lo administre (IT o Flotilla), con historial de movimiento por cada
-  // equipo/vehículo; cierra ambos resguardos vigentes (sin generar uno
-  // nuevo, ya no tiene nada que resguardar) y lo archiva (isActive: false)
-  // en vez de eliminarlo — preserva su historial de resguardos.
   async offboard(id: string, user: BranchScopedUser & { id: string }) {
     const employee = await this.findOne(id);
     assertBranchAccess(user, employee.branchId);
@@ -128,10 +123,6 @@ export class EmployeesService {
     const employee = await this.findOne(id);
     assertBranchAccess(user, employee.branchId);
 
-    // Chequeo explícito (con mensaje claro para la UI) en vez de dejar que
-    // truene el FK constraint: un empleado con resguardos (vigentes o
-    // históricos, de IT o de vehículo) no se puede eliminar por integridad
-    // referencial.
     const [safeguardCount, vehicleSafeguardCount] = await Promise.all([
       this.prisma.safeguard.count({ where: { employeeId: id } }),
       this.prisma.vehicleSafeguard.count({ where: { employeeId: id } }),
@@ -145,9 +136,6 @@ export class EmployeesService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Runs before the delete and touches `status` explicitly: the FK's
-        // onDelete: SetNull only nulls employeeId once the row is gone, it
-        // has no notion of the `status` enum, so this can't be done after.
         await tx.deviceItem.updateMany({
           where: { employeeId: id },
           data: { employeeId: null, status: 'AVAILABLE' },

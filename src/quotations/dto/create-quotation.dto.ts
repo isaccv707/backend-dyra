@@ -27,10 +27,6 @@ export class SelectedStudyDto {
 }
 
 export class CreateQuotationDto {
-  // @IsString()
-  // @IsOptional()
-  // id: string;
-
   @IsString()
   @IsNotEmpty()
   clientType: string;
@@ -47,7 +43,6 @@ export class CreateQuotationDto {
   @IsNotEmpty()
   phoneNumber: string;
 
-  // @IsEmail()
   @IsOptional()
   email: string;
 

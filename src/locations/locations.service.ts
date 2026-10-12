@@ -98,8 +98,6 @@ export class LocationsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Same reasoning as EmployeesService.remove(): SetNull won't touch
-        // `status`, so it must be reset explicitly before the row is deleted.
         await tx.deviceItem.updateMany({
           where: { locationId: id },
           data: { locationId: null, status: 'AVAILABLE' },

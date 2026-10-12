@@ -52,7 +52,6 @@ export class CreateServiceDto {
   name!: string;
 
   @IsString()
-  // @IsNotEmpty()
   @IsOptional()
   slug?: string;
 

@@ -1,25 +1,19 @@
-// ─── Permissions ──────────────────────────────────────────────────────────────
-
 export const PERMISSIONS = [
-  // Authors
   { action: 'authors:create', description: 'Crear autores' },
   { action: 'authors:read', description: 'Leer autores' },
   { action: 'authors:update', description: 'Actualizar autores' },
   { action: 'authors:delete', description: 'Eliminar autores' },
 
-  // Banners
   { action: 'banners:create', description: 'Crear banners' },
   { action: 'banners:read', description: 'Leer banners' },
   { action: 'banners:update', description: 'Actualizar banners' },
   { action: 'banners:delete', description: 'Eliminar banners' },
 
-  // Branches
   { action: 'branches:create', description: 'Crear sucursales' },
   { action: 'branches:read', description: 'Leer sucursales' },
   { action: 'branches:update', description: 'Actualizar sucursales' },
   { action: 'branches:delete', description: 'Eliminar sucursales' },
 
-  // Device catalog
   {
     action: 'device-catalog:create',
     description: 'Crear modelos de catálogo de equipos',
@@ -34,7 +28,6 @@ export const PERMISSIONS = [
     description: 'Eliminar catálogo de equipos',
   },
 
-  // Devices
   {
     action: 'devices:create',
     description: 'Crear equipos (alta de inventario)',
@@ -47,25 +40,21 @@ export const PERMISSIONS = [
   },
   { action: 'devices:delete', description: 'Eliminar equipos de inventario' },
 
-  // Employees
   { action: 'employees:create', description: 'Crear empleados' },
   { action: 'employees:read', description: 'Leer empleados' },
   { action: 'employees:update', description: 'Actualizar empleados' },
   { action: 'employees:delete', description: 'Eliminar empleados' },
 
-  // Locations
   { action: 'locations:create', description: 'Crear ubicaciones' },
   { action: 'locations:read', description: 'Leer ubicaciones' },
   { action: 'locations:update', description: 'Actualizar ubicaciones' },
   { action: 'locations:delete', description: 'Eliminar ubicaciones' },
 
-  // Posts
   { action: 'posts:create', description: 'Crear publicaciones' },
   { action: 'posts:read', description: 'Leer publicaciones' },
   { action: 'posts:update', description: 'Actualizar publicaciones' },
   { action: 'posts:delete', description: 'Eliminar publicaciones' },
 
-  // Price sheets
   { action: 'price-sheets:create', description: 'Crear listas de precios' },
   { action: 'price-sheets:read', description: 'Leer listas de precios' },
   {
@@ -74,13 +63,11 @@ export const PERMISSIONS = [
   },
   { action: 'price-sheets:delete', description: 'Eliminar listas de precios' },
 
-  // Quotations
   { action: 'quotations:create', description: 'Crear cotizaciones' },
   { action: 'quotations:read', description: 'Leer cotizaciones' },
   { action: 'quotations:update', description: 'Actualizar cotizaciones' },
   { action: 'quotations:delete', description: 'Eliminar cotizaciones' },
 
-  // Safeguards
   { action: 'safeguards:create', description: 'Crear resguardos de equipo' },
   { action: 'safeguards:read', description: 'Leer resguardos de equipo' },
   {
@@ -89,31 +76,57 @@ export const PERMISSIONS = [
   },
   { action: 'safeguards:delete', description: 'Eliminar resguardos de equipo' },
 
-  // Reviews
   { action: 'reviews:create', description: 'Crear reseñas' },
   { action: 'reviews:read', description: 'Leer reseñas' },
   { action: 'reviews:update', description: 'Actualizar reseñas' },
   { action: 'reviews:delete', description: 'Eliminar reseñas' },
 
-  // Services
   { action: 'services:create', description: 'Crear servicios' },
   { action: 'services:read', description: 'Leer servicios' },
   { action: 'services:update', description: 'Actualizar servicios' },
   { action: 'services:delete', description: 'Eliminar servicios' },
 
-  // States
   { action: 'states:create', description: 'Crear estados' },
   { action: 'states:read', description: 'Leer estados' },
   { action: 'states:update', description: 'Actualizar estados' },
   { action: 'states:delete', description: 'Eliminar estados' },
 
-  // Studies
   { action: 'studies:create', description: 'Crear estudios' },
   { action: 'studies:read', description: 'Leer estudios' },
   { action: 'studies:update', description: 'Actualizar estudios' },
   { action: 'studies:delete', description: 'Eliminar estudios' },
 
-  // Tickets
+  {
+    action: 'study-sections:create',
+    description: 'Crear secciones de estudio',
+  },
+  { action: 'study-sections:read', description: 'Leer secciones de estudio' },
+  {
+    action: 'study-sections:update',
+    description: 'Actualizar secciones de estudio',
+  },
+  {
+    action: 'study-sections:delete',
+    description: 'Eliminar secciones de estudio',
+  },
+  { action: 'sample-types:create', description: 'Crear tipos de muestra' },
+  { action: 'sample-types:read', description: 'Leer tipos de muestra' },
+  { action: 'sample-types:update', description: 'Actualizar tipos de muestra' },
+  { action: 'sample-types:delete', description: 'Eliminar tipos de muestra' },
+  {
+    action: 'study-techniques:create',
+    description: 'Crear técnicas de estudio',
+  },
+  { action: 'study-techniques:read', description: 'Leer técnicas de estudio' },
+  {
+    action: 'study-techniques:update',
+    description: 'Actualizar técnicas de estudio',
+  },
+  {
+    action: 'study-techniques:delete',
+    description: 'Eliminar técnicas de estudio',
+  },
+
   {
     action: 'tickets:create',
     description:
@@ -125,7 +138,6 @@ export const PERMISSIONS = [
       'Cambiar estado/prioridad, asignar tickets y unirse a la sala de tiempo real de TI',
   },
 
-  // Transfers
   {
     action: 'transfers:create',
     description: 'Crear solicitudes de transferencia de equipos',
@@ -136,7 +148,6 @@ export const PERMISSIONS = [
     description: 'Iniciar, recibir, cancelar o rechazar transferencias',
   },
 
-  // Vehicle catalog
   {
     action: 'vehicle-catalog:create',
     description: 'Crear modelos de catálogo de vehículos',
@@ -151,7 +162,6 @@ export const PERMISSIONS = [
     description: 'Eliminar catálogo de vehículos',
   },
 
-  // Vehicles
   {
     action: 'vehicles:create',
     description: 'Crear vehículos (alta de inventario)',
@@ -167,7 +177,6 @@ export const PERMISSIONS = [
     description: 'Eliminar vehículos de inventario',
   },
 
-  // Vehicle transfers
   {
     action: 'vehicle-transfers:create',
     description: 'Crear solicitudes de transferencia de vehículos',
@@ -182,7 +191,6 @@ export const PERMISSIONS = [
       'Iniciar, recibir, cancelar o rechazar transferencias de vehículos',
   },
 
-  // Vehicle safeguards
   {
     action: 'vehicle-safeguards:create',
     description: 'Crear resguardos de vehículo',
@@ -201,26 +209,21 @@ export const PERMISSIONS = [
     description: 'Eliminar resguardos de vehículo',
   },
 
-  // Users
   { action: 'users:create', description: 'Crear usuarios' },
   { action: 'users:read', description: 'Leer usuarios' },
   { action: 'users:update', description: 'Actualizar usuarios' },
   { action: 'users:delete', description: 'Eliminar usuarios' },
 
-  // Roles
   { action: 'roles:create', description: 'Crear roles' },
   { action: 'roles:read', description: 'Leer roles' },
   { action: 'roles:update', description: 'Actualizar roles' },
   { action: 'roles:delete', description: 'Eliminar roles' },
 
-  // Permissions
   { action: 'permissions:create', description: 'Crear permisos' },
   { action: 'permissions:read', description: 'Leer permisos' },
   { action: 'permissions:update', description: 'Actualizar permisos' },
   { action: 'permissions:delete', description: 'Eliminar permisos' },
 ];
-
-// ─── Roles ─────────────────────────────────────────────────────────────────────
 
 const USUARIO_EXCLUDED_MODULES = ['users', 'roles', 'permissions'];
 
@@ -232,9 +235,6 @@ const USUARIO_PERMISSIONS = [
         p.action.startsWith(`${module}:`),
       ),
   ).map((p) => p.action),
-  // Levantar tickets de soporte no es un ":read" de ningún módulo, así que
-  // no cae en el filtro de arriba — se agrega a mano para que cualquier
-  // usuario del rol base pueda reportar un ticket de TI.
   'tickets:create',
 ];
 

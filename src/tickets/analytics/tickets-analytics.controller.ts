@@ -57,7 +57,8 @@ export class TicketsAnalyticsController {
   @ApiOperation({
     summary: 'Tickets por responsable asignado',
     description:
-      'Carga de trabajo de cada técnico de TI: tickets asignados, tickets reabiertos y tiempo promedio de resolución. Requiere tickets:update.',
+      'Carga de trabajo de cada usuario asignado: tickets asignados, tickets reabiertos y tiempo promedio de resolución. Un ticket con ' +
+      'varios asignados cuenta para cada uno de ellos; los tickets sin asignados aparecen como "Sin asignar". Requiere tickets:update.',
   })
   @ApiResponse({
     status: 200,

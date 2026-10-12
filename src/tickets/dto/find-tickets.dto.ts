@@ -1,4 +1,5 @@
-import { IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEnum, IsOptional, IsUUID } from 'class-validator';
 import { Category, TicketPriority, TicketStatus } from '@prisma/client';
 import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
@@ -21,7 +22,12 @@ export class FindTicketsDto extends PaginatedQueryDto {
 
   @IsOptional()
   @IsUUID()
-  assignedToId?: string;
+  assigneeId?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  assignedToMe?: boolean;
 
   @IsOptional()
   @IsUUID()

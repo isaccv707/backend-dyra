@@ -8,8 +8,6 @@ import {
 
 const ROW_HEIGHT = 18;
 
-// El formato físico (ADM.F.00) siempre trae "Página: 1 de 2" impreso igual
-// en ambas páginas — no es un contador dinámico, se replica tal cual.
 const PAGE_LABEL = '1 de 1';
 const REVISION_LABEL = '1';
 const ELABORATED_LABEL = 'Julio de 2025';
@@ -49,9 +47,6 @@ export class SafeguardPdfRenderer {
     );
   }
 
-  // ===========================
-  // ENCABEZADO
-  // ===========================
   private drawHeader(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -67,9 +62,6 @@ export class SafeguardPdfRenderer {
     });
   }
 
-  // ===========================
-  // GRILLA: datos del empleado + herramientas a asignar + uso
-  // ===========================
   private drawInfoGrid(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,
@@ -110,9 +102,6 @@ export class SafeguardPdfRenderer {
     return cursor + 10;
   }
 
-  // ===========================
-  // SECCIONES DE EQUIPO
-  // ===========================
   private drawComputerSection(
     doc: PDFKit.PDFDocument,
     layout: PdfLayout,

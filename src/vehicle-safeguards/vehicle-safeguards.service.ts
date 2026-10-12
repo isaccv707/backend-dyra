@@ -64,8 +64,6 @@ interface InspectionItemCreateInput {
   observations?: string | null;
 }
 
-// Términos de la asignación (usageType/fechas) y checklist, capturados al
-// momento de generar el resguardo — nunca viven en VehicleItem.
 export interface CreateFromEmployeeVehicleInput {
   usageType?: SafeguardUsageType;
   startDate?: Date;
@@ -82,16 +80,6 @@ export class VehicleSafeguardsService {
     private readonly cloudinaryService: CloudinaryService,
   ) {}
 
-  // ===========================
-  // Generación desde inventario
-  // ===========================
-
-  // Arma la VIGENTE responsiva de vehículo del empleado (supersededAt: null)
-  // a partir del VehicleItem que tiene ASSIGNED en este momento. Marca/
-  // modelo/placa/condición se leen en vivo — nunca se piden ni se heredan de
-  // una versión previa. Si ya existía una vigente, se marca supersededAt
-  // (queda intacta como evidencia histórica) y se crea una fila nueva —
-  // nunca se sobreescribe ni se le borra su checklist.
   async createFromEmployeeVehicle(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -126,8 +114,6 @@ export class VehicleSafeguardsService {
     const startDate = input.startDate ?? existing?.startDate ?? null;
     const endDate = input.endDate ?? existing?.endDate ?? null;
 
-    // Carry-forward solo si la responsiva vigente ya era de ESTE MISMO
-    // vehicleId — si el vehículo cambió, hay que capturar el checklist de nuevo.
     let inspectionItemsData: InspectionItemCreateInput[];
     if (input.inspectionItems) {
       inspectionItemsData = this.resolveInspectionItems(input.inspectionItems);
@@ -265,8 +251,6 @@ export class VehicleSafeguardsService {
     }
   }
 
-  // Cierra la responsiva vigente del empleado sin generar una nueva — se usa
-  // al hacer offboard (el empleado ya no tiene vehículo asignado).
   async closeCurrentForEmployee(
     tx: Prisma.TransactionClient,
     employeeId: string,
@@ -277,9 +261,6 @@ export class VehicleSafeguardsService {
     });
   }
 
-  // Confirma la firma de la versión VIGENTE, con o sin documento adjunto.
-  // A diferencia de Safeguard (IT), esto NO toca Employee.hasSignedResponsibility
-  // — es un documento totalmente independiente, con su propia evidencia.
   async sign(
     id: string,
     dto: SignVehicleSafeguardDto,
@@ -322,10 +303,6 @@ export class VehicleSafeguardsService {
     );
   }
 
-  // Firma los parámetros para que el frontend suba el PDF firmado escaneado
-  // directo a Cloudinary (carpeta "safeguards", prefijo "vehicle-" para no
-  // chocar con los public_id de resguardos de equipo). El public_id
-  // resultante se manda después a sign().
   async createUploadSignature(id: string, user: BranchScopedUser) {
     const safeguard = await this.findOne(id, user);
 
@@ -346,10 +323,6 @@ export class VehicleSafeguardsService {
     const data = this.buildPdfData(safeguard);
     this.pdfRenderer.render(doc, data);
   }
-
-  // ===========================
-  // Helpers privados
-  // ===========================
 
   private resolveInspectionItems(items?: VehicleSafeguardInspectionItemDto[]) {
     if (!items?.length) return [];

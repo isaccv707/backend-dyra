@@ -1,14 +1,3 @@
-// One-off script. Run after the additive migration that adds
-// PriceSheets.branchId (nullable) and PriceSheets.isPublic, and BEFORE the
-// closing migration that drops Branch.priceSheetId and makes
-// PriceSheets.branchId required.
-//
-// For every Branch that still has a legacy price_sheet_id: the first branch
-// to claim a given sheet keeps it (branchId = that branch, isPublic = true).
-// Any additional branch sharing the same sheet gets a duplicate of it
-// (including its StudyOnPriceSheet rows), also marked isPublic = true.
-//
-// Usage: npx ts-node prisma/scripts/backfill-price-sheet-branch.ts
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';

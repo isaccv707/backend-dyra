@@ -1,9 +1,15 @@
-// quotations-interfaces.ts
+export interface StudyItemComponent {
+  code: string;
+  name: string;
+  level: number;
+}
+
 export interface StudyItem {
   name: string;
   code: string | null;
   price: number;
   quantity: number;
+  components: StudyItemComponent[];
 }
 
 export interface Totals {
@@ -24,7 +30,7 @@ export interface ClientInfo {
   lastName?: string;
   phoneNumber: string;
   email: string;
-  clientType: string; // ya formateado
+  clientType: string;
 }
 
 export interface CompanyInfo {

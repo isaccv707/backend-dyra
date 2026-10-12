@@ -24,10 +24,6 @@ export interface SignedUploadOptions {
   type?: SignedUploadType;
 }
 
-// Genera URLs de descarga firmadas y con expiración para recursos privados
-// (type: authenticated) subidos a Cloudinary — nunca genera URLs públicas
-// permanentes. El binario nunca pasa por este backend: el frontend sube
-// directo a Cloudinary y solo nos manda el public_id resultante.
 @Injectable()
 export class CloudinaryService {
   private readonly ttlMs = 5 * 60 * 1000;
@@ -52,17 +48,6 @@ export class CloudinaryService {
     return { url, expiresAt };
   }
 
-  // Firma los parámetros de un upload directo a Cloudinary (frontend -> Cloudinary,
-  // el binario nunca pasa por este backend) fijando type/resource_type desde el
-  // servidor — el cliente no puede alterarlos sin invalidar la firma. El upload
-  // resultante debe hacerse a POST https://api.cloudinary.com/v1_1/{cloudName}/{resourceType}/upload
-  // con estos mismos valores (más el archivo) como multipart/form-data.
-  //
-  // Por defecto firma type: 'authenticated' + resource_type: 'raw' (documentos
-  // privados con expiración, p.ej. PDFs firmados de resguardos — ver
-  // getSignedDownloadUrl). Para adjuntos que sí pueden vivir en una URL pública
-  // sin expirar (p.ej. fotos de tickets de soporte), pasa
-  // { type: 'upload', resourceType: 'auto' }.
   generateSignedUploadParams(
     publicId: string,
     options: SignedUploadOptions = {},

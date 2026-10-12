@@ -1,0 +1,37 @@
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roleId String
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  branches          Branch[]
+  createdSafeguards Safeguard[] @relation("SafeguardCreatedBy")
+  signedSafeguards  Safeguard[] @relation("SafeguardSignedBy")
+
+  createdVehicleSafeguards VehicleSafeguard[] @relation("VehicleSafeguardCreatedBy")
+  signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
+
+  createdTickets      Ticket[]             @relation("TicketCreatedBy")
+  ticketAssignments   TicketAssignee[]     @relation("TicketAssigneeUser")
+  ticketAssignmentsBy TicketAssignee[]     @relation("TicketAssigneeAssignedBy")
+  ticketComments      TicketComment[]      @relation("TicketCommentAuthor")
+  ticketNotifications TicketNotification[]
+  ticketEvents        TicketEvent[]        @relation("TicketEventActor")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  email     String
+  otp       String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@map("password_reset_tokens")
+}

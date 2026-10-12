@@ -111,7 +111,6 @@ export class AuthorsService {
     const { branchId, ...rest } = updateAuthorDto;
     const dataToUpdate: Prisma.AuthorUpdateInput = { ...rest };
 
-    // 2. Si viene el nombre, guardamos los valores normalizados en el nuevo objeto
     if (updateAuthorDto.name) {
       dataToUpdate.name = normalizeName(updateAuthorDto.name);
       dataToUpdate.nameKey = normalizeKey(updateAuthorDto.name);

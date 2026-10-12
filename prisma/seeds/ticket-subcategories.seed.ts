@@ -1,9 +1,5 @@
 import { Category, PrismaClient } from '@prisma/client';
 
-// Catálogo inicial de subcategorías por Category — ampliable después vía
-// CRUD (POST/PATCH/DELETE /api/ticket-subcategories, tickets:update) sin
-// necesidad de otro deploy. Categorías sin entradas aquí simplemente
-// arrancan sin subcategorías; Ticket.subcategoryId es opcional.
 const TICKET_SUBCATEGORIES: { category: Category; name: string }[] = [
   { category: 'COGNITI', name: 'Crear cliente' },
   { category: 'COGNITI', name: 'Crear parámetro' },

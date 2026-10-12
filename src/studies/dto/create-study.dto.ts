@@ -2,22 +2,27 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
-  IsLowercase,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsPositive,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { STUDY_MAX_DECIMALS } from '../constants/study-fields.const';
+import { EligiblePatientsDto } from './eligible-patients.dto';
+import { CreateReferenceValueDto } from './reference-value.dto';
 
 export class StudyPriceDto {
   @IsNumber({ maxDecimalPlaces: 2 })
-  // @IsPositive()
+  @Min(0)
   price!: number;
 
   @IsString()
@@ -38,10 +43,14 @@ export class CreateStudyDto {
   name!: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
   @IsOptional()
-  @IsLowercase()
   slug?: string;
 
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
@@ -61,12 +70,20 @@ export class CreateStudyDto {
   @Type(() => StudyPriceDto)
   studyPrices?: StudyPriceDto[];
 
-  @IsString()
-  @IsOptional()
-  @MaxLength(500, {
-    message: 'El tipo de muestra es demasiado largo (máximo 500 caracteres).',
-  })
-  sampleType?: string;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sampleTypeId!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  sectionId!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  techniqueId!: number;
 
   @Type(() => Number)
   @IsInt()
@@ -94,4 +111,38 @@ export class CreateStudyDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  abbreviation?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isPanel?: boolean;
+
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  @IsOptional()
+  units?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(STUDY_MAX_DECIMALS)
+  @IsOptional()
+  decimals?: number;
+
+  @IsOptional()
+  @IsObject()
+  @ValidateNested()
+  @Type(() => EligiblePatientsDto)
+  eligiblePatients?: EligiblePatientsDto;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateReferenceValueDto)
+  referenceValues?: CreateReferenceValueDto[];
 }

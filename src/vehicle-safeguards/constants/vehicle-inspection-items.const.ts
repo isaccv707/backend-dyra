@@ -6,8 +6,6 @@ export interface VehicleInspectionItemDefinition {
   section: SafeguardVehicleInspectionSection;
 }
 
-// Renglones fijos de la tabla "Revisión" del formato ADM.F.00, en el orden
-// impreso en el formato.
 export const VEHICLE_REVISION_ITEMS: Omit<
   VehicleInspectionItemDefinition,
   'section'
@@ -22,9 +20,6 @@ export const VEHICLE_REVISION_ITEMS: Omit<
   { key: 'tarjeta_gasolina', label: 'Tarjeta de gasolina N°' },
 ];
 
-// Renglones fijos de la tabla "Inspección" del formato ADM.F.00. El formato
-// los distribuye en dos columnas visuales; aquí se aplanan a una sola lista
-// ordenada.
 export const VEHICLE_BODY_INSPECTION_ITEMS: Omit<
   VehicleInspectionItemDefinition,
   'section'
