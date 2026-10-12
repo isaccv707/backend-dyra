@@ -78,8 +78,6 @@ Intentional exceptions to the "single required `branchId`" rule:
 
 **Excel import (price sheets → studies):** the `parametros` column (comma-separated child codes, only valid on `isPanel = true` rows) replaces that panel's children after all rows are upserted, so a panel can reference studies from the same file; panel failures are reported in `panelErrors`.
 
-**Excel import (Studies):** The `POST /api/studies/import` endpoint accepts `.xlsx`/`.xls` files via `FileInterceptor`. Batch processing uses 100-item chunks with a 60-second Prisma timeout; the response includes per-row success/error details.
-
 **PDF generation (Quotations, Safeguards):** Uses `pdfkit` with server-side rendering. Company logo is embedded from `dist/assets/`. `safeguards` generates an equipment-custody document (`ADM.F.00`) for an employee with up to three optional, combinable sections (computer/mobile/vehicle); a vehicle section adds a second page with a fixed inspection checklist (`src/safeguards/constants/vehicle-inspection-items.const.ts`).
 
 ## Environment Variables
