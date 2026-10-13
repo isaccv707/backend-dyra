@@ -10,7 +10,6 @@ import {
   Query,
   UseInterceptors,
   UploadedFile,
-  BadRequestException,
   Res,
 } from '@nestjs/common';
 import {
@@ -32,6 +31,7 @@ import { FindPriceSheetsDto } from './dto/find-price-sheets.dto';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
+import { assertExcelFile } from 'src/common/utils/excel-file.util';
 
 @ApiTags('price-sheets')
 @Controller('price-sheets')
@@ -197,16 +197,7 @@ export class PriceSheetsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: BranchScopedUser,
   ) {
-    if (!file) throw new BadRequestException('File is required');
-
-    const allowed = [
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.ms-excel',
-    ];
-
-    if (!allowed.includes(file.mimetype)) {
-      throw new BadRequestException('Solo se permite archivo Excel (.xlsx)');
-    }
+    assertExcelFile(file);
     return this.priceSheetsService.importStudiesFromExcel(
       id,
       file.buffer,
