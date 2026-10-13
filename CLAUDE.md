@@ -78,6 +78,8 @@ Intentional exceptions to the "single required `branchId`" rule:
 
 **Excel import (price sheets → studies):** the `parametros` column (comma-separated child codes, only valid on `isPanel = true` rows) replaces that panel's children after all rows are upserted, so a panel can reference studies from the same file; panel failures are reported in `panelErrors`.
 
+**Excel import (Studies):** `POST /api/studies/import?branchId=` (multipart `file`, `.xlsx`/`.xls`, `studies:create`) bulk creates/updates a branch's studies keyed by `code`, **without prices** (for parameters that only live inside panels); a row with a filled `price`/`showPrice` cell is rejected (prices go through the price-sheet import). Template: `GET /api/studies/import-template?branchId=`. It shares `StudyExcelImportService` (`src/studies/study-excel-import.service.ts`) with the price-sheet import (which passes `priceSheetId` to also upsert prices), so row rules, catalog auto-creation and `parametros` handling are identical. The slug is only set on create — re-importing a renamed study never changes it. The response has per-row `invalid` errors, `importErrors`, `panelErrors` and `created`/`updated` counts. Reference values are not importable.
+
 **PDF generation (Quotations, Safeguards):** Uses `pdfkit` with server-side rendering. Company logo is embedded from `dist/assets/`. `safeguards` generates an equipment-custody document (`ADM.F.00`) for an employee with up to three optional, combinable sections (computer/mobile/vehicle); a vehicle section adds a second page with a fixed inspection checklist (`src/safeguards/constants/vehicle-inspection-items.const.ts`).
 
 ## Environment Variables
