@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { PriceSheetsService } from './price-sheets.service';
+import { StudyExcelImportService } from 'src/studies/study-excel-import.service';
 
 type Row = Record<string, string | number>;
 
@@ -85,6 +86,7 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
     const module = await Test.createTestingModule({
       providers: [
         PriceSheetsService,
+        StudyExcelImportService,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();

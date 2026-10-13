@@ -1,4 +1,4 @@
-import type { Response } from 'express';
+import type { Express, Response } from 'express';
 import {
   Controller,
   Get,
@@ -11,9 +11,13 @@ import {
   Query,
   ParseUUIDPipe,
   Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiParam,
   ApiProduces,
@@ -21,7 +25,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { StudiesService } from './studies.service';
+import { StudyExcelImportService } from './study-excel-import.service';
 import { CreateStudyDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
 import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
@@ -32,11 +38,15 @@ import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { assertExcelFile } from 'src/common/utils/excel-file.util';
 
 @ApiTags('studies')
 @Controller('studies')
 export class StudiesController {
-  constructor(private readonly studiesService: StudiesService) {}
+  constructor(
+    private readonly studiesService: StudiesService,
+    private readonly studyExcelImport: StudyExcelImportService,
+  ) {}
 
   @ApiOperation({
     summary: 'Crear estudio',
@@ -199,6 +209,94 @@ export class StudiesController {
     );
 
     res.send(buffer);
+  }
+
+  @ApiOperation({
+    summary: 'Descargar plantilla de importación de estudios',
+    description:
+      'Genera la plantilla Excel para cargar estudios de forma masiva en una sucursal, sin precios. Incluye una hoja con los servicios activos de la sucursal.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: true,
+    description: 'Identificador de la sucursal destino.',
+  })
+  @ApiProduces(
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  @ApiResponse({ status: 200, description: 'Archivo Excel de plantilla.' })
+  @ApiResponse({ status: 404, description: 'Sucursal no encontrada.' })
+  @ApiBearerAuth()
+  @Permissions('studies:create')
+  @Get('import-template')
+  async downloadImportTemplate(
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @CurrentUser() user: BranchScopedUser,
+    @Res() res: Response,
+  ) {
+    await this.studyExcelImport.assertImportableBranch(branchId, user);
+    const buffer = await this.studyExcelImport.generateTemplate(branchId, {
+      withPrice: false,
+    });
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="plantilla-estudios.xlsx"',
+    );
+
+    res.send(buffer);
+  }
+
+  @ApiOperation({
+    summary: 'Importar estudios desde Excel',
+    description:
+      'Crea o actualiza (por code) los estudios de una sucursal desde un .xlsx/.xls, sin asignar precios: útil para parámetros que solo existen dentro de perfiles. Una fila con price o showPrice capturado se rechaza (para precios usa POST /price-sheets/:id/import-excel). section, sampleType y technique son obligatorias en estudios nuevos y se crean en el catálogo si no existen. La columna parametros (códigos separados por coma, solo con isPanel = true) reemplaza los hijos del perfil. No importa valores de referencia.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: true,
+    description: 'Identificador de la sucursal destino.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo Excel (.xlsx o .xls) con los estudios.',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description:
+      'Resultado de la importación con el detalle de éxitos y errores por fila.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Archivo no proporcionado, de tipo inválido o sin columnas obligatorias.',
+  })
+  @ApiResponse({ status: 404, description: 'Sucursal no encontrada.' })
+  @ApiBearerAuth()
+  @Permissions('studies:create')
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file'))
+  async importExcel(
+    @Query('branchId', ParseUUIDPipe) branchId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    assertExcelFile(file);
+    await this.studyExcelImport.assertImportableBranch(branchId, user);
+    return this.studyExcelImport.importStudies(branchId, file.buffer);
   }
 
   @ApiOperation({
