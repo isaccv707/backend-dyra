@@ -38,7 +38,7 @@ export class StudyPriceDto {
 export class CreateStudyDto {
   @IsString()
   @IsNotEmpty()
-  @MinLength(3)
+  @MinLength(1)
   @MaxLength(200)
   name!: string;
 
