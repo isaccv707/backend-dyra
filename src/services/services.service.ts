@@ -15,6 +15,7 @@ import {
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
 import { Prisma } from '@prisma/client';
+import { studyTitle } from 'src/studies/utils/study-title.util';
 
 const SERVICE_ALLOWED_FIELDS = ['name', 'createdAt'];
 
@@ -162,6 +163,7 @@ export class ServicesService {
             select: {
               id: true,
               name: true,
+              title: true,
               slug: true,
               code: true,
               description: true,
@@ -217,6 +219,7 @@ export class ServicesService {
           return {
             id: study.id,
             name: study.name,
+            title: studyTitle(study),
             slug: study.slug,
             code: study.code,
             description: study.description,

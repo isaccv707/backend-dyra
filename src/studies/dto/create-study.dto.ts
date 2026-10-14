@@ -42,6 +42,17 @@ export class CreateStudyDto {
   @MaxLength(200)
   name!: string;
 
+  /** Título visible; si no se envía al crear, se usa `name`. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(200)
+  @IsOptional()
+  title?: string;
+
   @IsString()
   @IsNotEmpty()
   @MaxLength(200)

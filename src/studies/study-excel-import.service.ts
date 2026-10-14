@@ -40,6 +40,7 @@ const REQUIRED_CATALOG_COLUMNS = [
 const STUDY_COLUMNS = [
   'code',
   'name',
+  'title',
   'description',
   'sampleType',
   'preparation',
@@ -70,6 +71,7 @@ type ValidRow = {
   row: number;
   code: string;
   name: string;
+  title?: string;
   description?: string;
   sampleType?: string;
   preparation?: string;
@@ -133,6 +135,7 @@ export class StudyExcelImportService {
     const exampleRow: Record<string, string | number> = {
       code: 'BH001',
       name: 'Biometría Hemática',
+      title: 'Biometría Hemática Completa',
       description: 'Conteo completo de células sanguíneas',
       sampleType: 'Sangre venosa',
       preparation: 'Ayuno de 8 horas',
@@ -301,6 +304,7 @@ export class StudyExcelImportService {
       const normalizedData = {
         code,
         name,
+        title: cellToString(row.title) || undefined,
         description: cellToString(row.description),
         sampleType: cellToString(row.sampleType),
         preparation: cellToString(row.preparation),
@@ -349,6 +353,7 @@ export class StudyExcelImportService {
           row: initialRow,
           code: dto.code,
           name: dto.name,
+          title: dto.title,
           description: dto.description,
           sampleType: dto.sampleType,
           preparation: dto.preparation,
@@ -499,10 +504,12 @@ export class StudyExcelImportService {
 
       try {
         // Renaming never changes the slug: it's only set when the study is created.
+        // A blank `title` cell keeps the current title (or defaults to `name` on create).
         const study = await this.prisma.study.upsert({
           where: { branchId_code: { branchId, code: item.code } },
           update: {
             name: item.name,
+            title: item.title,
             description: item.description,
             sampleType: connectCatalog(sampleTypeIds, item.sampleType),
             preparation: item.preparation,
@@ -523,6 +530,7 @@ export class StudyExcelImportService {
           },
           create: {
             name: item.name,
+            title: item.title ?? item.name,
             slug: generateSlug(item.name),
             code: item.code,
             description: item.description,

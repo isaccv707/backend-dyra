@@ -39,9 +39,11 @@ import {
   STUDY_DEFAULT_MAX_AGE,
   STUDY_DEFAULT_MIN_AGE,
 } from './constants/study-fields.const';
+import { studyTitle } from './utils/study-title.util';
 
 const STUDY_ALLOWED_FIELDS = [
   'name',
+  'title',
   'code',
   'abbreviation',
   'section.name',
@@ -161,16 +163,22 @@ function eligiblePatientsData(eligiblePatients?: EligiblePatientsDto) {
   };
 }
 
-type EligiblePatientsColumns = {
+type StudyResponseColumns = {
+  name: string;
+  title: string | null;
   gender: string;
   ageFormat: string;
   minAge: number;
   maxAge: number;
 };
 
-function toStudyResponse<T extends EligiblePatientsColumns>(study: T) {
+function toStudyResponse<T extends StudyResponseColumns>(study: T) {
   const { gender, ageFormat, minAge, maxAge, ...rest } = study;
-  return { ...rest, eligiblePatients: { gender, ageFormat, minAge, maxAge } };
+  return {
+    ...rest,
+    title: studyTitle(study),
+    eligiblePatients: { gender, ageFormat, minAge, maxAge },
+  };
 }
 
 function referenceValuesData(
@@ -234,6 +242,7 @@ const PANEL_ITEMS_INCLUDE = {
         id: true,
         code: true,
         name: true,
+        title: true,
         abbreviation: true,
         isPanel: true,
       },
@@ -248,7 +257,9 @@ const STUDY_DETAIL_INCLUDE = {
   referenceValues: REFERENCE_VALUES_INCLUDE,
   panelItems: PANEL_ITEMS_INCLUDE,
   parentPanels: {
-    select: { panel: { select: { id: true, code: true, name: true } } },
+    select: {
+      panel: { select: { id: true, code: true, name: true, title: true } },
+    },
   },
 } satisfies Prisma.StudyInclude;
 
@@ -427,6 +438,7 @@ export class StudiesService {
   async create(createStudyDto: CreateStudyDto, user: BranchScopedUser) {
     const {
       name,
+      title,
       studyPrices,
       serviceId,
       branchId,
@@ -481,6 +493,7 @@ export class StudiesService {
             connect: { id: branchId },
           },
           name,
+          title: title ?? name,
           slug,
           ...(studyPrices?.length && {
             priceSheets: {
@@ -545,7 +558,7 @@ export class StudiesService {
     const { skip, take, where, orderBy } = buildPaginatedQuery(
       withColumnFields(dto),
       {
-        searchFields: ['name', 'code', 'abbreviation'],
+        searchFields: ['name', 'title', 'code', 'abbreviation'],
         defaultSort: { name: 'asc' },
         allowedFields: STUDY_ALLOWED_FIELDS,
         minSearchLength: 2,
@@ -669,12 +682,13 @@ export class StudiesService {
   async getPanelTree(id: string) {
     const study = await this.prisma.study.findFirst({
       where: { id, isActive: true },
-      select: { id: true, code: true, name: true, isPanel: true },
+      select: { id: true, code: true, name: true, title: true, isPanel: true },
     });
     if (!study) throw studyNotFound(id);
 
     return {
       ...study,
+      title: studyTitle(study),
       children: study.isPanel ? await loadPanelTree(this.prisma, study.id) : [],
     };
   }
@@ -756,6 +770,7 @@ export class StudiesService {
   ) {
     const {
       name,
+      title,
       serviceId,
       sectionId,
       sampleTypeId,
@@ -830,6 +845,7 @@ export class StudiesService {
             },
           }),
           ...(name && { name }),
+          ...(title && { title }),
           ...(slug && { slug }),
           ...(serviceId && { service: { connect: { id: serviceId } } }),
         },
@@ -937,6 +953,7 @@ export class StudiesService {
           code: true,
           abbreviation: true,
           name: true,
+          title: true,
           slug: true,
           isActive: true,
           section: { select: { name: true } },
@@ -986,6 +1003,7 @@ export class StudiesService {
       { header: 'Código', value: (s) => s.code },
       { header: 'Abreviatura', value: (s) => s.abbreviation ?? '' },
       { header: 'Nombre', value: (s) => s.name },
+      { header: 'Título', value: (s) => studyTitle(s) },
       { header: 'Slug', value: (s) => s.slug },
       { header: 'Activo', value: (s) => (s.isActive ? 'Sí' : 'No') },
       { header: 'Sección', value: (s) => s.section?.name ?? '' },

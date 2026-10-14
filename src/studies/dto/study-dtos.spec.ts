@@ -120,17 +120,22 @@ describe('Study DTOs: catálogos', () => {
       expect(errors).toEqual([]);
     });
 
-    it('ya no acepta title ni isOrderable', async () => {
+    it('acepta title opcional, distinto de name', async () => {
       const { errors } = await validate(CreateStudyDto, {
         ...withCatalogs,
         title: 'Glucosa sérica',
+      });
+
+      expect(errors).toEqual([]);
+    });
+
+    it('ya no acepta isOrderable', async () => {
+      const { errors } = await validate(CreateStudyDto, {
+        ...withCatalogs,
         isOrderable: true,
       });
 
-      expect(errors).toEqual([
-        'property title should not exist',
-        'property isOrderable should not exist',
-      ]);
+      expect(errors).toEqual(['property isOrderable should not exist']);
     });
 
     it('rechaza gender/ageFormat sueltos: van dentro de eligiblePatients', async () => {
