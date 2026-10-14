@@ -48,7 +48,7 @@ export class CreateStudyDto {
   )
   @IsString()
   @IsNotEmpty()
-  @MinLength(3)
+  @MinLength(1)
   @MaxLength(200)
   @IsOptional()
   title?: string;
