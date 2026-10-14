@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { studyTitle } from './study-title.util';
 
 type Db = Prisma.TransactionClient;
 
@@ -8,6 +9,7 @@ const PANEL_CHILD_SELECT = {
   id: true,
   code: true,
   name: true,
+  title: true,
   abbreviation: true,
   isPanel: true,
 } satisfies Prisma.StudySelect;
@@ -25,6 +27,8 @@ export type PanelComponentSnapshot = {
   studyId: string;
   code: string;
   name: string;
+  /** Missing in snapshots stored before `Study.title` existed. */
+  title?: string;
   level: number;
 };
 
@@ -141,7 +145,13 @@ export async function loadPanelSnapshots(
     path: Set<string>,
   ): PanelComponentSnapshot[] =>
     (childrenByPanel.get(id) ?? []).flatMap((child) => [
-      { studyId: child.id, code: child.code, name: child.name, level },
+      {
+        studyId: child.id,
+        code: child.code,
+        name: child.name,
+        title: studyTitle(child),
+        level,
+      },
       ...(child.isPanel && !path.has(child.id)
         ? flatten(child.id, level + 1, new Set(path).add(child.id))
         : []),

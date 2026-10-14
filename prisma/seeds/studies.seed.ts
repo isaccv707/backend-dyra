@@ -69,6 +69,7 @@ export async function seedStudies(prisma: PrismaClient) {
       },
       create: {
         ...studyData,
+        title: studyData.name,
         sampleTypeId,
         serviceId: effectiveService.id,
         branchId: effectiveService.branchId,

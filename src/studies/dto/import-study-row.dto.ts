@@ -34,6 +34,13 @@ export class ImportStudyRowDto {
   name!: string;
 
   @IsString()
+  @IsNotEmpty()
+  @MinLength(3)
+  @MaxLength(200)
+  @IsOptional()
+  title?: string;
+
+  @IsString()
   @MaxLength(3000, {
     message: 'La descripción es demasiado larga (máximo 3000 caracteres).',
   })
