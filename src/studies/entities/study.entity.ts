@@ -8,6 +8,7 @@ import type {
 export class Study {
   id?: string;
   name!: string;
+  title!: string;
   slug!: string;
   code!: string;
   description?: string;

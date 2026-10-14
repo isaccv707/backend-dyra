@@ -1,6 +1,8 @@
 model Study {
   id               String  @id @default(uuid())
   name             String
+  /// Título visible; puede diferir de `name`. Nullable solo por filas legacy pendientes de backfill (create usa `name` si no se envía).
+  title            String?
   slug             String
   code             String
   description      String?

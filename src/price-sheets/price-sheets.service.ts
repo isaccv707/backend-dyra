@@ -19,6 +19,7 @@ import { StudyExcelImportService } from 'src/studies/study-excel-import.service'
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
+  'study.title',
   'study.code',
   'price',
   'showPrice',
@@ -89,7 +90,7 @@ export class PriceSheetsService {
     user: BranchScopedUser,
   ) {
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
-      searchFields: ['study.name', 'study.code'],
+      searchFields: ['study.name', 'study.title', 'study.code'],
       defaultSort: { study: { name: 'asc' } },
       allowedFields: STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS,
     });

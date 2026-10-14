@@ -129,10 +129,31 @@ describe('StudiesService', () => {
       expect(prisma.study.create).toHaveBeenCalled();
     });
 
+    it('usa name como title si no se envía', async () => {
+      await service.create(baseDto, user);
+
+      expect(prisma.study.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ title: baseDto.name }),
+        }),
+      );
+    });
+
+    it('guarda un title distinto de name', async () => {
+      await service.create({ ...baseDto, title: 'Glucosa en ayuno' }, user);
+
+      expect(prisma.study.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ title: 'Glucosa en ayuno' }),
+        }),
+      );
+    });
+
     it('devuelve eligiblePatients agrupado', async () => {
       prisma.study.create.mockResolvedValue({
         id: 'study-1',
         name: 'Glucosa',
+        title: null,
         gender: 'F',
         ageFormat: 'AÑOS',
         minAge: 18,
@@ -142,6 +163,7 @@ describe('StudiesService', () => {
       await expect(service.create(baseDto, user)).resolves.toEqual({
         id: 'study-1',
         name: 'Glucosa',
+        title: 'Glucosa',
         eligiblePatients: {
           gender: 'F',
           ageFormat: 'AÑOS',
