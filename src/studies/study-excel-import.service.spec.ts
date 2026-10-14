@@ -44,6 +44,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
   };
   let existingStudies: Array<{
     code: string;
+    slug?: string;
     isPanel?: boolean;
     isActive?: boolean;
     _count?: { referenceValues: number; parentPanels: number };
@@ -79,10 +80,11 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
             where,
             select,
           }: {
-            where: { panelItems?: unknown };
-            select: { id?: boolean; slug?: boolean };
+            where: { panelItems?: unknown; code?: unknown };
+            select: { id?: boolean; slug?: boolean; isPanel?: boolean };
           }) => {
             if (where.panelItems) return Promise.resolve([]);
+            if (select.isPanel) return Promise.resolve(existingStudies);
             if (select.slug) {
               return Promise.resolve(existingSlugs.map((slug) => ({ slug })));
             }
@@ -180,14 +182,16 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
   });
 
   it('no cambia el slug al actualizar un estudio existente', async () => {
-    existingStudies = [{ code: 'A1' }];
+    existingStudies = [{ code: 'A1', slug: 'slug-actual' }];
 
     await service.importStudies(branchId, toExcel([row('A1')]));
 
-    const [{ update }] = prisma.study.upsert.mock.calls[0] as [
-      { update: Record<string, unknown> },
+    const [{ update, create }] = prisma.study.upsert.mock.calls[0] as [
+      { update: Record<string, unknown>; create: Record<string, unknown> },
     ];
     expect(update).not.toHaveProperty('slug');
+    // Prisma exige `create.slug` aunque el estudio ya exista.
+    expect(create.slug).toBe('slug-actual');
   });
 
   it('agrega el código al slug si el nombre ya está tomado en la sucursal o en el archivo', async () => {
