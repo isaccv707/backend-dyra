@@ -94,7 +94,7 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
     service = module.get(PriceSheetsService);
   });
 
-  it('rechaza una fila que crearía un estudio sin sección, tipo de muestra o técnica', async () => {
+  it('rechaza una fila que crearía un estudio sin sección o tipo de muestra', async () => {
     const result = await service.importStudiesFromExcel(
       'ps-1',
       toExcel([
@@ -111,7 +111,7 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
         row: 3,
         code: 'B2',
         errors: [
-          'Para crear un estudio nuevo son obligatorias las columnas: section, technique',
+          'Para crear un estudio nuevo son obligatorias las columnas: section',
         ],
       },
       {
@@ -131,6 +131,21 @@ describe('PriceSheetsService.importStudiesFromExcel: catálogos obligatorios', (
           sampleType: { connect: { id: 1 } },
           technique: { connect: { id: 1 } },
         }),
+      }),
+    );
+  });
+
+  it('crea un estudio nuevo sin técnica', async () => {
+    const result = await service.importStudiesFromExcel(
+      'ps-1',
+      toExcel([row('A1', { technique: '' })]),
+      user,
+    );
+
+    expect(result.invalid).toEqual([]);
+    expect(prisma.study.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ code: 'A1', technique: undefined }),
       }),
     );
   });

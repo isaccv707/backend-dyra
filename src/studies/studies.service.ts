@@ -956,6 +956,9 @@ export class StudiesService {
           title: true,
           slug: true,
           isActive: true,
+          description: true,
+          preparation: true,
+          service: { select: { name: true } },
           section: { select: { name: true } },
           sampleType: { select: { name: true } },
           technique: { select: { name: true } },
@@ -964,6 +967,10 @@ export class StudiesService {
             orderBy: { order: 'asc' },
             select: { child: { select: { code: true } } },
           },
+          parentPanels: {
+            orderBy: { panel: { code: 'asc' } },
+            select: { panel: { select: { code: true } } },
+          },
           gender: true,
           ageFormat: true,
           minAge: true,
@@ -971,6 +978,8 @@ export class StudiesService {
           units: true,
           decimals: true,
           deliveryTime: true,
+          createdAt: true,
+          updatedAt: true,
           priceSheets: {
             select: { priceSheetId: true, price: true, showPrice: true },
           },
@@ -1006,6 +1015,7 @@ export class StudiesService {
       { header: 'Título', value: (s) => studyTitle(s) },
       { header: 'Slug', value: (s) => s.slug },
       { header: 'Activo', value: (s) => (s.isActive ? 'Sí' : 'No') },
+      { header: 'Servicio', value: (s) => s.service.name },
       { header: 'Sección', value: (s) => s.section?.name ?? '' },
       { header: 'Tipo de muestra', value: (s) => s.sampleType?.name ?? '' },
       { header: 'Técnica', value: (s) => s.technique?.name ?? '' },
@@ -1013,6 +1023,10 @@ export class StudiesService {
       {
         header: 'Parámetros',
         value: (s) => s.panelItems.map((i) => i.child.code).join(','),
+      },
+      {
+        header: 'Forma parte de',
+        value: (s) => s.parentPanels.map((p) => p.panel.code).join(','),
       },
       {
         header: 'Vendible',
@@ -1028,14 +1042,27 @@ export class StudiesService {
         header: 'Tiempo de entrega (días)',
         value: (s) => s.deliveryTime ?? '',
       },
+      { header: 'Descripción', value: (s) => s.description ?? '' },
+      { header: 'Preparación', value: (s) => s.preparation ?? '' },
       ...priceColumns,
+      {
+        header: 'Creado',
+        value: (s) => s.createdAt.toISOString().slice(0, 10),
+      },
+      {
+        header: 'Actualizado',
+        value: (s) => s.updatedAt.toISOString().slice(0, 10),
+      },
     ];
 
     type ExportedReferenceValue = ExportedStudy['referenceValues'][number] & {
       studyCode: string;
+      studyName: string;
+      studyUnits: string | null;
     };
     const referenceColumns: Column<ExportedReferenceValue>[] = [
       { header: 'Código del estudio', value: (r) => r.studyCode },
+      { header: 'Nombre del estudio', value: (r) => r.studyName },
       { header: 'Orden', value: (r) => r.order + 1 },
       {
         header: 'Tipo',
@@ -1053,6 +1080,7 @@ export class StudiesService {
         header: 'Valor máximo',
         value: (r) => (r.maxValue !== null ? Number(r.maxValue) : ''),
       },
+      { header: 'Unidades', value: (r) => r.studyUnits ?? '' },
       { header: 'Texto', value: (r) => r.text ?? '' },
       {
         header: 'Fecha',
@@ -1060,7 +1088,12 @@ export class StudiesService {
       },
     ];
     const referenceValues = studies.flatMap((s) =>
-      s.referenceValues.map((r) => ({ ...r, studyCode: s.code })),
+      s.referenceValues.map((r) => ({
+        ...r,
+        studyCode: s.code,
+        studyName: s.name,
+        studyUnits: s.units,
+      })),
     );
 
     const toSheet = <T>(columns: Column<T>[], rows: T[]) =>

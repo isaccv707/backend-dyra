@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
+import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { StudiesService } from './studies.service';
 import { CreateStudyDto } from './dto/create-study.dto';
@@ -127,6 +128,16 @@ describe('StudiesService', () => {
       );
 
       expect(prisma.study.create).toHaveBeenCalled();
+    });
+
+    it('crea un estudio sin técnica', async () => {
+      await service.create({ ...baseDto, techniqueId: undefined }, user);
+
+      expect(createData()).toMatchObject({
+        section: { connect: { id: 1 } },
+        sampleType: { connect: { id: 2 } },
+        technique: undefined,
+      });
     });
 
     it('usa name como title si no se envía', async () => {
@@ -349,6 +360,14 @@ describe('StudiesService', () => {
         }
       ).data;
 
+    it('quita la técnica con techniqueId: null', async () => {
+      prisma.study.findUnique.mockResolvedValue(existing);
+
+      await service.update('study-1', { techniqueId: null }, user);
+
+      expect(updateData()).toMatchObject({ technique: { disconnect: true } });
+    });
+
     it('limpia units y decimals al marcar el estudio como perfil', async () => {
       prisma.study.findUnique.mockResolvedValue(existing);
 
@@ -545,6 +564,99 @@ describe('StudiesService', () => {
       await expect(service.exportByBranch(BRANCH_ID, outsider)).rejects.toThrow(
         ForbiddenException,
       );
+    });
+
+    it('exportByBranch incluye toda la información del estudio', async () => {
+      Object.assign(prisma, {
+        branch: {
+          findUnique: jest.fn().mockResolvedValue({ name: 'Centro' }),
+        },
+      });
+      prisma.priceSheets.findMany.mockResolvedValue([
+        { id: 'ps-1', name: 'Público', isActive: true },
+      ]);
+      prisma.study.findMany.mockResolvedValue([
+        {
+          id: 'study-1',
+          code: 'GLU01',
+          abbreviation: 'GLU',
+          name: 'Glucosa',
+          title: 'Glucosa en ayuno',
+          slug: 'glucosa',
+          isActive: true,
+          description: 'Glucosa en sangre',
+          preparation: 'Ayuno de 8 horas',
+          service: { name: 'Análisis Clínicos' },
+          section: { name: 'Química clínica' },
+          sampleType: { name: 'Suero' },
+          technique: null,
+          isPanel: false,
+          panelItems: [],
+          parentPanels: [{ panel: { code: 'QS6' } }],
+          gender: 'A',
+          ageFormat: 'AÑOS',
+          minAge: 0,
+          maxAge: 120,
+          units: 'mg/dL',
+          decimals: 1,
+          deliveryTime: 1,
+          createdAt: new Date('2026-01-02T00:00:00Z'),
+          updatedAt: new Date('2026-03-04T00:00:00Z'),
+          priceSheets: [
+            {
+              priceSheetId: 'ps-1',
+              price: new Prisma.Decimal(120),
+              showPrice: true,
+            },
+          ],
+          referenceValues: [
+            {
+              order: 0,
+              gender: 'AMBOS',
+              unitAge: 'Años',
+              minAge: 0,
+              maxAge: 120,
+              minValue: new Prisma.Decimal(70),
+              maxValue: new Prisma.Decimal(100),
+              text: null,
+              date: new Date('2026-01-02T00:00:00Z'),
+            },
+          ],
+        },
+      ]);
+
+      const { buffer, branchName } = await service.exportByBranch(
+        BRANCH_ID,
+        user,
+      );
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const [studyRow] = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        workbook.Sheets['Estudios'],
+      );
+      const [referenceRow] = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        workbook.Sheets['Valores de referencia'],
+      );
+
+      expect(branchName).toBe('Centro');
+      expect(studyRow).toMatchObject({
+        Código: 'GLU01',
+        Nombre: 'Glucosa',
+        Título: 'Glucosa en ayuno',
+        Servicio: 'Análisis Clínicos',
+        'Forma parte de': 'QS6',
+        Descripción: 'Glucosa en sangre',
+        Preparación: 'Ayuno de 8 horas',
+        'Precio: Público': 120,
+        Creado: '2026-01-02',
+        Actualizado: '2026-03-04',
+      });
+      expect(referenceRow).toMatchObject({
+        'Código del estudio': 'GLU01',
+        'Nombre del estudio': 'Glucosa',
+        'Valor mínimo': 70,
+        'Valor máximo': 100,
+        Unidades: 'mg/dL',
+      });
     });
 
     it('findInactive limita a las sucursales del usuario', async () => {
