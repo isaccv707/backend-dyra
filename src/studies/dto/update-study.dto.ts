@@ -26,9 +26,12 @@ export class UpdateStudyDto extends PartialType(
   @Min(1)
   sampleTypeId?: number;
 
-  @ValidateIf(isProvided)
+  /** `null` removes the technique (it's optional, unlike section and sample type). */
+  @ValidateIf(
+    (_dto: object, value: unknown) => value !== undefined && value !== null,
+  )
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  techniqueId?: number;
+  techniqueId?: number | null;
 }

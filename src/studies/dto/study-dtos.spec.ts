@@ -33,16 +33,16 @@ describe('Study DTOs: catálogos', () => {
   };
 
   describe('CreateStudyDto', () => {
-    it('exige sectionId, sampleTypeId y techniqueId', async () => {
+    it('exige sectionId y sampleTypeId, pero no techniqueId', async () => {
       const { errors } = await validate(CreateStudyDto, baseStudy);
 
       expect(errors).toEqual(
         expect.arrayContaining([
           'sectionId must be an integer number',
           'sampleTypeId must be an integer number',
-          'techniqueId must be an integer number',
         ]),
       );
+      expect(errors).not.toContain('techniqueId must be an integer number');
     });
 
     it('rechaza null en los catálogos', async () => {
@@ -236,7 +236,16 @@ describe('Study DTOs: catálogos', () => {
       expect(value).toEqual({ techniqueId: 7 });
     });
 
-    it('no permite quitarlos con null', async () => {
+    it('permite quitar la técnica con null', async () => {
+      const { errors, value } = await validate(UpdateStudyDto, {
+        techniqueId: null,
+      });
+
+      expect(errors).toEqual([]);
+      expect(value).toEqual({ techniqueId: null });
+    });
+
+    it('no permite quitar sección ni tipo de muestra con null', async () => {
       const { errors } = await validate(UpdateStudyDto, {
         sectionId: null,
         sampleTypeId: null,
