@@ -379,6 +379,7 @@ export class StudyExcelImportService {
           where: { branchId, code: { in: valid.map((v) => v.code) } },
           select: {
             code: true,
+            slug: true,
             isPanel: true,
             isActive: true,
             _count: { select: { referenceValues: true, parentPanels: true } },
@@ -532,7 +533,10 @@ export class StudyExcelImportService {
           create: {
             name: item.name,
             title: item.title ?? item.name,
-            slug: slugByCode.get(item.code)!,
+            // Prisma validates `create` even when the row exists, so existing
+            // studies pass their current slug (it is never written).
+            slug:
+              slugByCode.get(item.code) ?? existingByCode.get(item.code)!.slug,
             code: item.code,
             description: item.description,
             sampleType: connectCatalog(sampleTypeIds, item.sampleType),
