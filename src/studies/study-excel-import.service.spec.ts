@@ -48,6 +48,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
     isActive?: boolean;
     _count?: { referenceValues: number; parentPanels: number };
   }>;
+  let existingSlugs: string[];
   const upsertedCodes: string[] = [];
 
   const branchId = 'branch-1';
@@ -64,6 +65,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
 
   beforeEach(async () => {
     existingStudies = [];
+    existingSlugs = [];
     upsertedCodes.length = 0;
     prisma = {
       service: {
@@ -78,9 +80,12 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
             select,
           }: {
             where: { panelItems?: unknown };
-            select: { id?: boolean };
+            select: { id?: boolean; slug?: boolean };
           }) => {
             if (where.panelItems) return Promise.resolve([]);
+            if (select.slug) {
+              return Promise.resolve(existingSlugs.map((slug) => ({ slug })));
+            }
             if (select.id) {
               return Promise.resolve(
                 upsertedCodes.map((code) => ({
@@ -183,6 +188,38 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
       { update: Record<string, unknown> },
     ];
     expect(update).not.toHaveProperty('slug');
+  });
+
+  it('agrega el código al slug si el nombre ya está tomado en la sucursal o en el archivo', async () => {
+    existingSlugs = ['glucosa', 'ph-x1'];
+
+    const result = await service.importStudies(
+      branchId,
+      toExcel([
+        row('CTQP-GL', { name: 'Glucosa' }),
+        row('LCR-GL', { name: 'GLUCOSA' }),
+        row('CTQP-PH', { name: 'pH' }),
+        row('X1', { name: 'pH' }),
+      ]),
+    );
+
+    expect(result.invalid).toEqual([]);
+    const slugs = Object.fromEntries(
+      (
+        prisma.study.upsert.mock.calls as [
+          {
+            where: { branchId_code: { code: string } };
+            create: { slug: string };
+          },
+        ][]
+      ).map(([{ where, create }]) => [where.branchId_code.code, create.slug]),
+    );
+    expect(slugs).toEqual({
+      'CTQP-GL': 'glucosa-ctqp-gl',
+      'LCR-GL': 'glucosa-lcr-gl',
+      'CTQP-PH': 'ph',
+      X1: 'ph-x1-2',
+    });
   });
 
   it('exige las columnas code, name y serviceName', async () => {

@@ -488,6 +488,11 @@ export class StudyExcelImportService {
       return id ? { connect: { id } } : undefined;
     };
 
+    const slugByCode = await this.assignNewStudySlugs(
+      branchId,
+      valid.filter((v) => !existingByCode.has(v.code)),
+    );
+
     for (const item of valid) {
       if (panelsWithChildren.has(item.code)) {
         importErrors.push({
@@ -527,7 +532,7 @@ export class StudyExcelImportService {
           create: {
             name: item.name,
             title: item.title ?? item.name,
-            slug: generateSlug(item.name),
+            slug: slugByCode.get(item.code)!,
             code: item.code,
             description: item.description,
             sampleType: connectCatalog(sampleTypeIds, item.sampleType),
@@ -677,6 +682,43 @@ export class StudyExcelImportService {
 
     return { panelsUpdated, panelErrors };
   }
+
+  /**
+   * Slugs for the studies this import will create. Parameters of different
+   * panels often share a name ("Glucosa", "pH"), so instead of failing on a
+   * taken slug it falls back to `<name>-<code>` (and a numeric suffix as a
+   * last resort), checking both the branch and earlier rows of the file.
+   */
+  private async assignNewStudySlugs(
+    branchId: string,
+    newStudies: Array<{ code: string; name: string }>,
+  ): Promise<Map<string, string>> {
+    const slugByCode = new Map<string, string>();
+    if (!newStudies.length) return slugByCode;
+
+    const taken = new Set(
+      (
+        await this.prisma.study.findMany({
+          where: { branchId },
+          select: { slug: true },
+        })
+      ).map((s) => s.slug),
+    );
+
+    for (const { code, name } of newStudies) {
+      const base = generateSlug(name) || generateSlug(code);
+      let slug = base;
+      if (taken.has(slug)) {
+        const withCode = generateSlug(`${name} ${code}`) || base;
+        slug = withCode;
+        for (let n = 2; taken.has(slug); n++) slug = `${withCode}-${n}`;
+      }
+      taken.add(slug);
+      slugByCode.set(code, slug);
+    }
+
+    return slugByCode;
+  }
 }
 
 function importErrorMessage(error: unknown): string {
@@ -684,7 +726,7 @@ function importErrorMessage(error: unknown): string {
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === 'P2002'
   ) {
-    return 'Ya existe otro estudio en la sucursal con el mismo slug (mismo nombre); cambia el nombre';
+    return 'Ya existe otro estudio en la sucursal con el mismo código o slug; vuelve a importar el archivo';
   }
   return error instanceof Error ? error.message : String(error);
 }
