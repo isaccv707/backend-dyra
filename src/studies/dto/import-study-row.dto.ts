@@ -29,7 +29,7 @@ export class ImportStudyRowDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(3)
+  @MinLength(1)
   @MaxLength(200)
   name!: string;
 
