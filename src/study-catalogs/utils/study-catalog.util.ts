@@ -24,7 +24,7 @@ export interface StudyCatalogDelegate {
     data: { name: string; branchId: string; isActive?: boolean };
   }): Promise<StudyCatalogRow>;
   createMany(args: {
-    data: Array<{ name: string; branchId: string }>;
+    data: Array<{ name: string; branchId: string; isActive?: boolean }>;
     skipDuplicates?: boolean;
   }): Promise<{ count: number }>;
   update(args: {
