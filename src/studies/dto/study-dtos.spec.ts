@@ -129,6 +129,22 @@ describe('Study DTOs: catálogos', () => {
       expect(errors).toEqual([]);
     });
 
+    it('acepta un title de 1 carácter y rechaza uno vacío', async () => {
+      const short = await validate(CreateStudyDto, {
+        ...withCatalogs,
+        title: 'A',
+      });
+      const empty = await validate(CreateStudyDto, {
+        ...withCatalogs,
+        title: '   ',
+      });
+
+      expect(short.errors).toEqual([]);
+      expect(empty.errors).toEqual(
+        expect.arrayContaining(['title should not be empty']),
+      );
+    });
+
     it('ya no acepta isOrderable', async () => {
       const { errors } = await validate(CreateStudyDto, {
         ...withCatalogs,
