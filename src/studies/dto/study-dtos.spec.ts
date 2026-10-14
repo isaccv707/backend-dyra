@@ -129,6 +129,22 @@ describe('Study DTOs: catálogos', () => {
       expect(errors).toEqual([]);
     });
 
+    it('acepta un name de 1 carácter y rechaza uno vacío', async () => {
+      const short = await validate(CreateStudyDto, {
+        ...withCatalogs,
+        name: 'A',
+      });
+      const empty = await validate(CreateStudyDto, {
+        ...withCatalogs,
+        name: '',
+      });
+
+      expect(short.errors).toEqual([]);
+      expect(empty.errors).toEqual(
+        expect.arrayContaining(['name should not be empty']),
+      );
+    });
+
     it('acepta un title de 1 carácter y rechaza uno vacío', async () => {
       const short = await validate(CreateStudyDto, {
         ...withCatalogs,
