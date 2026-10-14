@@ -91,10 +91,12 @@ export class CreateStudyDto {
   @Min(1)
   sectionId!: number;
 
+  /** Optional: unlike section and sample type, a study may have no technique. */
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  techniqueId!: number;
+  @IsOptional()
+  techniqueId?: number;
 
   @Type(() => Number)
   @IsInt()

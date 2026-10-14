@@ -31,11 +31,7 @@ import {
   resolveStudyCatalogIds,
 } from 'src/study-catalogs/utils/study-catalog.util';
 
-const REQUIRED_CATALOG_COLUMNS = [
-  'section',
-  'sampleType',
-  'technique',
-] as const;
+const REQUIRED_CATALOG_COLUMNS = ['section', 'sampleType'] as const;
 
 const STUDY_COLUMNS = [
   'code',

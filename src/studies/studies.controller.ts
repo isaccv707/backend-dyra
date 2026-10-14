@@ -174,7 +174,7 @@ export class StudiesController {
   @ApiOperation({
     summary: 'Exportar estudios de una sucursal',
     description:
-      'Genera y descarga un Excel con todos los estudios de una sucursal (activos e inactivos): datos generales, un precio por lista de precios de la sucursal, y una segunda hoja con los valores de referencia.',
+      'Genera y descarga un Excel con todos los estudios de una sucursal (activos e inactivos) y toda su información: datos generales (nombre, título, servicio, catálogos, pacientes elegibles, unidades, descripción, preparación), parámetros del perfil, perfiles a los que pertenece, un precio por lista de precios de la sucursal, y una segunda hoja con los valores de referencia.',
   })
   @ApiQuery({
     name: 'branchId',
@@ -254,7 +254,7 @@ export class StudiesController {
   @ApiOperation({
     summary: 'Importar estudios desde Excel',
     description:
-      'Crea o actualiza (por code) los estudios de una sucursal desde un .xlsx/.xls, sin asignar precios: útil para parámetros que solo existen dentro de perfiles. Una fila con price o showPrice capturado se rechaza (para precios usa POST /price-sheets/:id/import-excel). section, sampleType y technique son obligatorias en estudios nuevos y se crean en el catálogo si no existen. La columna parametros (códigos separados por coma, solo con isPanel = true) reemplaza los hijos del perfil. No importa valores de referencia.',
+      'Crea o actualiza (por code) los estudios de una sucursal desde un .xlsx/.xls, sin asignar precios: útil para parámetros que solo existen dentro de perfiles. Una fila con price o showPrice capturado se rechaza (para precios usa POST /price-sheets/:id/import-excel). section y sampleType son obligatorias en estudios nuevos y technique es opcional; las tres se crean en el catálogo si no existen. La columna parametros (códigos separados por coma, solo con isPanel = true) reemplaza los hijos del perfil. No importa valores de referencia.',
   })
   @ApiQuery({
     name: 'branchId',
