@@ -2,7 +2,7 @@ import { Transform } from 'class-transformer';
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 import { PaginatedQueryDto } from 'src/common/dto/paginated-query.dto';
 
-const toBoolean = ({ value }: { value: unknown }) =>
+export const toBoolean = ({ value }: { value: unknown }) =>
   value === true || value === 'true'
     ? true
     : value === false || value === 'false'

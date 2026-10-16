@@ -164,6 +164,45 @@ export class StudiesController {
   }
 
   @ApiOperation({
+    summary: 'Listar estudios ordenables (admin)',
+    description:
+      'Versión admin de GET /studies/orderable para el wizard de cotización: estudios activos con al menos un precio en una lista de precios activa, pública o privada (de socio), de las sucursales asignadas al usuario. Con priceSheetId solo cuenta un precio en esa lista, que debe estar activa y ser de una sucursal del usuario. priceInfo incluye hasConfiguredPrice.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal (debe estar asignada al usuario).',
+  })
+  @ApiQuery({
+    name: 'priceSheetId',
+    required: false,
+    description:
+      'Identificador del tarifario (activo, público o privado): solo estudios con precio en ese tarifario.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado de estudios ordenables.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'branchId no está asignada al usuario.',
+  })
+  @ApiResponse({
+    status: 404,
+    description:
+      'priceSheetId no existe, no está activa o es de una sucursal no asignada al usuario.',
+  })
+  @ApiBearerAuth()
+  @Permissions('studies:read')
+  @Get('admin/orderable')
+  findAdminOrderable(
+    @Query() pagination: PaginationDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.studiesService.findAdminOrderable(pagination, user);
+  }
+
+  @ApiOperation({
     summary: 'Obtener estudio (admin)',
     description:
       'Devuelve el detalle completo de un estudio (activo o inactivo) para el panel admin, incluidos sus precios en todas las listas de precios (priceSheets), públicas y privadas.',
