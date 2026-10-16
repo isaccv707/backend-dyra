@@ -1,4 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { BranchesService } from 'src/branches/branches.service';
@@ -10,7 +14,13 @@ describe('ServicesService', () => {
   let service: ServicesService;
   let prisma: {
     priceSheets: { findFirst: jest.Mock };
-    service: { findFirst: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    service: {
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+      delete: jest.Mock;
+    };
     study: { findMany: jest.Mock; count: jest.Mock };
     studyOnPriceSheet: { findMany: jest.Mock };
     $transaction: jest.Mock;
@@ -36,6 +46,8 @@ describe('ServicesService', () => {
       priceSheets: { findFirst: jest.fn().mockResolvedValue(null) },
       service: {
         findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        delete: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -192,6 +204,102 @@ describe('ServicesService', () => {
         [{ where: Record<string, unknown> }],
       ];
       expect(args.where).not.toHaveProperty('isPanel');
+    });
+  });
+
+  describe('admin', () => {
+    const user = { branches: [{ id: BRANCH_ID }] };
+
+    it('findAdminAll limita a las sucursales del usuario y cuenta todos los estudios', async () => {
+      await service.findAdminAll({ isActive: false }, user);
+
+      const args = prisma.service.findMany.mock.calls[0][0] as {
+        where: { AND: unknown[] };
+        include: { _count: unknown };
+      };
+      expect(args.where.AND[1]).toEqual({
+        branchId: { in: [BRANCH_ID] },
+        isActive: false,
+      });
+      expect(args.include._count).toEqual({ select: { studies: true } });
+    });
+
+    it('findAdminOne expone la lista privada y estudios sin precio', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        ...assignedService({ isPublic: false, isActive: false }),
+        branchId: BRANCH_ID,
+      });
+      prisma.study.findMany.mockResolvedValue([
+        {
+          id: 'st-1',
+          name: 'Glucosa',
+          title: null,
+          sampleType: null,
+          section: null,
+        },
+        {
+          id: 'st-2',
+          name: 'Urea',
+          title: 'Urea sérica',
+          sampleType: null,
+          section: null,
+        },
+      ]);
+      prisma.study.count.mockResolvedValue(2);
+      prisma.studyOnPriceSheet.findMany.mockResolvedValue([
+        { studyId: 'st-1', priceSheetId: 'ps-1', price: 100, showPrice: false },
+      ]);
+
+      const result = await service.findAdminOne('svc-1', {}, user);
+
+      expect(result.priceSheet).toMatchObject({ id: 'ps-1', isPublic: false });
+      const where = (
+        prisma.study.findMany.mock.calls[0][0] as { where: object }
+      ).where;
+      expect(where).toEqual({ serviceId: 'svc-1' });
+      expect(result.studies.data.map((s) => s.priceInfo)).toEqual([
+        { showPrice: false, price: 100, hasConfiguredPrice: true },
+        { showPrice: false, price: null, hasConfiguredPrice: false },
+      ]);
+      expect(result.studies.data[0].title).toBe('Glucosa');
+    });
+
+    it('findAdminOne responde 403 si el servicio es de otra sucursal', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        ...assignedService({ isPublic: true, isActive: true }),
+        branchId: 'other-branch',
+      });
+
+      await expect(service.findAdminOne('svc-1', {}, user)).rejects.toThrow(
+        ForbiddenException,
+      );
+    });
+  });
+
+  describe('remove', () => {
+    it('responde 409 si el servicio tiene estudios', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        id: 'svc-1',
+        name: 'Análisis',
+        _count: { studies: 3 },
+      });
+
+      await expect(service.remove('svc-1')).rejects.toThrow(ConflictException);
+      expect(prisma.service.delete).not.toHaveBeenCalled();
+    });
+
+    it('elimina un servicio sin estudios', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        id: 'svc-1',
+        name: 'Análisis',
+        _count: { studies: 0 },
+      });
+
+      await service.remove('svc-1');
+
+      expect(prisma.service.delete).toHaveBeenCalledWith({
+        where: { id: 'svc-1' },
+      });
     });
   });
 });

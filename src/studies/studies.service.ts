@@ -576,6 +576,39 @@ export class StudiesService {
     );
   }
 
+  /**
+   * Admin quotation wizard: like findOrderable, but private (partner) sheets
+   * count too, since admin quotations accept any active sheet of the branch.
+   */
+  async findAdminOrderable(dto: PaginationDto, user: BranchScopedUser) {
+    const branchWhere = userBranchFilter(user, dto.branchId);
+    if (dto.priceSheetId) {
+      const priceSheet = await this.prisma.priceSheets.findFirst({
+        where: { id: dto.priceSheetId, isActive: true, ...branchWhere },
+        select: { id: true },
+      });
+      if (!priceSheet) {
+        throw new NotFoundException(
+          `Lista de precios con el ID ${dto.priceSheetId} no encontrada`,
+        );
+      }
+    }
+    return this.findStudies(
+      dto,
+      {
+        isActive: true,
+        ...branchWhere,
+        priceSheets: {
+          some: {
+            priceSheet: { isActive: true },
+            ...(dto.priceSheetId && { priceSheetId: dto.priceSheetId }),
+          },
+        },
+      },
+      false,
+    );
+  }
+
   /** Public routes may only read prices from public, active sheets. */
   private async assertPublicPriceSheet(priceSheetId?: string) {
     if (!priceSheetId) return;
