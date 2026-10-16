@@ -839,6 +839,49 @@ describe('StudiesService', () => {
       });
     });
 
+    describe('findAdminOrderable', () => {
+      it('acepta listas privadas activas y limita a las sucursales del usuario', async () => {
+        prisma.priceSheets.findFirst.mockResolvedValue({ id: 'ps-private' });
+
+        await service.findAdminOrderable({ priceSheetId: 'ps-private' }, user);
+
+        expect(prisma.priceSheets.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              id: 'ps-private',
+              isActive: true,
+              branchId: { in: [BRANCH_ID] },
+            },
+          }),
+        );
+        expect(where()).toMatchObject({
+          isActive: true,
+          branchId: { in: [BRANCH_ID] },
+          priceSheets: {
+            some: {
+              priceSheet: { isActive: true },
+              priceSheetId: 'ps-private',
+            },
+          },
+        });
+      });
+
+      it('responde 404 si la lista no existe, está inactiva o es de otra sucursal', async () => {
+        prisma.priceSheets.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service.findAdminOrderable({ priceSheetId: 'ps-x' }, user),
+        ).rejects.toThrow(NotFoundException);
+        expect(prisma.study.findMany).not.toHaveBeenCalled();
+      });
+
+      it('responde 403 con un branchId no asignado', async () => {
+        await expect(
+          service.findAdminOrderable({ branchId: BRANCH_ID }, outsider),
+        ).rejects.toThrow(ForbiddenException);
+      });
+    });
+
     it.each(['findAll', 'findOrderable'] as const)(
       '%s responde 404 con un priceSheetId privado o inactivo',
       async (method) => {
