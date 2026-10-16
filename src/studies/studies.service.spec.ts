@@ -37,16 +37,17 @@ describe('StudiesService', () => {
   let service: StudiesService;
   let prisma: {
     service: { findUnique: jest.Mock };
-    priceSheets: { findMany: jest.Mock };
+    priceSheets: { findMany: jest.Mock; findFirst: jest.Mock };
     study: {
       create: jest.Mock;
       update: jest.Mock;
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       findMany: jest.Mock;
       count: jest.Mock;
     };
     studyPanelItem: { count: jest.Mock; findMany: jest.Mock };
-    studyOnPriceSheet: { findMany: jest.Mock };
+    studyOnPriceSheet: { findMany: jest.Mock; findFirst: jest.Mock };
     studySection: ReturnType<typeof catalogDelegate>;
     sampleType: ReturnType<typeof catalogDelegate>;
     studyTechnique: ReturnType<typeof catalogDelegate>;
@@ -78,11 +79,13 @@ describe('StudiesService', () => {
             where.id.in.map((id) => ({ id, branchId: BRANCH_ID })),
           ),
         ),
+        findFirst: jest.fn().mockResolvedValue({ id: 'ps-1' }),
       },
       study: {
         create: jest.fn().mockResolvedValue({ id: 'study-1' }),
         update: jest.fn().mockResolvedValue({ id: 'study-1' }),
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -90,7 +93,10 @@ describe('StudiesService', () => {
         count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn().mockResolvedValue([]),
       },
-      studyOnPriceSheet: { findMany: jest.fn().mockResolvedValue([]) },
+      studyOnPriceSheet: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
       studySection: catalogDelegate(),
       sampleType: catalogDelegate(),
       studyTechnique: catalogDelegate(),
@@ -704,6 +710,88 @@ describe('StudiesService', () => {
     });
   });
 
+  describe('detalle público', () => {
+    const detail = (priceSheetId: string | null) => ({
+      id: 'study-1',
+      name: 'Glucosa',
+      title: null,
+      gender: 'A',
+      ageFormat: 'AÑOS',
+      minAge: 0,
+      maxAge: 120,
+      service: {
+        id: 'svc-1',
+        name: 'Análisis',
+        slug: 'analisis',
+        priceSheetId,
+      },
+    });
+
+    it.each([
+      ['findBySlug', () => service.findBySlug('glucosa', BRANCH_ID)],
+      ['findOne', () => service.findOne('study-1')],
+    ])(
+      '%s no incluye priceSheets y toma el precio de la lista pública del servicio',
+      async (_name, call) => {
+        prisma.study.findUnique.mockResolvedValue(detail('ps-1'));
+        prisma.study.findFirst.mockResolvedValue(detail('ps-1'));
+        prisma.studyOnPriceSheet.findFirst.mockResolvedValue({
+          price: new Prisma.Decimal(473),
+          showPrice: true,
+        });
+
+        const result = await call();
+
+        const [args] = (prisma.study.findUnique.mock.calls[0] ??
+          prisma.study.findFirst.mock.calls[0]) as [
+          { include: Record<string, unknown> },
+        ];
+        expect(args.include).not.toHaveProperty('priceSheets');
+        expect(result).not.toHaveProperty('priceSheets');
+        expect(result.service).toEqual({
+          id: 'svc-1',
+          name: 'Análisis',
+          slug: 'analisis',
+        });
+        expect(prisma.studyOnPriceSheet.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: {
+              studyId: 'study-1',
+              priceSheetId: 'ps-1',
+              priceSheet: { isPublic: true, isActive: true },
+            },
+          }),
+        );
+        expect(result.priceInfo).toEqual({
+          showPrice: true,
+          price: new Prisma.Decimal(473),
+          message: null,
+        });
+      },
+    );
+
+    it('sin precio público (lista privada, inactiva o sin entrada) responde showPrice=false', async () => {
+      prisma.study.findFirst.mockResolvedValue(detail('ps-1'));
+
+      const result = await service.findOne('study-1');
+
+      expect(result.priceInfo).toEqual({
+        showPrice: false,
+        price: null,
+        message: 'Para mayor información consulte en sucursal',
+      });
+    });
+
+    it('si el servicio no tiene lista asignada no consulta precios', async () => {
+      prisma.study.findFirst.mockResolvedValue(detail(null));
+
+      const result = await service.findOne('study-1');
+
+      expect(prisma.studyOnPriceSheet.findFirst).not.toHaveBeenCalled();
+      expect(result.priceInfo.showPrice).toBe(false);
+    });
+  });
+
   describe('findBySlug', () => {
     it('busca por slug dentro de la sucursal y solo activos', async () => {
       prisma.study.findUnique.mockResolvedValue(null);
@@ -726,13 +814,15 @@ describe('StudiesService', () => {
     const where = () =>
       (prisma.study.findMany.mock.calls[0][0] as { where: unknown }).where;
 
-    it('solo devuelve estudios activos con precio en una lista activa', async () => {
+    it('solo devuelve estudios activos con precio en una lista pública y activa', async () => {
       await service.findOrderable({ branchId: BRANCH_ID });
 
       expect(where()).toEqual({
         branchId: BRANCH_ID,
         isActive: true,
-        priceSheets: { some: { priceSheet: { isActive: true } } },
+        priceSheets: {
+          some: { priceSheet: { isPublic: true, isActive: true } },
+        },
       });
     });
 
@@ -741,9 +831,94 @@ describe('StudiesService', () => {
 
       expect(where()).toMatchObject({
         priceSheets: {
-          some: { priceSheet: { isActive: true }, priceSheetId: 'ps-1' },
+          some: {
+            priceSheet: { isPublic: true, isActive: true },
+            priceSheetId: 'ps-1',
+          },
         },
       });
+    });
+
+    it.each(['findAll', 'findOrderable'] as const)(
+      '%s responde 404 con un priceSheetId privado o inactivo',
+      async (method) => {
+        prisma.priceSheets.findFirst.mockResolvedValue(null);
+
+        await expect(
+          service[method]({ priceSheetId: 'ps-private' }),
+        ).rejects.toThrow(NotFoundException);
+        expect(prisma.priceSheets.findFirst).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'ps-private', isPublic: true, isActive: true },
+          }),
+        );
+        expect(prisma.study.findMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it('findAll solo resuelve precios de listas públicas y no expone hasConfiguredPrice', async () => {
+      prisma.study.findMany.mockResolvedValue([
+        {
+          id: 'study-1',
+          name: 'Glucosa',
+          title: null,
+          gender: 'A',
+          ageFormat: 'AÑOS',
+          minAge: 0,
+          maxAge: 120,
+          service: { priceSheetId: 'ps-1' },
+        },
+      ]);
+      prisma.studyOnPriceSheet.findMany.mockResolvedValue([
+        {
+          studyId: 'study-1',
+          priceSheetId: 'ps-1',
+          price: new Prisma.Decimal(473),
+          showPrice: true,
+        },
+      ]);
+
+      const { data } = await service.findAll({ branchId: BRANCH_ID });
+
+      expect(prisma.studyOnPriceSheet.findMany).toHaveBeenCalledWith({
+        where: expect.objectContaining({
+          priceSheet: { isPublic: true, isActive: true },
+        }) as unknown,
+      });
+      expect(data[0].priceInfo).toEqual({
+        showPrice: true,
+        price: new Prisma.Decimal(473),
+        message: null,
+      });
+    });
+
+    it('findInactive (admin) conserva hasConfiguredPrice y acepta cualquier lista', async () => {
+      prisma.study.findMany.mockResolvedValue([
+        {
+          id: 'study-1',
+          name: 'Glucosa',
+          title: null,
+          gender: 'A',
+          ageFormat: 'AÑOS',
+          minAge: 0,
+          maxAge: 120,
+          service: { priceSheetId: null },
+        },
+      ]);
+
+      const { data } = await service.findInactive(
+        { priceSheetId: 'ps-private' },
+        user,
+      );
+
+      expect(prisma.priceSheets.findFirst).not.toHaveBeenCalled();
+      expect(prisma.studyOnPriceSheet.findMany).toHaveBeenCalledWith({
+        where: {
+          priceSheetId: { in: ['ps-private'] },
+          studyId: { in: ['study-1'] },
+        },
+      });
+      expect(data[0].priceInfo).toMatchObject({ hasConfiguredPrice: false });
     });
 
     it('findAll solo devuelve activos y no filtra por precio', async () => {

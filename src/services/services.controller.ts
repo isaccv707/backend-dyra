@@ -43,9 +43,14 @@ export class ServicesController {
   @ApiOperation({
     summary: 'Listar servicios',
     description:
-      'Devuelve los servicios disponibles, opcionalmente filtrados por sucursal.',
+      "Devuelve los servicios disponibles, opcionalmente filtrados por sucursal. Con branchId, cada servicio trae solo los estudios con precio en su lista de precios (o en priceSheetId), que debe ser pública (isPublic) y activa, y se pueden filtrar con isPanel (true = solo perfiles, false = solo estudios individuales); priceInfo = { showPrice, price, message }, con message = 'Para mayor información consulte en sucursal' si showPrice = false.",
   })
   @ApiResponse({ status: 200, description: 'Listado de servicios.' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'priceSheetId no existe, es de otra sucursal, no es pública o no está activa.',
+  })
   @Public()
   @Get()
   findAll(@Query() dto: FindServicesDto) {
@@ -55,7 +60,7 @@ export class ServicesController {
   @ApiOperation({
     summary: 'Obtener servicio',
     description:
-      'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit) y se pueden filtrar por nombre o código con "search".',
+      'Devuelve un servicio por su identificador, opcionalmente filtrado por sucursal. Los estudios del servicio vienen paginados (usa page/limit) y se pueden filtrar por nombre o código con "search" y por tipo con "isPanel" (true = solo perfiles, false = solo estudios individuales; omitido = ambos). Solo incluye estudios con precio en la lista de precios del servicio; si esa lista no es pública (isPublic) o no está activa, priceSheet es null y studies llega vacío.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio encontrado.' })

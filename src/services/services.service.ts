@@ -19,6 +19,13 @@ import { studyTitle } from 'src/studies/utils/study-title.util';
 
 const SERVICE_ALLOWED_FIELDS = ['name', 'createdAt'];
 
+// Service routes are public: only public, active sheets may expose prices
+// (partner sheets are private).
+const PUBLIC_PRICE_SHEET_WHERE = {
+  isPublic: true,
+  isActive: true,
+} satisfies Prisma.PriceSheetsWhereInput;
+
 @Injectable()
 export class ServicesService {
   constructor(
@@ -119,12 +126,12 @@ export class ServicesService {
   }
 
   private async findAllByBranch(branchId: string, dto: FindServicesDto) {
-    const { priceSheetId } = dto;
+    const { priceSheetId, isPanel } = dto;
 
     let overridePriceSheetId: string | undefined;
     if (priceSheetId) {
       const priceSheet = await this.prisma.priceSheets.findFirst({
-        where: { id: priceSheetId, branchId, isActive: true },
+        where: { id: priceSheetId, branchId, ...PUBLIC_PRICE_SHEET_WHERE },
         select: { id: true },
       });
       if (!priceSheet) {
@@ -159,13 +166,17 @@ export class ServicesService {
             select: { studies: true },
           },
           studies: {
-            where: { isActive: true },
+            where: {
+              isActive: true,
+              ...(isPanel !== undefined && { isPanel }),
+            },
             select: {
               id: true,
               name: true,
               title: true,
               slug: true,
               code: true,
+              isPanel: true,
               description: true,
               sampleType: { select: { name: true } },
               deliveryTime: true,
@@ -191,6 +202,7 @@ export class ServicesService {
       ? await this.prisma.studyOnPriceSheet.findMany({
           where: {
             priceSheetId: { in: priceSheetIdsToResolve },
+            priceSheet: PUBLIC_PRICE_SHEET_WHERE,
             studyId: {
               in: services.flatMap((s) => s.studies.map((st) => st.id)),
             },
@@ -209,27 +221,36 @@ export class ServicesService {
       const effectivePriceSheetId =
         overridePriceSheetId ?? service.priceSheetId ?? undefined;
 
+      // Only studies priced in the effective sheet are sellable; panel-only
+      // parameters have no price and are hidden.
+      const pricedStudies = effectivePriceSheetId
+        ? service.studies.flatMap((study) => {
+            const regionalPrice = priceByKey.get(
+              `${study.id}:${effectivePriceSheetId}`,
+            );
+            return regionalPrice ? [{ study, regionalPrice }] : [];
+          })
+        : [];
+
       return {
         ...service,
-        studies: service.studies.map((study) => {
-          const regionalPrice = effectivePriceSheetId
-            ? priceByKey.get(`${study.id}:${effectivePriceSheetId}`)
-            : undefined;
-
+        _count: { studies: pricedStudies.length },
+        studies: pricedStudies.map(({ study, regionalPrice }) => {
           return {
             id: study.id,
             name: study.name,
             title: studyTitle(study),
             slug: study.slug,
             code: study.code,
+            isPanel: study.isPanel,
             description: study.description,
             sampleType: study.sampleType?.name ?? null,
             deliveryTime: study.deliveryTime,
             preparation: study.preparation,
             priceInfo: {
-              showPrice: regionalPrice?.showPrice ?? false,
-              price: regionalPrice?.showPrice ? regionalPrice.price : null,
-              message: regionalPrice?.showPrice
+              showPrice: regionalPrice.showPrice,
+              price: regionalPrice.showPrice ? regionalPrice.price : null,
+              message: regionalPrice.showPrice
                 ? null
                 : 'Para mayor información consulte en sucursal',
             },
@@ -242,7 +263,7 @@ export class ServicesService {
   }
 
   async findOne(id: string, dto: FindServicesDto = {}) {
-    const { branchId, page = 1, limit = 10, search } = dto;
+    const { branchId, page = 1, limit = 10, search, isPanel } = dto;
 
     if (branchId) {
       await this.branchesService.findOne(branchId);
@@ -258,7 +279,13 @@ export class ServicesService {
         details: true,
         branch: true,
         priceSheet: {
-          select: { id: true, name: true, description: true },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            isPublic: true,
+            isActive: true,
+          },
         },
         _count: {
           select: { studies: true },
@@ -270,9 +297,35 @@ export class ServicesService {
 
     const skip = (page - 1) * limit;
     const term = search?.trim();
+    const { priceSheet: assignedSheet, ...serviceData } = service;
+    const priceSheet =
+      assignedSheet?.isPublic && assignedSheet.isActive
+        ? {
+            id: assignedSheet.id,
+            name: assignedSheet.name,
+            description: assignedSheet.description,
+          }
+        : null;
+
+    if (!priceSheet) {
+      return {
+        ...serviceData,
+        priceSheet,
+        studies: paginatedResponse([], 0, page, limit),
+      };
+    }
+
+    // Only studies priced in the service's sheet are sellable; panel-only
+    // parameters have no price and are hidden.
     const studiesWhere: Prisma.StudyWhereInput = {
       serviceId: service.id,
       isActive: true,
+      priceSheets: {
+        some: {
+          priceSheetId: priceSheet.id,
+        },
+      },
+      ...(isPanel !== undefined && { isPanel }),
       ...(term && {
         OR: [
           { name: { contains: term, mode: Prisma.QueryMode.insensitive } },
@@ -292,31 +345,37 @@ export class ServicesService {
           name: true,
           code: true,
           slug: true,
+          isPanel: true,
+          description: true,
+          preparation: true,
+          sampleType: { select: { name: true } },
+          section: { select: { name: true } },
         },
       }),
       this.prisma.study.count({ where: studiesWhere }),
     ]);
 
-    const priceEntries = service.priceSheetId
-      ? await this.prisma.studyOnPriceSheet.findMany({
-          where: {
-            priceSheetId: service.priceSheetId,
-            studyId: { in: studies.map((s) => s.id) },
-          },
-        })
-      : [];
+    const priceEntries = await this.prisma.studyOnPriceSheet.findMany({
+      where: {
+        priceSheetId: priceSheet.id,
+        studyId: { in: studies.map((s) => s.id) },
+      },
+    });
 
     const priceByStudyId = new Map(
       priceEntries.map((entry) => [entry.studyId, entry]),
     );
 
     return {
-      ...service,
+      ...serviceData,
+      priceSheet,
       studies: paginatedResponse(
         studies.map((study) => {
           const regionalPrice = priceByStudyId.get(study.id);
           return {
             ...study,
+            sampleType: study.sampleType?.name ?? null,
+            section: study.section?.name ?? null,
             priceInfo: {
               showPrice: regionalPrice?.showPrice ?? false,
               price: regionalPrice?.showPrice ? regionalPrice.price : null,
