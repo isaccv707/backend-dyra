@@ -72,24 +72,7 @@ export class StudiesController {
   @ApiOperation({
     summary: 'Listar estudios',
     description:
-      'Devuelve el listado paginado de estudios activos. Cada estudio pertenece a una sola sucursal; usa branchId para filtrar los de esa sucursal. Filtros de pacientes elegibles: gender y ageFormat exactos; minAge devuelve estudios cuya edad mínima es >= minAge; maxAge, estudios cuya edad máxima es <= maxAge. sort/filters aceptan eligiblePatients.<campo>.',
-  })
-  @ApiQuery({
-    name: 'branchId',
-    required: false,
-    description: 'Identificador de sucursal para filtrar estudios.',
-  })
-  @ApiResponse({ status: 200, description: 'Listado paginado de estudios.' })
-  @Public()
-  @Get()
-  findAll(@Query() pagination: PaginationDto) {
-    return this.studiesService.findAll(pagination);
-  }
-
-  @ApiOperation({
-    summary: 'Listar estudios ordenables',
-    description:
-      'Devuelve el listado paginado de estudios activos que se pueden ofertar: los que tienen al menos un precio en una lista de precios activa. Con priceSheetId solo cuenta un precio en esa lista.',
+      'Devuelve el listado paginado de estudios activos. Cada estudio pertenece a una sola sucursal; usa branchId para filtrar los de esa sucursal. Filtros de pacientes elegibles: gender y ageFormat exactos; minAge devuelve estudios cuya edad mínima es >= minAge; maxAge, estudios cuya edad máxima es <= maxAge. sort/filters aceptan eligiblePatients.<campo>. Cada estudio trae priceInfo = { showPrice, price, message }: con branchId, el precio de la lista asignada a su servicio; sin branchId, el de priceSheetId. Solo se usan listas públicas (isPublic) y activas.',
   })
   @ApiQuery({
     name: 'branchId',
@@ -100,11 +83,42 @@ export class StudiesController {
     name: 'priceSheetId',
     required: false,
     description:
-      'Identificador del tarifario: solo estudios con precio en ese tarifario.',
+      'Lista de precios pública y activa de la que se toman los precios (solo sin branchId).',
+  })
+  @ApiResponse({ status: 200, description: 'Listado paginado de estudios.' })
+  @ApiResponse({
+    status: 404,
+    description: 'priceSheetId no existe, no es pública o no está activa.',
+  })
+  @Public()
+  @Get()
+  findAll(@Query() pagination: PaginationDto) {
+    return this.studiesService.findAll(pagination);
+  }
+
+  @ApiOperation({
+    summary: 'Listar estudios ordenables',
+    description:
+      'Devuelve el listado paginado de estudios activos que se pueden ofertar al público: los que tienen al menos un precio en una lista de precios pública (isPublic) y activa. Con priceSheetId solo cuenta un precio en esa lista, que debe ser pública y activa.',
+  })
+  @ApiQuery({
+    name: 'branchId',
+    required: false,
+    description: 'Identificador de sucursal para filtrar estudios.',
+  })
+  @ApiQuery({
+    name: 'priceSheetId',
+    required: false,
+    description:
+      'Identificador del tarifario (público y activo): solo estudios con precio en ese tarifario.',
   })
   @ApiResponse({
     status: 200,
     description: 'Listado paginado de estudios ordenables.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'priceSheetId no existe, no es pública o no está activa.',
   })
   @Public()
   @Get('orderable')
@@ -150,9 +164,27 @@ export class StudiesController {
   }
 
   @ApiOperation({
+    summary: 'Obtener estudio (admin)',
+    description:
+      'Devuelve el detalle completo de un estudio (activo o inactivo) para el panel admin, incluidos sus precios en todas las listas de precios (priceSheets), públicas y privadas.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
+  @ApiResponse({ status: 200, description: 'Estudio encontrado.' })
+  @ApiResponse({ status: 404, description: 'Estudio no encontrado.' })
+  @ApiBearerAuth()
+  @Permissions('studies:read')
+  @Get('admin/:id')
+  findAdminOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.studiesService.findAdminOne(id, user);
+  }
+
+  @ApiOperation({
     summary: 'Obtener estudio por slug',
     description:
-      'Devuelve un estudio activo por su slug. El slug solo es único dentro de una sucursal, por eso branchId es obligatorio.',
+      "Devuelve un estudio activo por su slug. El slug solo es único dentro de una sucursal, por eso branchId es obligatorio. No incluye priceSheets; priceInfo = { showPrice, price, message }: precio de la lista de precios asignada al servicio del estudio, solo si es pública (isPublic) y activa; si no hay precio público, showPrice = false, price = null y message = 'Para mayor información consulte en sucursal'.",
   })
   @ApiParam({ name: 'slug', description: 'Slug del estudio.' })
   @ApiQuery({
@@ -302,7 +334,7 @@ export class StudiesController {
   @ApiOperation({
     summary: 'Obtener estudio',
     description:
-      'Devuelve un estudio activo por su identificador. Para buscar por slug usa GET /studies/by-slug/:slug?branchId=.',
+      "Devuelve un estudio activo por su identificador. Para buscar por slug usa GET /studies/by-slug/:slug?branchId=. No incluye priceSheets (el detalle con todas las listas está en GET /studies/admin/:id); priceInfo = { showPrice, price, message }: precio de la lista de precios asignada al servicio del estudio, solo si es pública (isPublic) y activa; si no hay precio público, showPrice = false, price = null y message = 'Para mayor información consulte en sucursal'.",
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del estudio.' })
   @ApiResponse({ status: 200, description: 'Estudio encontrado.' })
