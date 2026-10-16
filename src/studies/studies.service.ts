@@ -263,6 +263,33 @@ const STUDY_DETAIL_INCLUDE = {
   },
 } satisfies Prisma.StudyInclude;
 
+// Public responses must never expose another sheet's prices (partner sheets
+// are private): no priceSheets array, only the service's public sheet price.
+const STUDY_PUBLIC_DETAIL_INCLUDE = {
+  service: { select: { id: true, name: true, slug: true, priceSheetId: true } },
+  ...CATALOG_INCLUDE,
+  referenceValues: REFERENCE_VALUES_INCLUDE,
+  panelItems: PANEL_ITEMS_INCLUDE,
+  parentPanels: STUDY_DETAIL_INCLUDE.parentPanels,
+} satisfies Prisma.StudyInclude;
+
+const PUBLIC_PRICE_SHEET_WHERE = {
+  isPublic: true,
+  isActive: true,
+} satisfies Prisma.PriceSheetsWhereInput;
+
+const NO_PUBLIC_PRICE_MESSAGE = 'Para mayor información consulte en sucursal';
+
+function toPriceInfo(
+  entry: { price: Prisma.Decimal; showPrice: boolean } | null | undefined,
+) {
+  return {
+    showPrice: entry?.showPrice ?? false,
+    price: entry?.showPrice ? entry.price : null,
+    message: entry?.showPrice ? null : NO_PUBLIC_PRICE_MESSAGE,
+  };
+}
+
 @Injectable()
 export class StudiesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -516,32 +543,57 @@ export class StudiesService {
     }
   }
 
-  findAll(dto: PaginationDto) {
-    return this.findStudies(dto, { isActive: true });
+  async findAll(dto: PaginationDto) {
+    await this.assertPublicPriceSheet(dto.priceSheetId);
+    return this.findStudies(dto, { isActive: true }, true);
   }
 
   findInactive(dto: PaginationDto, user: BranchScopedUser) {
-    return this.findStudies(dto, {
-      isActive: false,
-      ...userBranchFilter(user, dto.branchId),
-    });
+    return this.findStudies(
+      dto,
+      {
+        isActive: false,
+        ...userBranchFilter(user, dto.branchId),
+      },
+      false,
+    );
   }
 
-  findOrderable(dto: PaginationDto) {
-    return this.findStudies(dto, {
-      isActive: true,
-      priceSheets: {
-        some: {
-          priceSheet: { isActive: true },
-          ...(dto.priceSheetId && { priceSheetId: dto.priceSheetId }),
+  async findOrderable(dto: PaginationDto) {
+    await this.assertPublicPriceSheet(dto.priceSheetId);
+    return this.findStudies(
+      dto,
+      {
+        isActive: true,
+        priceSheets: {
+          some: {
+            priceSheet: PUBLIC_PRICE_SHEET_WHERE,
+            ...(dto.priceSheetId && { priceSheetId: dto.priceSheetId }),
+          },
         },
       },
+      true,
+    );
+  }
+
+  /** Public routes may only read prices from public, active sheets. */
+  private async assertPublicPriceSheet(priceSheetId?: string) {
+    if (!priceSheetId) return;
+    const priceSheet = await this.prisma.priceSheets.findFirst({
+      where: { id: priceSheetId, ...PUBLIC_PRICE_SHEET_WHERE },
+      select: { id: true },
     });
+    if (!priceSheet) {
+      throw new NotFoundException(
+        `Lista de precios con el ID ${priceSheetId} no encontrada`,
+      );
+    }
   }
 
   private async findStudies(
     dto: PaginationDto,
-    extraWhere: Prisma.StudyWhereInput = {},
+    extraWhere: Prisma.StudyWhereInput,
+    publicOnly: boolean,
   ) {
     const {
       priceSheetId,
@@ -611,6 +663,7 @@ export class StudiesService {
           where: {
             priceSheetId: { in: priceSheetIdsToResolve },
             studyId: { in: items.map((s) => s.id) },
+            ...(publicOnly && { priceSheet: PUBLIC_PRICE_SHEET_WHERE }),
           },
         })
       : [];
@@ -634,12 +687,8 @@ export class StudiesService {
       return {
         ...toStudyResponse(rest),
         priceInfo: {
-          showPrice: regionalPrice?.showPrice ?? false,
-          price: regionalPrice?.showPrice ? regionalPrice.price : null,
-          message: regionalPrice?.showPrice
-            ? null
-            : 'Para mayor información consulte en sucursal',
-          hasConfiguredPrice: !!regionalPrice,
+          ...toPriceInfo(regionalPrice),
+          ...(!publicOnly && { hasConfiguredPrice: !!regionalPrice }),
         },
       };
     });
@@ -647,8 +696,42 @@ export class StudiesService {
     return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
   }
 
-  findOne(id: string) {
-    return this.findDetail({ id, isActive: true }, id);
+  async findOne(id: string) {
+    const study = await this.prisma.study.findFirst({
+      where: { id, isActive: true },
+      include: STUDY_PUBLIC_DETAIL_INCLUDE,
+    });
+    if (!study) throw studyNotFound(id);
+    return this.toPublicStudyDetail(study);
+  }
+
+  async findAdminOne(id: string, user: BranchScopedUser) {
+    const study = await this.findDetail({ id }, id);
+    assertBranchAccess(user, study.branchId);
+    return study;
+  }
+
+  private async toPublicStudyDetail(
+    study: Prisma.StudyGetPayload<{
+      include: typeof STUDY_PUBLIC_DETAIL_INCLUDE;
+    }>,
+  ) {
+    const { priceSheetId, ...service } = study.service;
+    const entry = priceSheetId
+      ? await this.prisma.studyOnPriceSheet.findFirst({
+          where: {
+            studyId: study.id,
+            priceSheetId,
+            priceSheet: PUBLIC_PRICE_SHEET_WHERE,
+          },
+          select: { price: true, showPrice: true },
+        })
+      : null;
+
+    return {
+      ...toStudyResponse({ ...study, service }),
+      priceInfo: toPriceInfo(entry),
+    };
   }
 
   async findInactiveOne(id: string, user: BranchScopedUser) {
@@ -660,14 +743,14 @@ export class StudiesService {
   async findBySlug(slug: string, branchId: string) {
     const study = await this.prisma.study.findUnique({
       where: { branchId_slug: { branchId, slug }, isActive: true },
-      include: STUDY_DETAIL_INCLUDE,
+      include: STUDY_PUBLIC_DETAIL_INCLUDE,
     });
     if (!study) {
       throw new NotFoundException(
         `Estudio con el slug '${slug}' no encontrado en esta sucursal`,
       );
     }
-    return toStudyResponse(study);
+    return this.toPublicStudyDetail(study);
   }
 
   private async findDetail(where: Prisma.StudyWhereInput, id: string) {
