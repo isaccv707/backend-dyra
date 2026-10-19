@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  ParseUUIDPipe,
   Delete,
 } from '@nestjs/common';
 import {
@@ -56,7 +57,7 @@ export class PermissionsController {
   @ApiResponse({ status: 404, description: 'Permiso no encontrado.' })
   @Permissions('permissions:read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.permissionsService.findOne(id);
   }
 
@@ -73,7 +74,7 @@ export class PermissionsController {
   @Permissions('permissions:update')
   @Patch(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updatePermissionDto: UpdatePermissionDto,
   ) {
     return this.permissionsService.update(id, updatePermissionDto);
@@ -88,7 +89,7 @@ export class PermissionsController {
   @ApiResponse({ status: 404, description: 'Permiso no encontrado.' })
   @Permissions('permissions:delete')
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.permissionsService.remove(id);
   }
 }

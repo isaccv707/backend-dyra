@@ -35,6 +35,8 @@ const USER_SELECT = {
   },
 } satisfies Prisma.UserSelect;
 
+const ADMIN_ROLE_NAME = 'Administrador';
+
 const USER_ALLOWED_FIELDS = [
   'name',
   'email',
@@ -129,16 +131,30 @@ export class UsersService {
 
     const { password, roleId, branchIds, ...userData } = updateUserDto;
 
-    if (user.email === process.env.ADMIN_EMAIL && userData.email) {
-      throw new ForbiddenException(
-        'El email del usuario raíz del sistema no puede ser modificado',
-      );
+    const isRootUser = this.isRootUser(user.email);
+
+    if (isRootUser) {
+      if (userData.email !== undefined && userData.email !== user.email) {
+        throw new ForbiddenException(
+          'El email del usuario raíz del sistema no puede ser modificado',
+        );
+      }
+      if (userData.isActive === false) {
+        throw new ForbiddenException(
+          'El usuario raíz del sistema no puede ser desactivado',
+        );
+      }
     }
 
     if (roleId) {
       const role = await this.prisma.role.findUnique({ where: { id: roleId } });
       if (!role) {
         throw new NotFoundException(`Role with ID '${roleId}' not found`);
+      }
+      if (isRootUser && role.name !== ADMIN_ROLE_NAME) {
+        throw new ForbiddenException(
+          `El usuario raíz del sistema debe conservar el rol ${ADMIN_ROLE_NAME}`,
+        );
       }
     }
 
@@ -164,18 +180,42 @@ export class UsersService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, currentUserId: string) {
     const user = await this.findOne(id);
 
-    if (user.email === process.env.ADMIN_EMAIL) {
+    if (this.isRootUser(user.email)) {
       throw new ForbiddenException(
         'El usuario raíz del sistema no puede ser eliminado',
       );
     }
 
-    return this.prisma.user.delete({
-      where: { id },
-      select: USER_SELECT,
-    });
+    if (id === currentUserId) {
+      throw new ForbiddenException('No puedes eliminar tu propio usuario');
+    }
+
+    try {
+      return await this.prisma.user.delete({
+        where: { id },
+        select: USER_SELECT,
+      });
+    } catch (error) {
+      // Users referenced by tickets, safeguards, etc. are deactivated instead.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2003'
+      ) {
+        return this.prisma.user.update({
+          where: { id },
+          data: { isActive: false },
+          select: USER_SELECT,
+        });
+      }
+      handleDatabaseErrors(error, 'User');
+    }
+  }
+
+  private isRootUser(email: string) {
+    const rootEmail = process.env.ADMIN_EMAIL;
+    return !!rootEmail && email.toLowerCase() === rootEmail.toLowerCase();
   }
 }

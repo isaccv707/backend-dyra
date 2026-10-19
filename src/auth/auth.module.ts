@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -22,6 +23,10 @@ import { MailModule } from 'src/mail/mail.module';
           expiresIn: configService.get('JWT_EXPIRES_IN', '7d'),
         },
       }),
+    }),
+    // Per-IP limit for the public login / password-recovery endpoints.
+    ThrottlerModule.forRoot({
+      throttlers: [{ name: 'default', ttl: 60_000, limit: 5 }],
     }),
     MailModule,
   ],

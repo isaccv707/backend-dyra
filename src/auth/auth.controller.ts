@@ -5,7 +5,9 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -37,7 +39,9 @@ export class AuthController {
     description: 'Inicio de sesión exitoso, devuelve el token de acceso.',
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas.' })
+  @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() loginDto: LoginDto) {
@@ -67,6 +71,7 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, description: 'Código de recuperación enviado.' })
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ForgotPasswordDto) {
@@ -79,8 +84,12 @@ export class AuthController {
       'Valida el código OTP enviado al correo del usuario como parte del flujo de recuperación de contraseña.',
   })
   @ApiResponse({ status: 200, description: 'Código OTP válido.' })
-  @ApiResponse({ status: 400, description: 'Código OTP inválido o expirado.' })
+  @ApiResponse({
+    status: 401,
+    description: 'Código o token inválido o expirado.',
+  })
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   verifyOtp(@Body() dto: VerifyOtpDto) {
@@ -96,8 +105,12 @@ export class AuthController {
     status: 200,
     description: 'Contraseña restablecida exitosamente.',
   })
-  @ApiResponse({ status: 400, description: 'Código OTP inválido o expirado.' })
+  @ApiResponse({
+    status: 401,
+    description: 'Código o token inválido o expirado.',
+  })
   @Public()
+  @UseGuards(ThrottlerGuard)
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {

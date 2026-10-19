@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomInt, timingSafeEqual } from 'crypto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { MailService } from 'src/mail/mail.service';
 import { LoginDto } from './dto/login.dto';
@@ -8,7 +9,25 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { JwtPayload } from './interfaces/jwt-payload.interface';
+import {
+  JwtPayload,
+  PASSWORD_RESET_TOKEN_TYPE,
+} from './interfaces/jwt-payload.interface';
+
+const OTP_TTL_MS = 15 * 60 * 1000;
+const OTP_MAX_ATTEMPTS = 5;
+const FORGOT_PASSWORD_MESSAGE =
+  'Si el correo está registrado, recibirás el código en breve';
+
+const hashOtp = (otp: string) => createHash('sha256').update(otp).digest('hex');
+
+const otpMatches = (otp: string, storedHash: string) => {
+  const candidate = Buffer.from(hashOtp(otp), 'hex');
+  const stored = Buffer.from(storedHash, 'hex');
+  return (
+    candidate.length === stored.length && timingSafeEqual(candidate, stored)
+  );
+};
 
 @Injectable()
 export class AuthService {
@@ -43,16 +62,17 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    if (!user.isActive) {
-      throw new UnauthorizedException('User account is inactive');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
+    // Checked after the password so it doesn't reveal which accounts exist.
+    if (!user.isActive) {
+      throw new UnauthorizedException('Cuenta inactiva');
     }
 
     const payload: JwtPayload = { sub: user.id, email: user.email };
@@ -66,28 +86,27 @@ export class AuthService {
   }
 
   async forgotPassword({ email }: ForgotPasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { isActive: true },
+    });
 
-    if (!user) {
-      return {
-        message: 'Si el correo está registrado, recibirás el código en breve',
-      };
+    if (!user?.isActive) {
+      return { message: FORGOT_PASSWORD_MESSAGE };
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const otp = randomInt(100000, 1000000).toString();
+    const expiresAt = new Date(Date.now() + OTP_TTL_MS);
 
     await this.prisma.passwordResetToken.deleteMany({ where: { email } });
 
     await this.prisma.passwordResetToken.create({
-      data: { email, otp, expiresAt },
+      data: { email, otp: hashOtp(otp), expiresAt },
     });
 
     await this.mailService.sendOtpEmail(email, otp);
 
-    return {
-      message: 'Si el correo está registrado, recibirás el código en breve',
-    };
+    return { message: FORGOT_PASSWORD_MESSAGE };
   }
 
   async verifyOtp({ email, otp }: VerifyOtpDto) {
@@ -100,7 +119,16 @@ export class AuthService {
       orderBy: { createdAt: 'desc' },
     });
 
-    if (!token || token.otp !== otp) {
+    if (!token) {
+      throw new UnauthorizedException('Código inválido o expirado');
+    }
+
+    if (!otpMatches(otp, token.otp)) {
+      const attempts = token.attempts + 1;
+      await this.prisma.passwordResetToken.update({
+        where: { id: token.id },
+        data: { attempts, used: attempts >= OTP_MAX_ATTEMPTS },
+      });
       throw new UnauthorizedException('Código inválido o expirado');
     }
 
@@ -109,35 +137,58 @@ export class AuthService {
       data: { used: true },
     });
 
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, isActive: true },
+    });
+    if (!user?.isActive) {
+      throw new UnauthorizedException('Código inválido o expirado');
+    }
 
-    const resetToken = this.jwtService.sign(
-      { sub: user!.id, email, type: 'password_reset' },
-      { expiresIn: '15m' },
-    );
+    const resetPayload: JwtPayload = {
+      sub: user.id,
+      email,
+      type: PASSWORD_RESET_TOKEN_TYPE,
+    };
+    const resetToken = this.jwtService.sign(resetPayload, {
+      expiresIn: '15m',
+    });
 
     return { resetToken };
   }
 
   async resetPassword({ resetToken, newPassword }: ResetPasswordDto) {
-    let payload: { sub: string; email: string; type: string };
+    let payload: JwtPayload;
 
     try {
-      payload = this.jwtService.verify(resetToken);
+      payload = this.jwtService.verify<JwtPayload>(resetToken);
     } catch {
       throw new UnauthorizedException('Token inválido o expirado');
     }
 
-    if (payload.type !== 'password_reset') {
+    if (payload.type !== PASSWORD_RESET_TOKEN_TYPE) {
       throw new UnauthorizedException('Token inválido');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { isActive: true },
+    });
+    if (!user?.isActive) {
+      throw new UnauthorizedException('Token inválido o expirado');
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await this.prisma.user.update({
-      where: { id: payload.sub },
-      data: { password: hashedPassword },
-    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: payload.sub },
+        data: { password: hashedPassword },
+      }),
+      this.prisma.passwordResetToken.deleteMany({
+        where: { email: payload.email },
+      }),
+    ]);
 
     return { message: 'Contraseña actualizada exitosamente' };
   }
