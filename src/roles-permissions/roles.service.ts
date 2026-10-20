@@ -78,6 +78,15 @@ export class RolesService {
       );
     }
 
+    const assignedUsers = await this.prisma.user.count({
+      where: { roleId: id },
+    });
+    if (assignedUsers > 0) {
+      throw new ForbiddenException(
+        `El rol tiene ${assignedUsers} usuario(s) asignado(s); reasígnalos antes de eliminarlo`,
+      );
+    }
+
     try {
       return await this.prisma.role.delete({ where: { id } });
     } catch (error) {

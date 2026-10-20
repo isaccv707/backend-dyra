@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  ParseUUIDPipe,
   Delete,
 } from '@nestjs/common';
 import {
@@ -56,7 +57,7 @@ export class RolesController {
   @ApiResponse({ status: 404, description: 'Rol no encontrado.' })
   @Permissions('roles:read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.rolesService.findOne(id);
   }
 
@@ -69,7 +70,10 @@ export class RolesController {
   @ApiResponse({ status: 404, description: 'Rol no encontrado.' })
   @Permissions('roles:update')
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateRoleDto: UpdateRoleDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateRoleDto: UpdateRoleDto,
+  ) {
     return this.rolesService.update(id, updateRoleDto);
   }
 
@@ -82,7 +86,7 @@ export class RolesController {
   @ApiResponse({ status: 404, description: 'Rol no encontrado.' })
   @Permissions('roles:delete')
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.rolesService.remove(id);
   }
 }

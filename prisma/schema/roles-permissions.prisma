@@ -1,6 +1,6 @@
 model Role {
   id          String       @id @default(uuid())
-  name        String
+  name        String       @unique
   description String?
   users       User[]
   permissions Permission[]
