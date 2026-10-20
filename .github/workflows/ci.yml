@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14.3
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+      JWT_SECRET: ci-only-not-a-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: npx prisma generate
+      - run: yarn lint:check
+      - run: yarn test
+      - run: yarn build
+
+      # Every schema change must ship with its migration.
+      - name: Migrations match schema
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+
+      # openapi.json is what the frontends generate their types from.
+      - name: openapi.json is up to date
+        run: |
+          node dist/src/scripts/export-openapi
+          git diff --exit-code openapi.json
