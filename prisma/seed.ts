@@ -31,6 +31,18 @@ async function main() {
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
+  // Development only: production already has active branches that must not be
+  // touched (seedBranches updates an existing row). Opt-in via SEED_DEV_BRANCH
+  // and never when NODE_ENV=production. Runs before the admin seed so the
+  // admin user gets the branch assigned.
+  if (
+    process.env.SEED_DEV_BRANCH === 'true' &&
+    process.env.NODE_ENV !== 'production'
+  ) {
+    await seedStates(prisma);
+    await seedBranches(prisma);
+  }
+
   await seedAdminUser(prisma);
 
   await seedTicketSubcategories(prisma);
