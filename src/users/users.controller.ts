@@ -5,6 +5,7 @@ import {
   Body,
   Patch,
   Param,
+  ParseUUIDPipe,
   Delete,
   HttpCode,
 } from '@nestjs/common';
@@ -20,6 +21,8 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { PaginatedQueryDto } from '../common/dto/paginated-query.dto';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
+import type { RequestUser } from 'src/auth/interfaces/request-user.interface';
 
 @ApiTags('users')
 @ApiBearerAuth()
@@ -71,7 +74,7 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   @Permissions('users:read')
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.usersService.findOne(id);
   }
 
@@ -87,20 +90,31 @@ export class UsersController {
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   @Permissions('users:update')
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() updateUserDto: UpdateUserDto,
+  ) {
     return this.usersService.update(id, updateUserDto);
   }
 
   @ApiOperation({
     summary: 'Eliminar usuario',
-    description: 'Elimina un usuario existente.',
+    description:
+      'Elimina un usuario existente. Si tiene registros relacionados (tickets, resguardos, etc.) se desactiva en lugar de eliminarse.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del usuario.' })
   @ApiResponse({ status: 200, description: 'Usuario eliminado exitosamente.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Usuario raíz o el propio usuario autenticado.',
+  })
   @ApiResponse({ status: 404, description: 'Usuario no encontrado.' })
   @Permissions('users:delete')
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(id);
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() currentUser: RequestUser,
+  ) {
+    return this.usersService.remove(id, currentUser.id);
   }
 }

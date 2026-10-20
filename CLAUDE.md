@@ -1,97 +1,143 @@
-## Project Overview
+# CLAUDE.md
 
-`backend-dyra` is a NestJS REST API for DYRA, a laboratory/healthcare services company. It manages lab studies, pricing, branch locations, blog content, and generates PDF quotations.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## Rol
 
-```bash
-yarn start:dev       # Dev server with watch mode
-yarn build           # Generates Prisma client then compiles (npx prisma generate && nest build)
-npm run lint            # ESLint with auto-fix
-npm run test            # Unit tests (Jest)
-npm run test:e2e        # E2E tests
-npm run test:cov        # Coverage report
-npx prisma generate     # Regenerate Prisma client after schema changes
-npx prisma studio       # Database GUI
-npx prisma db push      # Push schema to DB (used in prod deploy)
-npx prisma db seed      # Run seed script (ts-node prisma/seed.ts)
-```
+API REST + WebSocket de DYRA (laboratorio clínico multi-sucursal). Dueño de la base de datos. **Consumidores:** `../admin-dyra-web` (casi todas las rutas, con JWT, y el socket `/tickets`) y `../dira-astro` (solo rutas `@Public()`). Contexto del sistema: `../CLAUDE.md`.
 
-Run a single test file:
+## Stack
+
+NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
+
+## Comandos
 
 ```bash
-npx jest src/studies/studies.service.spec.ts
+yarn install
+docker compose up -d            # Postgres :5432, datos en ./postgres
+yarn start:dev                  # http://localhost:3000/api (watch)
+yarn build                      # prisma generate + nest build → dist/
+yarn test                       # unit (Jest, *.spec.ts en src/)
+npx jest src/studies/studies.service.spec.ts   # un archivo
+npx jest -t "nombre del test"                  # un test
+yarn test:cov
+yarn lint                       # ESLint con --fix (modifica archivos)
+yarn lint:check                 # ESLint sin --fix (lo que corre CI)
+yarn format                     # Prettier src/ y test/
+npx prisma generate             # tras cambiar prisma/schema/*.prisma
+yarn db:migrate --name <cambio> # prisma migrate dev: crea y aplica migración en la BD local
+yarn db:deploy                  # prisma migrate deploy (lo que corre start:prod)
+yarn db:status                  # prisma migrate status
+npx prisma db seed              # ts-node prisma/seed.ts
+npx prisma studio
+yarn openapi:export             # nest build + escribe openapi.json (contrato para los frontends)
 ```
 
-## Architecture
+- `test:e2e` (`test/jest-e2e.json`) no tiene specs hoy (`--passWithNoTests`).
+- Seed: siempre roles/permisos, usuario admin (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`; se le asignan todas las sucursales existentes) y subcategorías de tickets. Solo si `SEED_DEV_BRANCH=true` y `NODE_ENV!=production`: estados + sucursal por defecto `a1b2c3d4-0001-4000-8000-000000000001` (debe ir antes del admin). **Nunca** activar `SEED_DEV_BRANCH` contra producción: `seedBranches` actualiza la fila si existe.
 
-All routes are prefixed with `/api`. The app uses a standard NestJS module-per-feature layout under `src/`.
-
-**Modules:** `authors`, `banners`, `branches`, `posts`, `price-sheets`, `quotations`, `reviews`, `services`, `states`, `studies`, `study-catalogs`, `tickets`
-
-**Database:** PostgreSQL via Prisma. The `PrismaService` lives at `prisma/prisma/prisma.service.ts` (note the double-nested path) and uses the `@prisma/adapter-pg` native adapter. `PrismaModule` is global, so `PrismaService` is available throughout without re-importing.
-
-**Global setup in `main.ts`:**
-
-- `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true`
-- `PrismaClientExceptionFilter` maps Prisma errors to HTTP codes (P2002 → 409, P2025 → 404, P2003 → 400)
-- CORS origins from `CORS_ORIGINS` env var
-
-## Key Patterns
-
-**Adding a new entity:**
-
-1. Add model to the matching module file in `prisma/schema/` (multi-file schema: one `.prisma` per module, `generator`/`datasource` live in `prisma/schema/schema.prisma`; shared inventory enums in `inventory-enums.prisma`). Models reference each other across files without imports
-2. Run `npx prisma generate` (and `npx prisma db push` for local dev)
-3. Create a NestJS module under `src/<entity>/` with `controller`, `service`, and `dto/` subdirectory
-4. Import the module in `src/app.module.ts`
-
-**Error handling:** Use `handleDatabaseErrors()` from `src/common/handle-db-errors.ts` inside service catch blocks. The global `PrismaClientExceptionFilter` handles most Prisma exceptions automatically.
-
-**Slugs:** Use `generateSlug()` from `src/common/utils/slugger.ts` when creating/updating `posts`, `services`, or `studies`.
-
-**Branch scoping:** There is no "global" content concept in this app — every branch-owned resource belongs to exactly one branch via a required single `branchId` FK (never a `Branch[]` many-to-many). This applies to `Service`, `Author`, `Post`, `Banner`, `PriceSheets`, and `Study`. `Create*Dto`/`Update*Dto` take a single `branchId`, not `branchIds`. List endpoints accept an optional `branchId` query param and filter with a plain `where.branchId` match.
-- `Post.authorId`, when set, must reference an `Author` in the same `branchId` — enforced in `posts.service.ts`, not at the DB level.
-- `Study.branchId` must match the `branchId` of its `Study.service` (`assertServiceBelongsToBranch` in `studies.service.ts`), and `StudyOnPriceSheet` can only link a study to a `PriceSheets` row from that same branch — a study is never priced by another branch's tarifario. Both are enforced in the service layer, not at the DB level.
-- **Study catalogs** (`src/study-catalogs/`): `StudySection`, `SampleType` and `StudyTechnique` (`id Int`, `name`, `isActive`, required `branchId`) are per-branch catalogs referenced by `Study.sectionId/sampleTypeId/techniqueId`. `sectionId` and `sampleTypeId` are **required to create a study** (`CreateStudyDto`) and can be changed but never cleared (`UpdateStudyDto` rejects `null`); their DB columns stay nullable only for legacy rows pending the backfill. `techniqueId` is **optional**: a study may have no technique, and `UpdateStudyDto` accepts `techniqueId: null` to remove it. In the Excel imports, a row that creates a new study must fill the `section`/`sampleType` columns (`technique` is optional), while a row updating an existing code may leave any of them blank to keep the current values (the import never clears a technique). One shared `StudyCatalogService` base + a controller factory serve `/api/study-sections`, `/api/sample-types` and `/api/study-techniques` (permissions `<route>:create/read/update/delete`). Names are unique per branch case-insensitively (checked in the service; the DB only enforces exact `@@unique([branchId, name])`). A catalog row used by any study can't be deleted (409) — deactivate it instead. `studies.service.ts` rejects catalog ids from another branch or inactive ones. The price-sheet Excel import resolves the `section`/`sampleType`/`technique` name columns via `resolveStudyCatalogIds()` and **auto-creates** missing entries. **Bulk import:** `POST /api/study-catalogs/import?branchId=` (multipart `file`; requires all three `<route>:create` permissions) takes one Excel with a sheet per catalog (`Secciones`, `Tipos de muestra`, `Técnicas`; matched ignoring case/accents/spaces, each optional, unknown sheets reported in `ignoredSheets`) and columns `name` (required) / `isActive` (default true). It only creates: names already in the branch (case-insensitive) are reported as `skipped` and never updated, so it can't bypass `<route>:update`. Template: `GET /api/study-catalogs/import-template` (`StudyCatalogImportService`). Use `OR` of `equals` + `mode: 'insensitive'` for case-insensitive multi-name lookups — `in` + `mode: 'insensitive'` is broken with Prisma 7 + adapter-pg (it lowercases the column but not the values).
-  - Migration in progress (phase 1): the old free-text columns are still in the DB as `Study.legacySection/legacySampleType/legacyTechnique` (`@map` to the original column names), globally omitted from query results in `PrismaService`, and only read by `prisma/scripts/backfill-study-catalogs.ts`. Phase 2 (after running the backfill in prod) removes those fields and the `omit` config. Note `start:prod` runs `prisma db push --accept-data-loss`, so dropping a column in the same deploy as its backfill loses data.
-- **Panels (perfiles):** a `Study` with `isPanel = true` has ordered child studies through the `StudyPanelItem` join table (`panelId` → `childId`, many-to-many: one study can be in several panels, and a child can itself be a panel). Rules enforced in the service layer (`studies.service.ts`, price-sheet Excel import) using `src/studies/utils/panel-tree.util.ts`: only `isPanel` studies can have children; children must be in the panel's branch; no self-reference, duplicates or cycles (checked against the whole branch graph); `isPanel` can't be turned off while the panel has children; children must be active, and a study that belongs to any panel can't be deactivated (DELETE, `PATCH isActive: false` or the Excel import). Children are replaced as a whole via `PUT /api/studies/:id/panel-items`; `GET /api/studies/:id/panel-tree` returns the nested tree. A panel can't have `units`, `decimals` or `referenceValues` (they only apply to its child studies): marking a study as panel clears `units`/`decimals`, but is rejected while it has stored reference values unless the same request sends `referenceValues: []` (the Excel import rejects it outright). Quotations store a snapshot of a panel's breakdown in `QuotationItem.components` (rendered under the panel row in the PDF), so later panel edits never alter issued quotations.
-- **Study branch & access:** `Study.branchId` is set on create and never changes (`UpdateStudyDto` omits it — there are no transfers; the same study in another branch is a separate row). Every write and admin read (create, update, deactivate, panel-items, price-sheet assign/remove, export, `/inactive`) checks the user's assigned branches with `assertBranchAccess`/`userBranchFilter`; public reads don't.
-- **Study lifecycle:** `DELETE /api/studies/:id` only deactivates (`isActive = false`); reactivate with `PATCH isActive: true`. Public reads (`GET /`, `/orderable`, `/:id`, `/by-slug/:slug`, `/:id/panel-tree`) only return active studies; admins use `GET /inactive` and `GET /inactive/:id` (`studies:read`). Quotations reject inactive studies. `code` is trimmed and uppercased (DTO `@Transform` and the Excel import). `slug` comes from the DTO if sent (normalized with `generateSlug`), otherwise from `name`; renaming never changes the slug — only an explicit `slug` in the update does. `title` (display title, may differ from `name`) is optional: create defaults it to `name`, update only changes it when sent; the column is nullable only for legacy rows pending `prisma/scripts/backfill-study-titles.ts`, and responses fall back to `name` via `studyTitle()`. The Excel imports accept an optional `title` column (blank keeps the current one). Slugs are unique per branch, so slug lookups go through `GET /by-slug/:slug?branchId=` (required); `/:id` routes take UUIDs only. `deliveryTime` is in days. Study errors are in Spanish: `handleStudyDbErrors()` passes custom messages to `handleDatabaseErrors()` (optional third arg) to explain `code`/`slug` conflicts. List filters `gender`, `ageFormat` (exact), `minAge` (`>=`), `maxAge` (`<=`), and `sort`/`filters` accept `eligiblePatients.<field>`.
-- **Orderable = has a price:** there is no `isOrderable` flag. A study is orderable/sellable iff it is active and has at least one `StudyOnPriceSheet` row in an active `PriceSheets`; parameters that only exist inside a panel simply have no price. `GET /api/studies/orderable` (optional `branchId`/`priceSheetId`) lists them, public sheets only; the admin quotation wizard uses `GET /api/studies/admin/orderable` (`studies:read`, user's branches, private active sheets count too), and quotations already reject studies without a price in the selected price sheet. In the price-sheet Excel import a blank `price` cell saves the study without touching its price.
-- **Study patient/reference data:** `CreateStudyDto.eligiblePatients` (`gender` M/F/A, `ageFormat`, `minAge`, `maxAge`) is flattened by the service into the existing `Study.gender/ageFormat/minAge/maxAge` columns, and `toStudyResponse()` regroups them as `eligiblePatients` in every study response (create/update/findOne/findAll/orderable). Its values (M/F/A, DIAS/AÑOS) are intentionally different from `referenceValues` ones: eligibility of who can take the test vs. the result's reference ranges. `referenceValues[]` (`ReferenceValue` model, 1:N, cascade) is either quantitative (`minValue`/`maxValue`, at least one, plus `gender` MASCULINO/FEMENINO/AMBOS, `unitAge` Años/Dias, ages) or qualitative (`text` only) — cross-field rules live in `assertValidReferenceValues()` in `studies.service.ts`. On update, sending `referenceValues` replaces the whole list.
-- `Banner.order` is a per-`(branchId, placement)` queue — reordering logic in `banners.service.ts` scopes its shifts by both fields, not just `placement`.
-- `Service`, `Author`, `Post`, and `Study` uniqueness (`name`/`nameKey`, `slug`, `code`) is scoped per branch via composite `@@unique([branchId, ...])`, not global — the same name/slug/code can exist in two different branches; they're unrelated records (e.g. "Análisis Clínicos" can be a separate `Service` row in two branches).
-- `Safeguard.branchId` must match the `branchId` of its `Safeguard.employee` (derived from the employee, never taken from the request body) — enforced in `safeguards.service.ts`, not at the DB level.
-- `Ticket.branchId` is required and set from `CreateTicketDto.branchId` — creating a ticket still validates `branchId` against the creator's assigned branches (`assertBranchAccess`). But once created, a ticket's *ownership* is deliberately decoupled from branch: a user without `tickets:update` can only create tickets (requires `tickets:create`) and see/comment/attach on tickets they created themselves (`Ticket.createdById === user.id`), and that access **never depends on branch** — not the ticket's branch, not the branches currently assigned to the user (`TicketsService.assertTicketAccess()` intentionally skips `assertBranchAccess` for the owner path) — so a user's full ticket history stays visible even after being reassigned to a different branch. A user with `tickets:update` (IT support) is the exception that *does* stay branch-scoped: they see/manage every ticket across their assigned branches, and are the only ones who can see internal notes (`TicketComment.isInternal`), change status/priority/assignees, or join the `ti_staff_room` realtime socket room.
-  - **Assignees:** a ticket has N assignees via the `TicketAssignee` join table (no "primary" assignee — all count equally, incl. in `analytics/by-assignee`). Only `tickets:update` replaces the list via `PUT /api/tickets/:id/assignees` (`{ userIds }`, `[]` unassigns all). Any active user can be assigned (no `tickets:update` needed) as long as they have access to the ticket's branch and aren't its creator — checked in `assertAssigneesAreValid()`. `GET /api/tickets/:id/assignable-users` (`tickets:update`, optional `search`) returns exactly those candidates with an `isAssigned` flag — it exists because the `Soporte TI` role has no `users:read`. A current assignee without `tickets:update` can see/comment the ticket (no internal notes, no management) and gets in-app/socket notifications like the creator; that access is purely "is assigned right now" and ends the moment they're removed. `GET /api/tickets` for non-IT users returns created **or** assigned tickets; filters `assigneeId` and `assignedToMe=true`. Newly added assignees get an email (`MailService.sendTicketAssignedEmail`, link built from `ADMIN_APP_URL`, default `https://admin.dyranalitica.com`) sent fire-and-forget — a mail failure is logged, never rolls back the assignment. The SLA-overdue cron notifies only the ticket creator (plus the live `ti_staff_room` broadcast), not assignees.
-
-Intentional exceptions to the "single required `branchId`" rule:
-- `Review`: strict `where.branchId` match, no "global" concept, but `branchId` is nullable (a review not tied to any branch is allowed).
-- `User`: assigned to branches via a genuine `Branch[]` many-to-many (staff can work across branches) — see `src/common/utils/branch-access.util.ts` for scoping admin queries/writes to a user's assigned branches (used by `reviews`, `price-sheets`, `quotations`).
-
-**Permissions:** The catalog in `prisma/constants/roles-permissions.ts` (`PERMISSIONS`, seeded via `seedRolesAndPermissions`) follows a `<module>:create/read/update/delete` convention per module, checked declaratively with `@Permissions('module:action')` (guarded globally by `PermissionsGuard`, registered in `auth.module.ts`). `tickets` is the deliberate exception: it only has `tickets:create` (report a ticket, see/comment/attach on your own) and `tickets:update` (IT support — see/manage every ticket in your branches; see the `Branch scoping` bullet above), no `read`/`delete`. The seeded `ROLES` are `Administrador` (all permissions), `Usuario` (read-only across modules except `users`/`roles`/`permissions`, plus `tickets:create` so any employee can report a ticket), and `Soporte TI` (`Usuario`'s permission set plus `tickets:update`).
-
-**DTOs:** Use `class-validator` decorators. Always use `@Type(() => ...)` from `class-transformer` for nested objects and numeric coercion (query params arrive as strings).
-
-**Pagination:** All list endpoints follow the same shape: `{ data: T[], total: number, page: number, limit: number, totalPages: number }`.
-
-**Excel import (price sheets → studies):** the `parametros` column (comma-separated child codes, only valid on `isPanel = true` rows) replaces that panel's children after all rows are upserted, so a panel can reference studies from the same file; panel failures are reported in `panelErrors`.
-
-**Excel import (Studies):** `POST /api/studies/import?branchId=` (multipart `file`, `.xlsx`/`.xls`, `studies:create`) bulk creates/updates a branch's studies keyed by `code`, **without prices** (for parameters that only live inside panels); a row with a filled `price`/`showPrice` cell is rejected (prices go through the price-sheet import). Template: `GET /api/studies/import-template?branchId=`. It shares `StudyExcelImportService` (`src/studies/study-excel-import.service.ts`) with the price-sheet import (which passes `priceSheetId` to also upsert prices), so row rules, catalog auto-creation and `parametros` handling are identical. The slug is only set on create (from `name`; if that slug is already taken in the branch or by an earlier row of the file, it falls back to `<name>-<code>`, then a numeric suffix — `assignNewStudySlugs()`) — re-importing a renamed study never changes it. The response has per-row `invalid` errors, `importErrors`, `panelErrors` and `created`/`updated` counts. Reference values are not importable.
-
-**PDF generation (Quotations, Safeguards):** Uses `pdfkit` with server-side rendering. Company logo is embedded from `dist/assets/`. `safeguards` generates an equipment-custody document (`ADM.F.00`) for an employee with up to three optional, combinable sections (computer/mobile/vehicle); a vehicle section adds a second page with a fixed inspection checklist (`src/safeguards/constants/vehicle-inspection-items.const.ts`).
-
-## Environment Variables
+## Estructura
 
 ```
-DATABASE_URL="postgresql://user:pass@localhost:5432/dyra_db?schema=public"
-DB_USER=
-DB_PASSWORD=
-DB_NAME=
-CORS_ORIGINS="http://localhost:4321"
-PORT=3000
-ADMIN_APP_URL="https://admin.dyranalitica.com"   # optional; base for links in ticket emails
+src/<módulo>/        controller, service, dto/, *.spec.ts  (un módulo Nest por feature)
+src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Permissions/@CurrentUser
+src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
+                     slugger.util, excel utils, cors.util, cloudinary/, pdf/
+src/mail/            MailService (nodemailer)
+src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora)
+src/swagger.ts       createOpenApiDocument(): usado por main.ts y src/scripts/export-openapi.ts
+openapi.json         contrato generado (versionado; CI falla si está desactualizado)
+prisma/schema/       un .prisma por módulo; generator/datasource en schema.prisma
+prisma/migrations/   0_init (baseline = schema de main al 2026-10-20) + migraciones nuevas
+prisma/migrations-legacy/  historial previo al baseline; solo referencia, Prisma no lo lee
+prisma/prisma/       PrismaModule (global) y PrismaService (ruta doblemente anidada)
+prisma/seeds/, prisma/constants/   seeds y catálogos (roles-permissions.ts)
+prisma/scripts/      backfills one-off de migraciones de datos
+src/assets/          logo para PDFs (se copia a dist/assets)
 ```
 
-A local PostgreSQL instance (or the `docker-compose.yaml` container) is required for development.
+Módulos: auth, users, roles-permissions, branches, states, services, studies, study-catalogs, price-sheets, quotations, posts, authors, banners, reviews, employees, locations, devices, safeguards, vehicles, vehicle-safeguards, tickets.
+
+## Patrones y convenciones
+
+- **Bootstrap (`src/main.ts`):** prefijo global `/api`; Swagger en `/api` (`/api-json`) con `createOpenApiDocument()` de `src/swagger.ts` (siempre después de `setGlobalPrefix`); `ValidationPipe({ whitelist, forbidNonWhitelisted })`; `PrismaClientExceptionFilter` (P2002→409, P2025→404, P2003→400); CORS desde `CORS_ORIGINS`; query parser `extended`.
+- **Nueva entidad:** modelo en `prisma/schema/<módulo>.prisma` (los modelos se referencian entre archivos sin imports) → `yarn db:migrate --name <cambio>` (genera la migración y el cliente) → `src/<entidad>/` con controller/service/dto → importar en `src/app.module.ts` → permisos en `prisma/constants/roles-permissions.ts`. Imitar `src/services/` o `src/studies/`.
+- **DTOs:** `class-validator`; `@Type(() => …)` para anidados y números (los query params llegan como string). Swagger se infiere del DTO; documentar con `@ApiOperation`/`@ApiResponse` como en `services.controller.ts`.
+- **Errores:** `handleDatabaseErrors()` (`src/common/handle-db-errors.ts`) en los catch de servicios; mensajes en español (estudios: `handleStudyDbErrors()`).
+- **Paginación:** `{ data, total, page, limit, totalPages }` vía `src/common/utils/paginate.util.ts`.
+- **Slugs:** `generateSlug()` de `src/common/utils/slugger.util.ts` (posts, services, studies).
+- **Permisos:** `@Permissions('módulo:acción')`, guard global en `auth.module.ts`. Rutas abiertas: `@Public()`. Roles sembrados: `Administrador` (todo), `Usuario` (lectura salvo users/roles/permissions + `tickets:create`), `Soporte TI` (Usuario + `tickets:update`). `tickets` solo tiene `create` y `update`.
+- **Prisma:** para búsquedas case-insensitive de varios nombres usar `OR` de `equals` + `mode: 'insensitive'`; `in` + `insensitive` está roto con Prisma 7 + adapter-pg.
+
+## Reglas de dominio
+
+**Sucursal (`branchId`):** no existe contenido "global". `Service`, `Author`, `Post`, `Banner`, `PriceSheets`, `Study` tienen un único `branchId` requerido (nunca `Branch[]`); DTOs reciben `branchId`, no `branchIds`; listas filtran con `where.branchId` opcional. Unicidad (`name`/`nameKey`, `slug`, `code`) es por sucursal (`@@unique([branchId, …])`).
+- Excepciones: `Review.branchId` es nullable; `User` ↔ `Branch[]` es many-to-many real — escritura y lectura admin se acotan con `assertBranchAccess`/`userBranchFilter` (`src/common/utils/branch-access.util.ts`).
+- Validado en servicio, no en BD: `Post.authorId` misma sucursal; `Study.branchId` = la de su `service` (`assertServiceBelongsToBranch`); `StudyOnPriceSheet` solo con tarifarios de la misma sucursal; `Safeguard.branchId` se deriva del empleado.
+- `Banner.order` es una cola por `(branchId, placement)`.
+
+**Estudios:**
+- `branchId` se fija al crear y nunca cambia (no hay traspasos). Toda escritura y lectura admin valida sucursales del usuario; las lecturas públicas no.
+- `DELETE /studies/:id` solo desactiva; reactivar con `PATCH isActive: true`. Lecturas públicas solo devuelven activos; admin usa `/inactive`. Cotizaciones rechazan inactivos.
+- `code` se recorta y pasa a mayúsculas. `slug` viene del DTO o de `name`; renombrar no cambia el slug. `title` opcional (default `name`; respuestas usan `studyTitle()`). Slugs únicos por sucursal → `GET /studies/by-slug/:slug?branchId=` (requerido); `/:id` solo acepta UUID. `deliveryTime` en días.
+- **Orderable = tiene precio:** activo y con `StudyOnPriceSheet` en un tarifario activo. Público: `GET /studies/orderable` (solo tarifarios públicos); admin: `GET /studies/admin/orderable`.
+- `eligiblePatients` (M/F/A, DIAS/AÑOS) se aplana en columnas y `toStudyResponse()` lo reagrupa. `referenceValues[]` son cuantitativos (`minValue`/`maxValue`, `gender` MASCULINO/FEMENINO/AMBOS, `unitAge`) o cualitativos (`text`); reglas en `assertValidReferenceValues()`; enviar la lista la reemplaza completa.
+- **Catálogos** (`StudySection`, `SampleType`, `StudyTechnique`, por sucursal): `sectionId` y `sampleTypeId` requeridos al crear y no se pueden limpiar; `techniqueId` opcional (acepta `null`). Un controller factory sirve `/api/study-sections|sample-types|study-techniques`. Nombres únicos case-insensitive (validado en servicio). En uso → no se borran (409), se desactivan. Import masivo `POST /api/study-catalogs/import?branchId=` solo crea (existentes → `skipped`).
+- Migración en curso (fase 1): columnas `Study.legacySection/legacySampleType/legacyTechnique` omitidas globalmente en `PrismaService`; solo las lee `prisma/scripts/backfill-study-catalogs.ts`. La fase 2 las elimina **en un deploy posterior** al backfill.
+- **Paneles (perfiles):** `isPanel = true` con hijos ordenados vía `StudyPanelItem` (many-to-many, un hijo puede ser panel). Reglas en `src/studies/utils/panel-tree.util.ts`: solo paneles tienen hijos, misma sucursal, sin ciclos/duplicados/autorreferencia, hijos activos, un estudio dentro de un panel no se desactiva, `isPanel` no se apaga con hijos. Reemplazo completo con `PUT /studies/:id/panel-items`; árbol en `GET /studies/:id/panel-tree`. Un panel no tiene `units`/`decimals`/`referenceValues`. Las cotizaciones guardan snapshot en `QuotationItem.components`.
+- **Import Excel:** `StudyExcelImportService` (`src/studies/study-excel-import.service.ts`) es compartido por `POST /studies/import?branchId=` (sin precios; fila con `price` → error) y `POST /price-sheets/:id/import-excel` (con precios; `price` vacío no toca el precio). Columna `parametros` (códigos hijos, solo paneles) se aplica al final. Resuelve/auto-crea catálogos con `resolveStudyCatalogIds()`. Slug solo al crear (`assignNewStudySlugs()`). Respuesta: `invalid`, `importErrors`, `panelErrors`, `created`/`updated`.
+
+**Tickets:**
+- `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
+- `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
+- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). Correo al asignar (`ADMIN_APP_URL`), fire-and-forget. El cron SLA solo notifica al creador + `ti_staff_room`.
+
+**PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
+
+## Variables de entorno (ver `.env.example`)
+
+| Variable | Uso |
+|---|---|
+| `DATABASE_URL` | Conexión Prisma |
+| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Contenedor Postgres de `docker-compose.yaml` |
+| `PORT` | Puerto HTTP (default 3000) |
+| `CORS_ORIGINS` | Orígenes permitidos REST + WS, separados por coma |
+| `JWT_SECRET`, `JWT_EXPIRES_IN` | Firma y vigencia del JWT (default 7d) |
+| `ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Usuario admin del seed |
+| `SEED_DEV_BRANCH` | `true` = sembrar sucursal de desarrollo (solo local) |
+| `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, asignación de tickets) |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Firma de subidas de documentos firmados |
+| `ADMIN_APP_URL` | Base de links en correos (opcional) |
+
+## Integración
+
+- Cambiar una ruta, DTO, forma de respuesta o permiso **obliga a revisar ambos frontends**: `../admin-dyra-web/src/api/` + `src/interfaces/` y `../dira-astro/src/api/` + `src/interfaces/`. Avisar qué se rompe.
+- El sitio público solo usa: `GET /studies`, `/studies/by-slug/:slug`, `/studies/:id/panel-tree`, `/services`, `/services/:idOrSlug`, `/branches`, `/branches/:id`, `/posts`, `/banners/active/:placement`, `/reviews/approved`, `POST /quotations/pdf`, `POST /reviews`. Quitar `@Public()` de cualquiera rompe el sitio.
+- El gateway WS (`/tickets`) vive fuera de `/api` y autentica con `handshake.auth.token`.
+
+## Migraciones
+
+- Todo cambio de schema va con su migración (`yarn db:migrate --name <cambio>`); CI aplica las migraciones a una BD vacía y falla si difieren del schema. No usar `db push` salvo en una BD local desechable.
+- `start:prod` corre `prisma migrate deploy`. Renombrar una columna: editar el SQL generado (`ALTER ... RENAME`) en lugar del DROP + ADD que propone Prisma. Backfill y eliminación de columnas en deploys separados.
+- **Corte a migraciones en producción (una sola vez, antes del primer deploy con `migrate deploy`):**
+  1. Respaldar la BD de producción.
+  2. Con `DATABASE_URL` de prod: `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --script` debe mostrar **solo** el SQL de `20261020000000_auth_hardening` (si muestra más, prod no está en el schema de `main`: resolver antes).
+  3. Verificar que no hay roles duplicados (`SELECT name FROM "Role" GROUP BY name HAVING count(*) > 1`); si los hay, el índice único falla.
+  4. `npx prisma migrate resolve --applied 0_init`.
+  5. Deploy: `start:prod` aplica `auth_hardening`. Si se omite el paso 4, `migrate deploy` falla y la app no arranca (no toca datos).
+- BD local que venía de `db push`: `npx prisma db push` y luego `npx prisma migrate resolve --applied <cada migración>`; o recrearla con `yarn db:deploy` + seed.
+
+## Errores comunes / evitar
+
+- `yarn lint` aplica `--fix`: revisar el diff después.
+- No usar npm (genera `package-lock.json`).
+- No olvidar `npx prisma generate` tras editar el schema (los tipos de `@prisma/client` quedan viejos).
+
+## Definición de terminado
+
+1. `yarn test` en verde (agregar/ajustar specs del servicio tocado).
+2. `yarn lint:check` sin errores y `yarn build` exitoso.
+3. Si cambió el schema: migración creada con `yarn db:migrate` y aplicada en local.
+4. Si cambió una ruta o DTO: `yarn openapi:export`, commitear `openapi.json`, y en cada frontend afectado `pnpm api:types` + revisar sus interfaces (ver `../CLAUDE.md` §6).
+
+CI (`.github/workflows/ci.yml`, PRs a `dev`/`main`): lint:check, test, build, migraciones vs schema, `openapi.json` al día.

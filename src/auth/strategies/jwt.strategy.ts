@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import {
+  JwtPayload,
+  PASSWORD_RESET_TOKEN_TYPE,
+} from '../interfaces/jwt-payload.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -19,6 +22,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: JwtPayload) {
+    // Reset tokens share the secret but must never work as access tokens.
+    if (payload.type === PASSWORD_RESET_TOKEN_TYPE) {
+      throw new UnauthorizedException('Token inválido');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {

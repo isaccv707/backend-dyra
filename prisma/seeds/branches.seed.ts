@@ -2,15 +2,15 @@ import { DayOfWeek, PrismaClient } from '@prisma/client';
 import { PRICE_SHEETS } from '../constants/price-sheets';
 
 const WEEKDAYS_SCHEDULE = [
-  { dayOfWeek: DayOfWeek.MONDAY, openTime: '08:00', closeTime: '18:00' },
-  { dayOfWeek: DayOfWeek.TUESDAY, openTime: '08:00', closeTime: '18:00' },
-  { dayOfWeek: DayOfWeek.WEDNESDAY, openTime: '08:00', closeTime: '18:00' },
-  { dayOfWeek: DayOfWeek.THURSDAY, openTime: '08:00', closeTime: '18:00' },
-  { dayOfWeek: DayOfWeek.FRIDAY, openTime: '08:00', closeTime: '18:00' },
+  { dayOfWeek: DayOfWeek.MONDAY, openTime: '08:00', closeTime: '17:00' },
+  { dayOfWeek: DayOfWeek.TUESDAY, openTime: '08:00', closeTime: '17:00' },
+  { dayOfWeek: DayOfWeek.WEDNESDAY, openTime: '08:00', closeTime: '17:00' },
+  { dayOfWeek: DayOfWeek.THURSDAY, openTime: '08:00', closeTime: '17:00' },
+  { dayOfWeek: DayOfWeek.FRIDAY, openTime: '08:00', closeTime: '17:00' },
   {
     dayOfWeek: DayOfWeek.SATURDAY,
     openTime: '09:00',
-    closeTime: '13:00',
+    closeTime: '14:00',
   },
   {
     dayOfWeek: DayOfWeek.SUNDAY,
@@ -23,10 +23,10 @@ const WEEKDAYS_SCHEDULE = [
 const BRANCHES = [
   {
     id: 'a1b2c3d4-0001-4000-8000-000000000001',
-    name: 'Sucursal Guadalajara',
-    phone: '3312345678',
-    email: 'guadalajara@dyranalitica.com',
-    urlResults: 'https://resultados.dyranalitica.com',
+    name: 'DYRA Guadalajara',
+    phone: '3337223456',
+    email: 'elizabeth.flores@dyranalitica.com',
+    urlResults: 'https://s26.cogniti.com.mx/dira_consultaweb/Comun/Login.aspx',
     priceSheet: PRICE_SHEETS.JALISCO,
     stateName: 'Jalisco',
     address: {
@@ -35,23 +35,6 @@ const BRANCHES = [
       zipCode: '44100',
       city: 'Guadalajara',
       neighborhood: 'Americana',
-    },
-    schedules: WEEKDAYS_SCHEDULE,
-  },
-  {
-    id: 'a1b2c3d4-0002-4000-8000-000000000002',
-    name: 'Sucursal Colima',
-    phone: '3121234567',
-    email: 'colima@dyranalitica.com',
-    urlResults: 'https://resultados.dyranalitica.com',
-    priceSheet: PRICE_SHEETS.COLIMA,
-    stateName: 'Colima',
-    address: {
-      street: 'Blvd. Camino Real',
-      extNumber: '500',
-      zipCode: '28010',
-      city: 'Colima',
-      neighborhood: 'Centro',
     },
     schedules: WEEKDAYS_SCHEDULE,
   },
