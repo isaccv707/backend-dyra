@@ -75,6 +75,7 @@ describe('TicketsService', () => {
   let mailService: {
     sendTicketAssignedEmail: jest.Mock;
     sendAccessGrantedEmail: jest.Mock;
+    sendNewTicketEmail: jest.Mock;
   };
 
   const branchId = 'branch-1';
@@ -143,7 +144,7 @@ describe('TicketsService', () => {
         findUniqueOrThrow: jest.fn(),
       },
       role: { findMany: jest.fn() },
-      user: { findMany: jest.fn() },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
       // Interactive transactions run against the same mocks; array batches
       // (findAll) are mocked per test.
       $transaction: jest.fn(),
@@ -171,6 +172,7 @@ describe('TicketsService', () => {
     mailService = {
       sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
       sendAccessGrantedEmail: jest.fn().mockResolvedValue(undefined),
+      sendNewTicketEmail: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -217,6 +219,101 @@ describe('TicketsService', () => {
       );
       expect(gateway.emitNewTicket).toHaveBeenCalledWith(created);
       expect(result).toBe(created);
+    });
+
+    describe('aviso a TI', () => {
+      const created = {
+        id: 'ticket-1',
+        code: 7,
+        title: 'No enciende el monitor',
+        branchId,
+        category: 'HARDWARE',
+        priority: 'MEDIUM',
+        branch: { id: branchId, name: 'Sucursal 1' },
+      };
+
+      beforeEach(() => {
+        prisma.ticket.create.mockResolvedValue(created);
+        prisma.user.findMany.mockResolvedValue([
+          { id: 'staff-1', email: 'ti@dyra.com' },
+          { id: 'staff-2', email: 'ti2@dyra.com' },
+        ]);
+      });
+
+      it('busca a TI activo de la sucursal (o global), sin el creador', async () => {
+        await service.create(createDto, globalUser);
+
+        expect(prisma.user.findMany).toHaveBeenCalledWith({
+          where: {
+            isActive: true,
+            id: { not: globalUser.id },
+            role: {
+              permissions: { some: { action: 'tickets:update' } },
+            },
+            OR: [
+              { branches: { none: {} } },
+              { branches: { some: { id: branchId } } },
+            ],
+          },
+          select: { id: true, email: true },
+        });
+      });
+
+      it('guarda la notificación NEW_TICKET y la emite por el gateway', async () => {
+        await service.create(createDto, globalUser);
+
+        expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
+          data: ['staff-1', 'staff-2'].map((userId) => ({
+            userId,
+            ticketId: 'ticket-1',
+            kind: 'NEW_TICKET',
+            message: expect.stringContaining('#7'),
+            actorId: globalUser.id,
+          })),
+        });
+        expect(gateway.notifyUsers).toHaveBeenCalledWith(
+          ['staff-1', 'staff-2'],
+          expect.objectContaining({ ticketId: 'ticket-1', kind: 'NEW_TICKET' }),
+        );
+      });
+
+      it('envía un correo a cada miembro de TI', async () => {
+        await service.create(createDto, globalUser);
+
+        expect(mailService.sendNewTicketEmail).toHaveBeenCalledTimes(2);
+        expect(mailService.sendNewTicketEmail).toHaveBeenCalledWith(
+          'ti@dyra.com',
+          {
+            ticketId: 'ticket-1',
+            code: 7,
+            title: 'No enciende el monitor',
+            categoryLabel: 'Hardware',
+            priorityLabel: 'Media',
+            branchName: 'Sucursal 1',
+            createdByName: globalUser.name,
+          },
+        );
+      });
+
+      it('sin TI que avisar no guarda notificaciones ni envía correos', async () => {
+        prisma.user.findMany.mockResolvedValue([]);
+
+        await service.create(createDto, globalUser);
+
+        expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
+        expect(mailService.sendNewTicketEmail).not.toHaveBeenCalled();
+      });
+
+      it('un fallo al avisar no hace fallar la creación', async () => {
+        prisma.ticketNotification.createMany.mockRejectedValue(
+          new Error('db caída'),
+        );
+        mailService.sendNewTicketEmail.mockRejectedValue(new Error('smtp'));
+
+        await expect(service.create(createDto, globalUser)).resolves.toBe(
+          created,
+        );
+      });
     });
 
     it('lanza ForbiddenException si el usuario no tiene acceso a la sucursal', async () => {

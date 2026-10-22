@@ -90,7 +90,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 **Tickets:**
 - `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
 - `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
-- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). Correo al asignar (`ADMIN_APP_URL`), fire-and-forget. El cron SLA solo notifica al creador + `ti_staff_room`.
+- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). Correo al asignar (`ADMIN_APP_URL`), fire-and-forget. Al crear un ticket se avisa (notificación `NEW_TICKET` + correo) a TI activo con `tickets:update` de esa sucursal o global, sin el creador; un fallo del aviso no falla la creación. El cron SLA solo notifica al creador + `ti_staff_room`.
 
 **PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 

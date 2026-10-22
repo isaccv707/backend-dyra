@@ -8042,7 +8042,7 @@
     },
     "/api/tickets": {
       "post": {
-        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form (SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto). Con ACCESS y COGNITI el título se genera del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
+        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form (SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto, ReferenceValuesUpdateFormDto). Con ACCESS y COGNITI el título se genera del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
         "operationId": "TicketsController_create",
         "parameters": [],
         "requestBody": {
@@ -8220,7 +8220,8 @@
                 "ACCESS_REQUEST",
                 "STUDY_CREATE",
                 "STUDY_UPDATE",
-                "CLIENT_CREATE"
+                "CLIENT_CREATE",
+                "REFERENCE_VALUES_UPDATE"
               ]
             }
           },
@@ -8737,6 +8738,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ClientCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ReferenceValuesUpdateFormDto"
                   }
                 ]
               }
@@ -8773,7 +8777,7 @@
     },
     "/api/tickets/{id}/form/apply": {
       "post": {
-        "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update o users:create.",
+        "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. REFERENCE_VALUES_UPDATE reemplaza los valores de referencia de un parámetro (sin datos de TI). ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update o users:create.",
         "operationId": "TicketsController_applyForm",
         "parameters": [
           {
@@ -8800,6 +8804,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ApplyStudyUpdateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyReferenceValuesUpdateFormDto"
                   }
                 ]
               }
@@ -8863,6 +8870,9 @@
                   },
                   {
                     "$ref": "#/components/schemas/ApplyStudyUpdateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyReferenceValuesUpdateFormDto"
                   }
                 ]
               }
@@ -11656,6 +11666,25 @@
           "priceSheetId"
         ]
       },
+      "ReferenceValuesUpdateFormDto": {
+        "type": "object",
+        "properties": {
+          "studyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "referenceValues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReferenceValueDto"
+            }
+          }
+        },
+        "required": [
+          "studyId",
+          "referenceValues"
+        ]
+      },
       "ApplyAccessRequestFormDto": {
         "type": "object",
         "properties": {
@@ -11745,6 +11774,10 @@
           }
         }
       },
+      "ApplyReferenceValuesUpdateFormDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateTicketDto": {
         "type": "object",
         "properties": {
@@ -11765,6 +11798,9 @@
               },
               {
                 "$ref": "#/components/schemas/ClientCreateFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/ReferenceValuesUpdateFormDto"
               }
             ]
           },
@@ -11920,7 +11956,8 @@
               "ACCESS_REQUEST",
               "STUDY_CREATE",
               "STUDY_UPDATE",
-              "CLIENT_CREATE"
+              "CLIENT_CREATE",
+              "REFERENCE_VALUES_UPDATE"
             ]
           }
         },
