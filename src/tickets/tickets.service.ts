@@ -309,10 +309,70 @@ export class TicketsService {
       });
 
       this.ticketsGateway.emitNewTicket(ticket);
+      await this.notifyNewTicket(ticket, user);
 
       return ticket;
     } catch (error) {
       handleDatabaseErrors(error, 'Ticket');
+    }
+  }
+
+  /**
+   * Notifies the TI staff that can see the ticket (tickets:update, global or
+   * of its branch). The ticket already exists: a failure is only logged.
+   */
+  private async notifyNewTicket(
+    ticket: TicketWithRelations,
+    user: RequestUser,
+  ) {
+    try {
+      const staff = await this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          id: { not: user.id },
+          role: {
+            permissions: { some: { action: TICKET_UPDATE_PERMISSION } },
+          },
+          OR: [
+            { branches: { none: {} } },
+            { branches: { some: { id: ticket.branchId } } },
+          ],
+        },
+        select: { id: true, email: true },
+      });
+      if (staff.length === 0) return;
+
+      await this.persistAndNotify(
+        staff.map((member) => member.id),
+        ticket,
+        {
+          kind: 'NEW_TICKET',
+          message: `${user.name} levantó el ticket #${ticket.code} "${ticket.title}" en ${ticket.branch.name}.`,
+          actorId: user.id,
+        },
+      );
+
+      for (const member of staff) {
+        this.mailService
+          .sendNewTicketEmail(member.email, {
+            ticketId: ticket.id,
+            code: ticket.code,
+            title: ticket.title,
+            categoryLabel: CATEGORY_LABELS[ticket.category],
+            priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
+            branchName: ticket.branch.name,
+            createdByName: user.name,
+          })
+          .catch((error: unknown) => {
+            this.logger.error(
+              `No se pudo enviar el correo del ticket nuevo #${ticket.code} a ${member.email}: ${(error as Error).message}`,
+            );
+          });
+      }
+    } catch (error) {
+      this.logger.error(
+        `No se pudo notificar el ticket nuevo #${ticket.code}: ${(error as Error).message}`,
+      );
     }
   }
 

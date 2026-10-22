@@ -69,6 +69,7 @@ enum TicketNotificationKind {
   ASSIGNMENT
   OVERDUE
   FORM
+  NEW_TICKET
 }
 
 model TicketEvent {

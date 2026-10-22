@@ -13,6 +13,16 @@ export interface TicketAssignedEmailData {
   assignedByName: string;
 }
 
+export interface NewTicketEmailData {
+  ticketId: string;
+  code: number;
+  title: string;
+  categoryLabel: string;
+  priorityLabel: string;
+  branchName: string;
+  createdByName: string;
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -100,6 +110,52 @@ export class MailService {
             <tr><td style="padding: 4px 8px; color: #888;">Prioridad</td><td style="padding: 4px 8px;">${escapeHtml(data.priorityLabel)}</td></tr>
             <tr><td style="padding: 4px 8px; color: #888;">Sucursal</td><td style="padding: 4px 8px;">${escapeHtml(data.branchName)}</td></tr>
             <tr><td style="padding: 4px 8px; color: #888;">Asignado por</td><td style="padding: 4px 8px;">${escapeHtml(data.assignedByName)}</td></tr>
+          </table>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <a href="${ticketUrl}" style="display: inline-block; background: #1a1a2e; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Ver ticket</a>
+          </div>
+          <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copia este enlace en tu navegador:<br/>
+            <a href="${ticketUrl}" style="color: #1a1a2e;">${ticketUrl}</a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            DYRA Analítica — No respondas a este correo automático.
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  /** New ticket for the TI staff of its branch. */
+  async sendNewTicketEmail(
+    to: string,
+    data: NewTicketEmailData,
+  ): Promise<void> {
+    const from = this.configService.getOrThrow<string>('MAIL_FROM');
+    const baseUrl = (
+      this.configService.get<string>('ADMIN_APP_URL') ?? DEFAULT_ADMIN_APP_URL
+    ).replace(/\/+$/, '');
+    const ticketUrl = `${baseUrl}/tickets/${data.ticketId}`;
+    const title = escapeHtml(data.title);
+
+    await this.transporter.sendMail({
+      from,
+      to,
+      subject: `Nuevo ticket #${data.code}: ${data.title} — DYRA Analítica`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
+          <h2 style="color: #1a1a2e; margin-bottom: 8px;">Hay un ticket nuevo</h2>
+          <p style="color: #444; margin-bottom: 24px;">
+            <strong>${escapeHtml(data.createdByName)}</strong> levantó un ticket en <strong>DYRA Analítica</strong>.
+          </p>
+          <table style="width: 100%; background: #ffffff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 24px; color: #444; font-size: 14px;">
+            <tr><td style="padding: 4px 8px; color: #888;">Ticket</td><td style="padding: 4px 8px;"><strong>#${data.code}</strong></td></tr>
+            <tr><td style="padding: 4px 8px; color: #888;">Título</td><td style="padding: 4px 8px;">${title}</td></tr>
+            <tr><td style="padding: 4px 8px; color: #888;">Categoría</td><td style="padding: 4px 8px;">${escapeHtml(data.categoryLabel)}</td></tr>
+            <tr><td style="padding: 4px 8px; color: #888;">Prioridad</td><td style="padding: 4px 8px;">${escapeHtml(data.priorityLabel)}</td></tr>
+            <tr><td style="padding: 4px 8px; color: #888;">Sucursal</td><td style="padding: 4px 8px;">${escapeHtml(data.branchName)}</td></tr>
+            <tr><td style="padding: 4px 8px; color: #888;">Reportado por</td><td style="padding: 4px 8px;">${escapeHtml(data.createdByName)}</td></tr>
           </table>
           <div style="text-align: center; margin-bottom: 24px;">
             <a href="${ticketUrl}" style="display: inline-block; background: #1a1a2e; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Ver ticket</a>
