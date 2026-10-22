@@ -46,6 +46,12 @@ export const TICKET_FORM_DEFINITIONS: Record<
     category: 'COGNITI',
     applyPermission: null,
   },
+  REFERENCE_VALUES_UPDATE: {
+    version: 1,
+    label: 'Actualización de valores de referencia',
+    category: 'COGNITI',
+    applyPermission: 'studies:update',
+  },
 };
 
 /** Categories whose form doesn't depend on the subcategory. */
@@ -62,6 +68,7 @@ export const SUBCATEGORY_FORM_TYPES: TicketFormType[] = [
   'STUDY_CREATE',
   'STUDY_UPDATE',
   'CLIENT_CREATE',
+  'REFERENCE_VALUES_UPDATE',
 ];
 
 export function resolveFormType(

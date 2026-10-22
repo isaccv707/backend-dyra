@@ -19,6 +19,7 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
 import { TicketFormsService } from './forms/ticket-forms.service';
 import { AccessRequestFormHandler } from './forms/handlers/access-request-form.handler';
 import { ClientCreateFormHandler } from './forms/handlers/client-create-form.handler';
+import { ReferenceValuesUpdateFormHandler } from './forms/handlers/reference-values-update-form.handler';
 import { SoftwareRemoteFormHandler } from './forms/handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './forms/handlers/study-create-form.handler';
 import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handler';
@@ -63,6 +64,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     StudyCreateFormHandler,
     StudyUpdateFormHandler,
     ClientCreateFormHandler,
+    ReferenceValuesUpdateFormHandler,
   ],
   exports: [TicketsService],
 })
