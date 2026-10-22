@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TicketFormType" ADD VALUE 'REFERENCE_VALUES_UPDATE';

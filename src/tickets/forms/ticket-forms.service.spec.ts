@@ -7,6 +7,7 @@ import { StudiesService } from 'src/studies/studies.service';
 import { UsersService } from 'src/users/users.service';
 import { AccessRequestFormHandler } from './handlers/access-request-form.handler';
 import { ClientCreateFormHandler } from './handlers/client-create-form.handler';
+import { ReferenceValuesUpdateFormHandler } from './handlers/reference-values-update-form.handler';
 import { SoftwareRemoteFormHandler } from './handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './handlers/study-create-form.handler';
 import { StudyUpdateFormHandler } from './handlers/study-update-form.handler';
@@ -118,6 +119,7 @@ describe('TicketFormsService', () => {
         StudyCreateFormHandler,
         StudyUpdateFormHandler,
         ClientCreateFormHandler,
+        ReferenceValuesUpdateFormHandler,
         { provide: PrismaService, useValue: prisma },
         { provide: StudiesService, useValue: studies },
         { provide: UsersService, useValue: users },
@@ -353,6 +355,90 @@ describe('TicketFormsService', () => {
       expect(base.studyPrices).toMatch(/^[0-9a-f]{16}$/);
     });
 
+    describe('REFERENCE_VALUES_UPDATE', () => {
+      const glucose = {
+        id: STUDY_ID,
+        branchId: BRANCH_ID,
+        isPanel: false,
+        code: 'GLU',
+        name: 'Glucosa',
+      };
+      const referenceValues = [{ minValue: 70, maxValue: 100 }];
+
+      beforeEach(() => {
+        studies.assertUpdatable.mockResolvedValue(glucose);
+        prisma.study.findUniqueOrThrow.mockResolvedValue({
+          ...glucose,
+          priceSheets: [],
+          referenceValues: [],
+          panelItems: [],
+        });
+      });
+
+      it('genera el título y guarda la versión base de los valores', async () => {
+        const parsed = await service.parse(
+          'REFERENCE_VALUES_UPDATE',
+          { studyId: STUDY_ID, referenceValues },
+          context,
+        );
+
+        expect(parsed.title).toBe('Valores de referencia: GLU Glucosa');
+        expect(studies.assertUpdatable).toHaveBeenCalledWith(
+          STUDY_ID,
+          { referenceValues: [expect.objectContaining({ minValue: 70 })] },
+          actor,
+          expect.anything(),
+          { childrenWillBeRemoved: false },
+        );
+        const base = parsed.data.baseVersions as Record<string, string>;
+        expect(Object.keys(base)).toEqual(['referenceValues']);
+      });
+
+      it('exige la lista de valores de referencia', async () => {
+        await expect(
+          service.parse(
+            'REFERENCE_VALUES_UPDATE',
+            { studyId: STUDY_ID },
+            context,
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('no acepta otros campos del estudio', async () => {
+        await expect(
+          service.parse(
+            'REFERENCE_VALUES_UPDATE',
+            { studyId: STUDY_ID, referenceValues, units: 'g/L' },
+            context,
+          ),
+        ).rejects.toMatchObject({
+          response: { message: ['form.units no es un campo permitido'] },
+        });
+      });
+
+      it('rechaza un perfil', async () => {
+        studies.assertUpdatable.mockResolvedValue({
+          ...glucose,
+          isPanel: true,
+        });
+        prisma.study.findUniqueOrThrow.mockResolvedValue({
+          ...glucose,
+          isPanel: true,
+          priceSheets: [],
+          referenceValues: [],
+          panelItems: [],
+        });
+
+        await expect(
+          service.parse(
+            'REFERENCE_VALUES_UPDATE',
+            { studyId: STUDY_ID, referenceValues: [] },
+            context,
+          ),
+        ).rejects.toThrow('un perfil no tiene valores de referencia');
+      });
+    });
+
     it('CLIENT_CREATE exige un tarifario activo de la sucursal', async () => {
       prisma.priceSheets.findFirst.mockResolvedValue(null);
 
@@ -524,6 +610,59 @@ describe('TicketFormsService', () => {
       expect(applied.result).toMatchObject({
         before: { isPanel: true, units: null, panelItems: [CHILD_ID] },
         after: { isPanel: false, units: 'mg/dL', panelItems: [] },
+      });
+    });
+
+    it('REFERENCE_VALUES_UPDATE reemplaza solo los valores de referencia', async () => {
+      const current = {
+        id: STUDY_ID,
+        branchId: BRANCH_ID,
+        isPanel: false,
+        code: 'GLU',
+        name: 'Glucosa',
+      };
+      studies.assertUpdatable.mockResolvedValue(current);
+      prisma.study.findUniqueOrThrow.mockResolvedValue({
+        ...current,
+        priceSheets: [],
+        referenceValues: [],
+        panelItems: [],
+      });
+      studies.update.mockResolvedValue(current);
+
+      const applied = await service.apply(
+        'REFERENCE_VALUES_UPDATE',
+        { studyId: STUDY_ID, referenceValues: [{ text: 'Negativo' }] },
+        {},
+        context,
+        prisma as never,
+      );
+
+      expect(studies.update).toHaveBeenCalledWith(
+        STUDY_ID,
+        { referenceValues: [expect.objectContaining({ text: 'Negativo' })] },
+        actor,
+        prisma,
+      );
+      expect(studies.replacePrices).not.toHaveBeenCalled();
+      expect(studies.setPanelItems).not.toHaveBeenCalled();
+      expect(applied.summary).toBe(
+        'actualizó los valores de referencia del parámetro GLU',
+      );
+      await expect(
+        service.apply(
+          'REFERENCE_VALUES_UPDATE',
+          { studyId: STUDY_ID, referenceValues: [] },
+          { code: 'X' },
+          context,
+          prisma as never,
+        ),
+      ).rejects.toMatchObject({
+        response: { message: ['code no es un campo permitido'] },
+      });
+      expect(applied.result).toMatchObject({
+        before: { referenceValues: [] },
+        after: { referenceValues: [{ text: 'Negativo' }] },
       });
     });
 

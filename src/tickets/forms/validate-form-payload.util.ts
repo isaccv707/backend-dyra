@@ -89,6 +89,9 @@ export async function validateFormPayload<T extends object>(
   const errors = await validate(instance, {
     whitelist: true,
     forbidNonWhitelisted: true,
+    // The instance is always `dto`; an apply DTO with nothing to capture has
+    // no decorators, and any field sent to it is still rejected above.
+    forbidUnknownValues: false,
   });
 
   if (errors.length > 0) {

@@ -16,7 +16,7 @@ export class CreateTicketSubcategoryDto {
   @MaxLength(100)
   name: string;
 
-  /** Formulario que pide la subcategoría (solo COGNITI: STUDY_CREATE, STUDY_UPDATE, CLIENT_CREATE). */
+  /** Formulario que pide la subcategoría (solo COGNITI: STUDY_CREATE, STUDY_UPDATE, CLIENT_CREATE, REFERENCE_VALUES_UPDATE). */
   @IsOptional()
   @IsEnum(TicketFormType)
   formType?: TicketFormType | null;

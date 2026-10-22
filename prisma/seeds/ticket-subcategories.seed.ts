@@ -24,6 +24,12 @@ const TICKET_SUBCATEGORIES: {
     formType: 'STUDY_UPDATE',
     isActive: true,
   },
+  {
+    category: 'COGNITI',
+    name: 'Actualizar valores de referencia',
+    formType: 'REFERENCE_VALUES_UPDATE',
+    isActive: true,
+  },
   // Covered by "Actualizar parámetro" (STUDY_UPDATE also changes prices).
   {
     category: 'COGNITI',

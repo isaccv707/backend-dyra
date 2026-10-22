@@ -57,7 +57,7 @@ export class TicketsController {
       'Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. ' +
       'La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form ' +
       '(SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define ' +
-      'el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto). Con ACCESS y COGNITI el título se genera ' +
+      'el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto, ReferenceValuesUpdateFormDto). Con ACCESS y COGNITI el título se genera ' +
       'del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). ' +
       'Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá ' +
       'consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.',
@@ -375,7 +375,7 @@ export class TicketsController {
       'estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI ' +
       '(ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE ' +
       'aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en ' +
-      'form.result. ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. ' +
+      'form.result. REFERENCE_VALUES_UPDATE reemplaza los valores de referencia de un parámetro (sin datos de TI). ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. ' +
       'SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el ' +
       'permiso de la acción: studies:create, studies:update o users:create.',
   })
