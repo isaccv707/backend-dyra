@@ -1,5 +1,11 @@
-import { IsEnum, IsNotEmpty, IsString, MaxLength } from 'class-validator';
-import { Category } from '@prisma/client';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
+import { Category, TicketFormType } from '@prisma/client';
 
 export class CreateTicketSubcategoryDto {
   @IsEnum(Category)
@@ -9,4 +15,9 @@ export class CreateTicketSubcategoryDto {
   @IsNotEmpty()
   @MaxLength(100)
   name: string;
+
+  /** Formulario que pide la subcategoría (solo COGNITI: STUDY_CREATE, STUDY_UPDATE, CLIENT_CREATE). */
+  @IsOptional()
+  @IsEnum(TicketFormType)
+  formType?: TicketFormType | null;
 }

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -12,27 +13,38 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiExtraModels,
   ApiOperation,
   ApiParam,
   ApiResponse,
   ApiTags,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
-import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 import type { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FindAssignableUsersDto } from './dto/find-assignable-users.dto';
-import { FindTicketNotificationsDto } from './dto/find-ticket-notifications.dto';
+import {
+  FindTicketNotificationsDto,
+  PurgeTicketNotificationsDto,
+} from './dto/find-ticket-notifications.dto';
+import { RejectTicketFormDto } from './dto/reject-ticket-form.dto';
 import { FindTicketsDto } from './dto/find-tickets.dto';
 import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
+import {
+  TICKET_FORM_APPLY_DTOS,
+  TICKET_FORM_DTOS,
+} from './forms/ticket-form-dtos';
 import { TicketsService } from './tickets.service';
 
 @ApiTags('tickets')
+@ApiExtraModels(...TICKET_FORM_DTOS, ...TICKET_FORM_APPLY_DTOS)
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('tickets')
@@ -43,6 +55,10 @@ export class TicketsController {
     summary: 'Crear ticket',
     description:
       'Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. ' +
+      'La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form ' +
+      '(SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define ' +
+      'el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto). Con ACCESS y COGNITI el título se genera ' +
+      'del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). ' +
       'Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá ' +
       'consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.',
   })
@@ -57,12 +73,14 @@ export class TicketsController {
     description: 'Demasiados tickets creados en poco tiempo.',
   })
   @Permissions('tickets:create')
+  // Flood guard only: the 10-per-minute quota is counted on created tickets
+  // (TicketsService), so rejected forms can be fixed and resent.
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post()
   create(
     @Body() createTicketDto: CreateTicketDto,
-    @CurrentUser() user: BranchScopedUser & { id: string },
+    @CurrentUser() user: RequestUser,
   ) {
     return this.ticketsService.create(createTicketDto, user);
   }
@@ -103,6 +121,48 @@ export class TicketsController {
       findTicketNotificationsDto,
       user,
     );
+  }
+
+  @ApiOperation({
+    summary: 'Roles para solicitudes de acceso',
+    description:
+      'Roles que se pueden pedir en el formulario de Accesos (id, name, description). Requiere el permiso tickets:create.',
+  })
+  @ApiResponse({ status: 200, description: 'Listado de roles.' })
+  @Permissions('tickets:create')
+  @Get('form-options/roles')
+  findFormRoles() {
+    return this.ticketsService.findFormRoles();
+  }
+
+  @ApiOperation({
+    summary: 'Borrar mis notificaciones',
+    description:
+      'Borra las notificaciones leídas del usuario autenticado, o todas con all=true. Las leídas de más de 90 días se borran solas.',
+  })
+  @ApiResponse({ status: 200, description: 'Cantidad borrada ({ deleted }).' })
+  @Delete('notifications')
+  purgeMyNotifications(
+    @Query() dto: PurgeTicketNotificationsDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.purgeMyNotifications(user, dto.all ?? false);
+  }
+
+  @ApiOperation({ summary: 'Borrar una notificación' })
+  @ApiParam({ name: 'id', description: 'Identificador de la notificación.' })
+  @ApiResponse({ status: 200, description: 'Notificación borrada.' })
+  @ApiResponse({
+    status: 403,
+    description: 'La notificación pertenece a otro usuario.',
+  })
+  @ApiResponse({ status: 404, description: 'Notificación no encontrada.' })
+  @Delete('notifications/:id')
+  removeNotification(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.removeNotification(id, user);
   }
 
   @ApiOperation({
@@ -271,5 +331,154 @@ export class TicketsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.ticketsService.addComment(id, dto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Editar formulario del ticket',
+    description:
+      'Reemplaza los datos del formulario mientras no haya sido aprobado y el ticket no esté cerrado ni cancelado. ' +
+      'El cuerpo tiene la misma forma que el campo form al crear el ticket y se valida igual. Solo quien reportó el ' +
+      'ticket o un usuario con tickets:update (en su sucursal) pueden editarlo.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiBody({
+    schema: {
+      oneOf: TICKET_FORM_DTOS.map((dto) => ({ $ref: getSchemaPath(dto) })),
+    },
+  })
+  @ApiResponse({ status: 200, description: 'Formulario actualizado.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Datos inválidos, el ticket no tiene formulario o está cerrado/cancelado.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El usuario no es quien reportó el ticket ni tiene tickets:update.',
+  })
+  @ApiResponse({ status: 404, description: 'Ticket no encontrado.' })
+  @ApiResponse({ status: 409, description: 'El formulario ya fue aprobado.' })
+  @Patch(':id/form')
+  updateForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.updateForm(id, body, user);
+  }
+
+  @ApiOperation({
+    summary: 'Aprobar formulario del ticket',
+    description:
+      'TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el ' +
+      'estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI ' +
+      '(ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE ' +
+      'aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en ' +
+      'form.result. ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. ' +
+      'SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el ' +
+      'permiso de la acción: studies:create, studies:update o users:create.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiBody({
+    required: false,
+    schema: {
+      oneOf: TICKET_FORM_APPLY_DTOS.map((dto) => ({
+        $ref: getSchemaPath(dto),
+      })),
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Solicitud aprobada y aplicada.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Datos inválidos o ya no válidos (catálogos, tarifarios), formulario informativo, o ticket cerrado/cancelado.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Falta tickets:update o el permiso de la acción, o no hay acceso a la sucursal.',
+  })
+  @ApiResponse({ status: 404, description: 'Ticket no encontrado.' })
+  @ApiResponse({
+    status: 409,
+    description:
+      'El formulario ya fue aprobado, o ya existe un estudio con ese code o un usuario con ese correo.',
+  })
+  @Permissions('tickets:update')
+  @Post(':id/form/apply')
+  applyForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.applyForm(id, body, user);
+  }
+
+  @ApiOperation({
+    summary: 'Validar la aprobación sin aplicarla',
+    description:
+      'Recibe el mismo cuerpo que POST /tickets/:id/form/apply y hace exactamente lo mismo dentro de una transacción ' +
+      'que se revierte: responde { valid, summary } si la aprobación funcionaría, o el mismo error que daría (400/403/409). ' +
+      'No guarda nada. Requiere tickets:update y el permiso de la acción.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiBody({
+    required: false,
+    schema: {
+      oneOf: TICKET_FORM_APPLY_DTOS.map((dto) => ({
+        $ref: getSchemaPath(dto),
+      })),
+    },
+  })
+  @ApiResponse({ status: 201, description: 'La aprobación funcionaría.' })
+  @Permissions('tickets:update')
+  @Post(':id/form/validate')
+  validateForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown>,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.validateForm(id, body, user);
+  }
+
+  @ApiOperation({
+    summary: 'Rechazar la solicitud',
+    description:
+      'TI rechaza el formulario con un motivo (queda en el historial y se notifica a quien lo reportó). El formulario ' +
+      'ya no se puede editar ni aprobar y el ticket pasa a Cancelado. Requiere tickets:update.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiResponse({ status: 201, description: 'Solicitud rechazada.' })
+  @ApiResponse({
+    status: 409,
+    description: 'El formulario ya fue aprobado o rechazado.',
+  })
+  @Permissions('tickets:update')
+  @Post(':id/form/reject')
+  rejectForm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectTicketFormDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.rejectForm(id, dto.reason, user);
+  }
+
+  @ApiOperation({
+    summary: 'Reenviar el correo de acceso',
+    description:
+      'Vuelve a enviar a un usuario creado por una solicitud de acceso aprobada el correo para definir su contraseña. ' +
+      'Actualiza form.result.emailSent. Requiere tickets:update y users:create.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiResponse({ status: 201, description: 'Correo enviado.' })
+  @ApiResponse({ status: 503, description: 'El servidor de correo falló.' })
+  @Permissions('tickets:update')
+  @Post(':id/form/resend-access-email')
+  resendAccessEmail(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.ticketsService.resendAccessEmail(id, user);
   }
 }

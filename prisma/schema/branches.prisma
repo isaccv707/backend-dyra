@@ -59,7 +59,8 @@ model Branch {
   vehicleMovementHistoryDestination  VehicleMovementHistory[] @relation("VehicleMovementDestination")
   vehicleSafeguards                  VehicleSafeguard[]       @relation("VehicleSafeguardBranch")
 
-  tickets Ticket[]
+  tickets       Ticket[]
+  ticketCounter TicketCounter?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

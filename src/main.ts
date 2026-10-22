@@ -1,38 +1,24 @@
-import { HttpAdapterHost, NestFactory } from '@nestjs/core';
+import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
-import { PrismaClientExceptionFilter } from './common/filters/prisma-client-exception.filter';
-import { parseCorsOrigins } from './common/utils/cors.util';
 import { SwaggerModule } from '@nestjs/swagger';
 import { createOpenApiDocument } from './swagger';
-import type { Application } from 'express';
+import { configureApp } from './app.setup';
+import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
 
-  const httpAdapterInstance = app.getHttpAdapter().getInstance() as Application;
-  httpAdapterInstance.set('query parser', 'extended');
+  configureApp(app);
 
-  app.setGlobalPrefix('api');
+  // Without REDIS_URL (one instance, local dev) Socket.IO keeps its in-memory adapter.
+  if (process.env.REDIS_URL) {
+    const redisIoAdapter = new RedisIoAdapter(app, process.env.REDIS_URL);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
 
   SwaggerModule.setup('api', app, createOpenApiDocument(app));
 
-  const { httpAdapter } = app.get(HttpAdapterHost);
-  app.useGlobalFilters(new PrismaClientExceptionFilter(httpAdapter));
-
-  const allowedOrigins = parseCorsOrigins(process.env.CORS_ORIGINS);
-
-  app.enableCors({
-    origin: allowedOrigins,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-  });
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
   await app.listen(process.env.PORT ?? 3000, '0.0.0.0');
 }
 void bootstrap();

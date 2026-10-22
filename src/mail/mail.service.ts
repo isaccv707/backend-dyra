@@ -116,4 +116,41 @@ export class MailService {
       `,
     });
   }
+
+  /** Account created from an approved access ticket: the user sets the password via "forgot password". */
+  async sendAccessGrantedEmail(to: string, name: string): Promise<void> {
+    const from = this.configService.getOrThrow<string>('MAIL_FROM');
+    const baseUrl = (
+      this.configService.get<string>('ADMIN_APP_URL') ?? DEFAULT_ADMIN_APP_URL
+    ).replace(/\/+$/, '');
+    const loginUrl = `${baseUrl}/auth/login`;
+
+    await this.transporter.sendMail({
+      from,
+      to,
+      subject: 'Tu acceso a DYRA Analítica está listo',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
+          <h2 style="color: #1a1a2e; margin-bottom: 8px;">Hola, ${escapeHtml(name)}</h2>
+          <p style="color: #444; margin-bottom: 16px;">
+            Se creó tu cuenta en <strong>DYRA Analítica</strong> con el correo <strong>${escapeHtml(to)}</strong>.
+          </p>
+          <p style="color: #444; margin-bottom: 24px;">
+            Para definir tu contraseña entra al sistema y elige <strong>¿Olvidaste tu contraseña?</strong>: te enviaremos un código de verificación a este correo.
+          </p>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <a href="${loginUrl}" style="display: inline-block; background: #1a1a2e; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Ir a DYRA</a>
+          </div>
+          <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copia este enlace en tu navegador:<br/>
+            <a href="${loginUrl}" style="color: #1a1a2e;">${loginUrl}</a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            DYRA Analítica — No respondas a este correo automático.
+          </p>
+        </div>
+      `,
+    });
+  }
 }

@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -15,6 +16,12 @@ import { FindTicketsDto } from './dto/find-tickets.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
 import { SetTicketAssigneesDto } from './dto/set-ticket-assignees.dto';
+import { TicketFormsService } from './forms/ticket-forms.service';
+import { computeDueAt } from './constants/ticket-sla.const';
+import {
+  addBusinessTime,
+  businessTimeBetween,
+} from './constants/business-hours';
 
 describe('TicketsService', () => {
   let service: TicketsService;
@@ -26,6 +33,7 @@ describe('TicketsService', () => {
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
     };
     ticketAssignee: { deleteMany: jest.Mock; createMany: jest.Mock };
     ticketComment: { create: jest.Mock };
@@ -36,11 +44,26 @@ describe('TicketsService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
       updateMany: jest.Mock;
+      delete: jest.Mock;
+      deleteMany: jest.Mock;
     };
     ticketEvent: { create: jest.Mock; createMany: jest.Mock };
     ticketSubcategory: { findUnique: jest.Mock };
+    ticketCounter: { upsert: jest.Mock };
+    ticketForm: {
+      update: jest.Mock;
+      updateMany: jest.Mock;
+      findUniqueOrThrow: jest.Mock;
+    };
+    role: { findMany: jest.Mock };
     user: { findMany: jest.Mock };
     $transaction: jest.Mock;
+  };
+  let ticketForms: {
+    parse: jest.Mock;
+    apply: jest.Mock;
+    isApplicable: jest.Mock;
+    upgrade: jest.Mock;
   };
   let gateway: {
     emitNewTicket: jest.Mock;
@@ -49,7 +72,10 @@ describe('TicketsService', () => {
     notifyUsers: jest.Mock;
     emitOverdueTicket: jest.Mock;
   };
-  let mailService: { sendTicketAssignedEmail: jest.Mock };
+  let mailService: {
+    sendTicketAssignedEmail: jest.Mock;
+    sendAccessGrantedEmail: jest.Mock;
+  };
 
   const branchId = 'branch-1';
 
@@ -94,6 +120,7 @@ describe('TicketsService', () => {
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
       },
       ticketAssignee: { deleteMany: jest.fn(), createMany: jest.fn() },
       ticketComment: { create: jest.fn() },
@@ -104,11 +131,35 @@ describe('TicketsService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
+        delete: jest.fn(),
+        deleteMany: jest.fn(),
       },
       ticketEvent: { create: jest.fn(), createMany: jest.fn() },
       ticketSubcategory: { findUnique: jest.fn() },
+      ticketCounter: { upsert: jest.fn().mockResolvedValue({ lastCode: 7 }) },
+      ticketForm: {
+        update: jest.fn(),
+        updateMany: jest.fn(),
+        findUniqueOrThrow: jest.fn(),
+      },
+      role: { findMany: jest.fn() },
       user: { findMany: jest.fn() },
+      // Interactive transactions run against the same mocks; array batches
+      // (findAll) are mocked per test.
       $transaction: jest.fn(),
+    };
+    prisma.$transaction.mockImplementation((arg: unknown) =>
+      typeof arg === 'function'
+        ? (arg as (tx: typeof prisma) => unknown)(prisma)
+        : Promise.all(arg as Promise<unknown>[]),
+    );
+    ticketForms = {
+      parse: jest.fn(),
+      apply: jest.fn(),
+      isApplicable: jest.fn().mockReturnValue(true),
+      upgrade: jest.fn(
+        (_type: string, _version: number, data: unknown) => data,
+      ),
     };
     gateway = {
       emitNewTicket: jest.fn(),
@@ -119,6 +170,7 @@ describe('TicketsService', () => {
     };
     mailService = {
       sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
+      sendAccessGrantedEmail: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -127,6 +179,7 @@ describe('TicketsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: TicketsGateway, useValue: gateway },
         { provide: MailService, useValue: mailService },
+        { provide: TicketFormsService, useValue: ticketForms },
       ],
     }).compile();
 
@@ -136,6 +189,21 @@ describe('TicketsService', () => {
   afterEach(() => jest.clearAllMocks());
 
   describe('create', () => {
+    it('asigna el folio siguiente de la sucursal', async () => {
+      prisma.ticket.create.mockResolvedValue({ id: 'ticket-1' });
+
+      await service.create(createDto, globalUser);
+
+      expect(prisma.ticketCounter.upsert).toHaveBeenCalledWith({
+        where: { branchId },
+        create: { branchId, lastCode: 1 },
+        update: { lastCode: { increment: 1 } },
+      });
+      expect(prisma.ticket.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ code: 7 }) }),
+      );
+    });
+
     it('crea el ticket, fija createdById y notifica por el gateway', async () => {
       const created = { id: 'ticket-1', ...createDto, createdById: 'user-1' };
       prisma.ticket.create.mockResolvedValue(created);
@@ -160,6 +228,21 @@ describe('TicketsService', () => {
       await expect(
         service.create(createDto, otherBranchUser),
       ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
+    });
+
+    it('limita a 10 los tickets creados por minuto (los rechazados no cuentan)', async () => {
+      prisma.ticket.count.mockResolvedValue(10);
+
+      await expect(service.create(createDto, globalUser)).rejects.toMatchObject(
+        { status: 429 },
+      );
+      expect(prisma.ticket.count).toHaveBeenCalledWith({
+        where: {
+          createdById: globalUser.id,
+          createdAt: { gte: expect.any(Date) },
+        },
+      });
       expect(prisma.ticket.create).not.toHaveBeenCalled();
     });
 
@@ -499,14 +582,16 @@ describe('TicketsService', () => {
       expect(auditBody).toContain('Abierto');
       expect(auditBody).toContain('Resuelto');
       expect(gateway.emitNewComment).toHaveBeenCalledWith(
-        'ticket-1',
+        expect.objectContaining({ id: 'ticket-1' }),
         expect.objectContaining({ id: 'comment-1' }),
         ['reporter-1'],
       );
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1'],
-        'ticket-1',
-        expect.stringContaining(staffUser.name),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.stringContaining(staffUser.name),
+        }),
       );
     });
 
@@ -527,8 +612,10 @@ describe('TicketsService', () => {
 
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1', 'tech-1', 'tech-2'],
-        'ticket-1',
-        expect.any(String),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.any(String),
+        }),
       );
     });
 
@@ -670,8 +757,10 @@ describe('TicketsService', () => {
       expect(body).toContain('Pedro');
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1', 'new-1'],
-        'ticket-1',
-        expect.any(String),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.any(String),
+        }),
       );
       expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledTimes(1);
       expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledWith(
@@ -938,10 +1027,11 @@ describe('TicketsService', () => {
           }),
         }),
       );
-      expect(gateway.emitNewComment).toHaveBeenCalledWith('ticket-1', created, [
-        'reporter-1',
-        'tech-1',
-      ]);
+      expect(gateway.emitNewComment).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'ticket-1' }),
+        created,
+        ['reporter-1', 'tech-1'],
+      );
       expect(result).toBe(created);
     });
 
@@ -956,8 +1046,10 @@ describe('TicketsService', () => {
 
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1', 'tech-1'],
-        'ticket-1',
-        expect.stringContaining(staffUser.name),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.stringContaining(staffUser.name),
+        }),
       );
     });
 
@@ -975,8 +1067,10 @@ describe('TicketsService', () => {
 
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['tech-1'],
-        'ticket-1',
-        expect.any(String),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.any(String),
+        }),
       );
     });
 
@@ -1082,8 +1176,10 @@ describe('TicketsService', () => {
 
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
         ['reporter-1', 'tech-2'],
-        'ticket-1',
-        expect.any(String),
+        expect.objectContaining({
+          ticketId: 'ticket-1',
+          message: expect.any(String),
+        }),
       );
     });
 
@@ -1126,16 +1222,18 @@ describe('TicketsService', () => {
 
       expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
         data: [
-          {
+          expect.objectContaining({
             userId: 'reporter-1',
             ticketId: 'ticket-1',
+            kind: 'COMMENT',
+            actorId: staffUser.id,
             message: expect.stringContaining(staffUser.name),
-          },
-          {
+          }),
+          expect.objectContaining({
             userId: 'tech-1',
             ticketId: 'ticket-1',
             message: expect.stringContaining(staffUser.name),
-          },
+          }),
         ],
       });
     });
@@ -1290,6 +1388,83 @@ describe('TicketsService', () => {
       firstResponseAt: null,
     };
 
+    it('pausa el SLA al pasar a ON_HOLD', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(baseTicket);
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        status: 'ON_HOLD',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { status: 'ON_HOLD' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      expect(data.onHoldSince).toBeInstanceOf(Date);
+      expect(data.dueAt).toBeUndefined();
+    });
+
+    it('al reanudar suma a dueAt el tiempo hábil en pausa y lo acumula', async () => {
+      const dueAt = new Date('2026-10-23T23:00:00.000Z'); // viernes 17:00 MX
+      const onHoldSince = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...baseTicket,
+        status: 'ON_HOLD',
+        dueAt,
+        onHoldSince,
+        slaPausedSeconds: 600,
+      });
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        status: 'IN_PROGRESS',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { status: 'IN_PROGRESS' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      const pausedMs = businessTimeBetween(onHoldSince, new Date());
+      expect(data.dueAt.getTime()).toBeCloseTo(
+        addBusinessTime(dueAt, pausedMs).getTime(),
+        -4,
+      );
+      expect(data.slaPausedSeconds).toBeGreaterThanOrEqual(
+        600 + Math.floor(pausedMs / 1000) - 2,
+      );
+      expect(data.onHoldSince).toBeNull();
+    });
+
+    it('al cambiar la prioridad conserva el tiempo ya pausado', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        ...baseTicket,
+        slaPausedSeconds: 3600,
+      });
+      prisma.ticket.update.mockResolvedValue({
+        ...baseTicket,
+        priority: 'HIGH',
+      });
+      prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+
+      await service.update(
+        'ticket-1',
+        { priority: 'HIGH' } as UpdateTicketDto,
+        staffUser,
+      );
+
+      const data = prisma.ticket.update.mock.calls[0][0].data;
+      // HIGH = 8 h hábiles desde createdAt, más 1 h hábil en pausa.
+      expect(data.dueAt).toEqual(
+        computeDueAt('HIGH', baseTicket.createdAt, 60 * 60 * 1000),
+      );
+    });
+
     it('fija resolvedAt al pasar a RESOLVED', async () => {
       prisma.ticket.findUnique.mockResolvedValue(baseTicket);
       prisma.ticket.update.mockResolvedValue({
@@ -1347,8 +1522,9 @@ describe('TicketsService', () => {
       );
 
       const data = prisma.ticket.update.mock.calls[0][0].data;
+      // 4 business hours from createdAt (business-hours.spec covers the calendar).
       expect(data.dueAt).toEqual(
-        new Date(baseTicket.createdAt.getTime() + 4 * 60 * 60 * 1000),
+        computeDueAt('CRITICAL', baseTicket.createdAt),
       );
       expect(data.overdueNotifiedAt).toBeNull();
     });
@@ -1433,24 +1609,109 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('purga de notificaciones', () => {
+    it('el usuario borra sus leídas, o todas con all', async () => {
+      prisma.ticketNotification.deleteMany.mockResolvedValue({ count: 3 });
+
+      await expect(service.purgeMyNotifications(globalUser)).resolves.toEqual({
+        deleted: 3,
+      });
+      expect(prisma.ticketNotification.deleteMany).toHaveBeenCalledWith({
+        where: { userId: globalUser.id, read: true },
+      });
+
+      await service.purgeMyNotifications(globalUser, true);
+      expect(prisma.ticketNotification.deleteMany).toHaveBeenLastCalledWith({
+        where: { userId: globalUser.id },
+      });
+    });
+
+    it('no deja borrar notificaciones ajenas', async () => {
+      prisma.ticketNotification.findUnique.mockResolvedValue({
+        userId: 'other',
+      });
+
+      await expect(
+        service.removeNotification('n-1', globalUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.ticketNotification.delete).not.toHaveBeenCalled();
+    });
+
+    it('el cron borra solo las leídas de más de 90 días', async () => {
+      prisma.ticketNotification.deleteMany.mockResolvedValue({ count: 1 });
+      const now = new Date('2026-10-22T00:00:00.000Z');
+
+      await service.purgeOldNotifications(now);
+
+      expect(prisma.ticketNotification.deleteMany).toHaveBeenCalledWith({
+        where: {
+          read: true,
+          createdAt: { lt: new Date('2026-07-24T00:00:00.000Z') },
+        },
+      });
+    });
+  });
+
+  describe('filtros de formulario en la bandeja', () => {
+    it('PENDING lista formularios sin decidir de tickets abiertos', async () => {
+      prisma.ticket.findMany.mockResolvedValue([]);
+      prisma.ticket.count.mockResolvedValue(0);
+
+      await service.findAll(
+        {
+          page: 1,
+          limit: 10,
+          formType: 'STUDY_CREATE',
+          formStatus: 'PENDING',
+        } as FindTicketsDto,
+        scopedStaffUser,
+      );
+
+      const where = prisma.ticket.findMany.mock.calls[0][0].where;
+      expect(where.AND).toEqual(
+        expect.arrayContaining([
+          { form: { type: 'STUDY_CREATE' } },
+          {
+            form: { appliedAt: null, rejectedAt: null },
+            status: { notIn: ['CLOSED', 'CANCELLED'] },
+          },
+        ]),
+      );
+    });
+  });
+
   describe('notifyOverdueTickets', () => {
-    it('avisa al creador, transmite a TI y marca overdueNotifiedAt por cada ticket vencido', async () => {
-      const overdueTicket = {
-        id: 'ticket-1',
-        code: 42,
-        title: 'No enciende el monitor',
-        createdById: 'reporter-1',
-      };
+    const overdueTicket = {
+      id: 'ticket-1',
+      code: 42,
+      title: 'No enciende el monitor',
+      branchId,
+      createdById: 'reporter-1',
+    };
+
+    it('reclama cada ticket vencido, avisa al creador y transmite a TI de su sucursal', async () => {
       prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
-      prisma.ticket.update.mockResolvedValue(overdueTicket);
+      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
 
       const result = await service.notifyOverdueTickets();
 
+      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { notIn: ['ON_HOLD', 'RESOLVED', 'CLOSED', 'CANCELLED'] },
+          }),
+        }),
+      );
+      expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
+        where: { id: 'ticket-1', overdueNotifiedAt: null },
+        data: { overdueNotifiedAt: expect.any(Date) },
+      });
       expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
         data: [
           {
             userId: 'reporter-1',
             ticketId: 'ticket-1',
+            kind: 'OVERDUE',
             message: expect.stringContaining('#42'),
           },
         ],
@@ -1459,12 +1720,20 @@ describe('TicketsService', () => {
         id: 'ticket-1',
         code: 42,
         title: 'No enciende el monitor',
-      });
-      expect(prisma.ticket.update).toHaveBeenCalledWith({
-        where: { id: 'ticket-1' },
-        data: { overdueNotifiedAt: expect.any(Date) },
+        branchId,
       });
       expect(result).toEqual({ notified: 1 });
+    });
+
+    it('no repite el aviso si otra instancia ya reclamó el ticket', async () => {
+      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
+      prisma.ticket.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.notifyOverdueTickets();
+
+      expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
+      expect(gateway.emitOverdueTicket).not.toHaveBeenCalled();
+      expect(result).toEqual({ notified: 0 });
     });
 
     it('no hace nada si no hay tickets vencidos', async () => {
@@ -1472,8 +1741,462 @@ describe('TicketsService', () => {
 
       const result = await service.notifyOverdueTickets();
 
-      expect(prisma.ticket.update).not.toHaveBeenCalled();
+      expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
       expect(result).toEqual({ notified: 0 });
+    });
+  });
+
+  describe('formularios por categoría', () => {
+    const studyForm = { name: 'Glucosa', serviceId: 'svc-1' };
+
+    it('HARDWARE no lleva formulario y exige title/description', async () => {
+      await expect(
+        service.create(
+          { ...createDto, form: { foo: 1 } } as CreateTicketDto,
+          globalUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      await expect(
+        service.create(
+          { ...createDto, description: undefined } as CreateTicketDto,
+          globalUser,
+        ),
+      ).rejects.toMatchObject({
+        response: { message: ['description es requerido'] },
+      });
+      expect(ticketForms.parse).not.toHaveBeenCalled();
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
+    });
+
+    it('SOFTWARE exige form (TeamViewer) además del título del usuario', async () => {
+      await expect(
+        service.create(
+          { ...createDto, category: 'SOFTWARE' } as CreateTicketDto,
+          globalUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      ticketForms.parse.mockResolvedValue({
+        data: { teamViewerId: '123' },
+        title: undefined,
+      });
+      prisma.ticket.create.mockResolvedValue({ id: 'ticket-1' });
+      await service.create(
+        {
+          ...createDto,
+          category: 'SOFTWARE',
+          form: { teamViewerId: '123' },
+        } as CreateTicketDto,
+        globalUser,
+      );
+
+      expect(ticketForms.parse).toHaveBeenCalledWith(
+        'SOFTWARE_REMOTE',
+        { teamViewerId: '123' },
+        { branchId, actor: globalUser, phase: 'request' },
+      );
+      expect(prisma.ticket.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: createDto.title,
+            form: {
+              create: {
+                type: 'SOFTWARE_REMOTE',
+                schemaVersion: 1,
+                data: { teamViewerId: '123' },
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('COGNITI exige subcategoría', async () => {
+      await expect(
+        service.create(
+          { branchId, category: 'COGNITI', form: studyForm } as CreateTicketDto,
+          globalUser,
+        ),
+      ).rejects.toThrow('subcategoryId es requerido');
+    });
+
+    it('COGNITI usa el formulario de la subcategoría y el título generado', async () => {
+      prisma.ticketSubcategory.findUnique.mockResolvedValue({
+        category: 'COGNITI',
+        formType: 'STUDY_CREATE',
+      });
+      ticketForms.parse.mockResolvedValue({
+        data: studyForm,
+        title: 'Alta de parámetro: Glucosa',
+      });
+      prisma.ticket.create.mockResolvedValue({ id: 'ticket-1' });
+
+      await service.create(
+        {
+          branchId,
+          category: 'COGNITI',
+          subcategoryId: 'sub-1',
+          form: studyForm,
+        } as CreateTicketDto,
+        globalUser,
+      );
+
+      expect(ticketForms.parse.mock.calls[0][0]).toBe('STUDY_CREATE');
+      expect(prisma.ticket.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            title: 'Alta de parámetro: Glucosa',
+            form: {
+              create: {
+                type: 'STUDY_CREATE',
+                schemaVersion: 1,
+                data: studyForm,
+              },
+            },
+          }),
+        }),
+      );
+    });
+
+    it('no permite reclasificar a una categoría con otro formulario', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        branchId,
+        status: 'OPEN',
+        category: 'COGNITI',
+        subcategoryId: 'sub-1',
+        form: { type: 'STUDY_CREATE' },
+      });
+
+      await expect(
+        service.update(
+          'ticket-1',
+          { category: 'HARDWARE', subcategoryId: null } as UpdateTicketDto,
+          scopedStaffUser,
+        ),
+      ).rejects.toThrow('solo puede reclasificarse');
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+
+    describe('applyForm', () => {
+      const pendingTicket = {
+        id: 'ticket-1',
+        branchId,
+        status: 'OPEN',
+        createdById: 'user-1',
+        createdAt: new Date('2026-10-01T00:00:00Z'),
+        reopenedCount: 0,
+        resolvedAt: null,
+        priority: 'MEDIUM',
+        assignees: [],
+        form: {
+          type: 'STUDY_CREATE',
+          data: studyForm,
+          appliedAt: null,
+        },
+      };
+      const approver: RequestUser = {
+        ...scopedStaffUser,
+        role: {
+          ...scopedStaffUser.role,
+          permissions: ['tickets:update', 'studies:create'],
+        },
+      };
+
+      beforeEach(() => {
+        prisma.$transaction.mockImplementation(
+          (cb: (tx: typeof prisma) => unknown) => cb(prisma),
+        );
+        prisma.ticketForm.updateMany.mockResolvedValue({ count: 1 });
+        // Dentro de la transacción se vuelve a leer lo guardado.
+        prisma.ticketForm.findUniqueOrThrow.mockResolvedValue({
+          data: studyForm,
+        });
+        prisma.ticket.findUniqueOrThrow.mockResolvedValue({ id: 'ticket-1' });
+        prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+      });
+
+      it('ejecuta la acción, guarda el resultado y resuelve el ticket', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        const afterCommit = jest.fn().mockResolvedValue(undefined);
+        ticketForms.apply.mockResolvedValue({
+          result: { studyId: 'study-1' },
+          summary: 'creó el parámetro GLU (Glucosa)',
+          afterCommit,
+        });
+
+        await service.applyForm('ticket-1', { code: 'GLU' }, approver);
+
+        expect(ticketForms.apply).toHaveBeenCalledWith(
+          'STUDY_CREATE',
+          studyForm,
+          { code: 'GLU' },
+          { branchId, actor: approver, phase: 'apply' },
+          prisma,
+        );
+        expect(prisma.ticketForm.update).toHaveBeenCalledWith({
+          where: { ticketId: 'ticket-1' },
+          data: { result: { studyId: 'study-1' } },
+        });
+        expect(prisma.ticket.update).toHaveBeenCalledWith({
+          where: { id: 'ticket-1' },
+          data: expect.objectContaining({
+            status: 'RESOLVED',
+            resolvedAt: expect.any(Date),
+          }),
+        });
+        expect(afterCommit).toHaveBeenCalled();
+        expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+          data: [
+            expect.objectContaining({ type: 'FORM_APPLIED' }),
+            expect.objectContaining({
+              type: 'STATUS_CHANGED',
+              toValue: 'RESOLVED',
+            }),
+          ],
+        });
+        expect(gateway.emitTicketUpdated).toHaveBeenCalled();
+      });
+
+      it('exige el permiso de la acción además de tickets:update', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+
+        await expect(
+          service.applyForm('ticket-1', {}, scopedStaffUser),
+        ).rejects.toThrow('studies:create');
+        expect(ticketForms.apply).not.toHaveBeenCalled();
+      });
+
+      it('un formulario ya aprobado responde 409', async () => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...pendingTicket,
+          form: { ...pendingTicket.form, appliedAt: new Date() },
+        });
+
+        await expect(
+          service.applyForm('ticket-1', {}, approver),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+
+      it('una aprobación concurrente pierde la carrera con 409', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        prisma.ticketForm.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.applyForm('ticket-1', {}, approver),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(ticketForms.apply).not.toHaveBeenCalled();
+      });
+
+      it('los formularios informativos no se aprueban', async () => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...pendingTicket,
+          form: { ...pendingTicket.form, type: 'CLIENT_CREATE' },
+        });
+
+        await expect(
+          service.applyForm('ticket-1', {}, approver),
+        ).rejects.toThrow('informativo');
+      });
+
+      it('no espera el correo ni falla si el historial no se pudo registrar', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        let releaseEmail: () => void = () => undefined;
+        const afterCommit = jest.fn(
+          () =>
+            new Promise<undefined>((resolve) => {
+              releaseEmail = () => resolve(undefined);
+            }),
+        );
+        ticketForms.apply.mockResolvedValue({
+          result: { userId: 'u-1' },
+          summary: 'creó el usuario',
+          afterCommit,
+        });
+        prisma.ticketComment.create.mockRejectedValue(new Error('db caída'));
+
+        // Responde aunque el correo siga pendiente y el comentario haya fallado.
+        await expect(
+          service.applyForm('ticket-1', {}, approver),
+        ).resolves.toEqual({ id: 'ticket-1' });
+        expect(afterCommit).toHaveBeenCalled();
+        releaseEmail();
+      });
+
+      it('validar sin aplicar ejecuta todo y revierte: no guarda resultado ni estado', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        const afterCommit = jest.fn();
+        ticketForms.apply.mockResolvedValue({
+          result: { studyId: 'study-1' },
+          summary: 'creó el parámetro GLU (Glucosa)',
+          afterCommit,
+        });
+
+        await expect(
+          service.validateForm('ticket-1', { code: 'GLU' }, approver),
+        ).resolves.toEqual({
+          valid: true,
+          summary: 'creó el parámetro GLU (Glucosa)',
+        });
+        expect(ticketForms.apply).toHaveBeenCalled();
+        expect(prisma.ticketForm.update).not.toHaveBeenCalled();
+        expect(prisma.ticket.update).not.toHaveBeenCalled();
+        expect(afterCommit).not.toHaveBeenCalled();
+        expect(prisma.ticketComment.create).not.toHaveBeenCalled();
+      });
+
+      it('rechazar cierra el formulario con motivo y cancela el ticket', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        prisma.ticketForm.updateMany.mockResolvedValue({ count: 1 });
+
+        await service.rejectForm('ticket-1', 'Falta el tarifario', approver);
+
+        expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith({
+          where: { ticketId: 'ticket-1', appliedAt: null, rejectedAt: null },
+          data: {
+            rejectedAt: expect.any(Date),
+            rejectedById: approver.id,
+            rejectionReason: 'Falta el tarifario',
+          },
+        });
+        expect(prisma.ticket.update).toHaveBeenCalledWith({
+          where: { id: 'ticket-1' },
+          data: expect.objectContaining({ status: 'CANCELLED' }),
+        });
+        expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+          data: [
+            expect.objectContaining({ type: 'FORM_REJECTED' }),
+            expect.objectContaining({ toValue: 'CANCELLED' }),
+          ],
+        });
+        expect(
+          prisma.ticketComment.create.mock.calls[0][0].data.body,
+        ).toContain('Falta el tarifario');
+      });
+
+      it('un formulario rechazado ya no se aprueba', async () => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...pendingTicket,
+          form: { ...pendingTicket.form, rejectedAt: new Date() },
+        });
+
+        await expect(
+          service.applyForm('ticket-1', {}, approver),
+        ).rejects.toThrow('rechazado');
+      });
+
+      it('reenvía el correo de una solicitud de acceso aprobada', async () => {
+        const accessApprover: RequestUser = {
+          ...approver,
+          role: {
+            ...approver.role,
+            permissions: ['tickets:update', 'users:create'],
+          },
+        };
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...pendingTicket,
+          form: {
+            type: 'ACCESS_REQUEST',
+            data: { fullName: 'Ana López', email: 'ana@dyra.com' },
+            result: { userId: 'u-1', emailSent: false },
+            appliedAt: new Date(),
+          },
+        });
+
+        await service.resendAccessEmail('ticket-1', accessApprover);
+
+        expect(mailService.sendAccessGrantedEmail).toHaveBeenCalledWith(
+          'ana@dyra.com',
+          'Ana López',
+        );
+        expect(prisma.ticketForm.update).toHaveBeenCalledWith({
+          where: { ticketId: 'ticket-1' },
+          data: { result: { userId: 'u-1', emailSent: true } },
+        });
+      });
+
+      it('si la acción falla no registra comentario ni evento', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(pendingTicket);
+        ticketForms.apply.mockRejectedValue(
+          new BadRequestException('catálogo inválido'),
+        );
+
+        await expect(
+          service.applyForm('ticket-1', { code: 'GLU' }, approver),
+        ).rejects.toThrow('catálogo inválido');
+        expect(prisma.ticketComment.create).not.toHaveBeenCalled();
+        expect(prisma.ticketEvent.createMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('updateForm', () => {
+      const ticketWithForm = {
+        id: 'ticket-1',
+        branchId,
+        status: 'OPEN',
+        createdById: globalUser.id,
+        assignees: [],
+        form: { type: 'STUDY_CREATE', data: {}, appliedAt: null },
+      };
+
+      it('solo el creador o TI pueden editarlo', async () => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...ticketWithForm,
+          createdById: 'other-user',
+        });
+
+        await expect(
+          service.updateForm('ticket-1', studyForm, globalUser),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+
+      beforeEach(() => {
+        prisma.$transaction.mockImplementation(
+          (cb: (tx: typeof prisma) => unknown) => cb(prisma),
+        );
+        prisma.ticketComment.create.mockResolvedValue({ id: 'comment-1' });
+        prisma.ticket.findUniqueOrThrow.mockResolvedValue({ id: 'ticket-1' });
+      });
+
+      it('valida, reemplaza los datos y actualiza el título generado', async () => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          ...ticketWithForm,
+          title: 'Alta de parámetro: Glucosa',
+        });
+        ticketForms.parse.mockResolvedValue({
+          data: studyForm,
+          title: 'Alta de parámetro: Glucosa en ayuno',
+        });
+        prisma.ticketForm.updateMany.mockResolvedValue({ count: 1 });
+
+        await service.updateForm('ticket-1', studyForm, globalUser);
+
+        expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith({
+          where: { ticketId: 'ticket-1', appliedAt: null, rejectedAt: null },
+          data: { data: studyForm, schemaVersion: 1 },
+        });
+        expect(prisma.ticket.update).toHaveBeenCalledWith({
+          where: { id: 'ticket-1' },
+          data: { title: 'Alta de parámetro: Glucosa en ayuno' },
+        });
+        // Quien edita no se notifica a sí mismo.
+        expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
+        expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+          data: [expect.objectContaining({ type: 'FORM_UPDATED' })],
+        });
+      });
+
+      it('responde 409 si el formulario se aprobó mientras se editaba', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(ticketWithForm);
+        ticketForms.parse.mockResolvedValue({ data: studyForm });
+        prisma.ticketForm.updateMany.mockResolvedValue({ count: 0 });
+
+        await expect(
+          service.updateForm('ticket-1', studyForm, globalUser),
+        ).rejects.toBeInstanceOf(ConflictException);
+        expect(prisma.ticketEvent.createMany).not.toHaveBeenCalled();
+      });
     });
   });
 });

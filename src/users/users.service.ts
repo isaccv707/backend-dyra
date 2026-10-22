@@ -50,10 +50,13 @@ const USER_ALLOWED_FIELDS = [
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(
+    createUserDto: CreateUserDto,
+    db: Prisma.TransactionClient = this.prisma,
+  ) {
     const { password, roleId, branchIds, ...userData } = createUserDto;
 
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await db.user.findUnique({
       where: { email: userData.email },
     });
     if (existingUser) {
@@ -62,7 +65,7 @@ export class UsersService {
       );
     }
 
-    const role = await this.prisma.role.findUnique({ where: { id: roleId } });
+    const role = await db.role.findUnique({ where: { id: roleId } });
     if (!role) {
       throw new NotFoundException(`Role with ID '${roleId}' not found`);
     }
@@ -70,7 +73,7 @@ export class UsersService {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     try {
-      return await this.prisma.user.create({
+      return await db.user.create({
         data: {
           ...userData,
           password: hashedPassword,
