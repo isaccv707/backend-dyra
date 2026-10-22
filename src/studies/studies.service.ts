@@ -1,10 +1,11 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { CreateStudyDto } from './dto/create-study.dto';
+import { CreateStudyDto, StudyPriceDto } from './dto/create-study.dto';
 import { UpdateStudyDto } from './dto/update-study.dto';
 import { AssignPriceSheetDto } from './dto/assign-price-sheet.dto';
 import { PaginationDto } from './dto/pagination-study.dto';
@@ -13,6 +14,7 @@ import { SetPanelItemsDto } from './dto/set-panel-items.dto';
 import { CreateReferenceValueDto } from './dto/reference-value.dto';
 import { EligiblePatientsDto } from './dto/eligible-patients.dto';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import * as XLSX from 'xlsx';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
@@ -154,6 +156,18 @@ function catalogLabels(kind: StudyCatalogKind) {
   };
 }
 
+/** Adds which study failed (e.g. form.panelItems[2].newStudy) to an error. */
+function prefixError(error: unknown, label: string) {
+  if (error instanceof BadRequestException) {
+    const response = error.getResponse() as { message?: string | string[] };
+    const messages = Array.isArray(response.message)
+      ? response.message
+      : [response.message ?? error.message];
+    return new BadRequestException(messages.map((m) => `${label}: ${m}`));
+  }
+  return error;
+}
+
 function eligiblePatientsData(eligiblePatients?: EligiblePatientsDto) {
   return {
     gender: eligiblePatients?.gender,
@@ -172,7 +186,10 @@ type StudyResponseColumns = {
   maxAge: number;
 };
 
-function toStudyResponse<T extends StudyResponseColumns>(study: T) {
+/** Prisma client or the client of an interactive transaction. */
+export type StudyDb = Prisma.TransactionClient;
+
+export function toStudyResponse<T extends StudyResponseColumns>(study: T) {
   const { gender, ageFormat, minAge, maxAge, ...rest } = study;
   return {
     ...rest,
@@ -294,8 +311,12 @@ function toPriceInfo(
 export class StudiesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async findAccessibleStudy(id: string, user: BranchScopedUser) {
-    const study = await this.prisma.study.findUnique({
+  private async findAccessibleStudy(
+    id: string,
+    user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+  ) {
+    const study = await db.study.findUnique({
       where: { id },
       include: { _count: { select: { referenceValues: true } } },
     });
@@ -304,8 +325,8 @@ export class StudiesService {
     return study;
   }
 
-  private async assertNotInAnyPanel(id: string) {
-    const parentPanels = await this.prisma.studyPanelItem.findMany({
+  private async assertNotInAnyPanel(id: string, db: StudyDb = this.prisma) {
+    const parentPanels = await db.studyPanelItem.findMany({
       where: { childId: id },
       select: { panel: { select: { code: true } } },
     });
@@ -321,8 +342,9 @@ export class StudiesService {
   private async assertServiceBelongsToBranch(
     serviceId: string,
     branchId: string,
+    db: StudyDb = this.prisma,
   ) {
-    const service = await this.prisma.service.findUnique({
+    const service = await db.service.findUnique({
       where: { id: serviceId },
       select: { branchId: true },
     });
@@ -342,12 +364,13 @@ export class StudiesService {
     ids: StudyCatalogIds,
     branchId: string,
     activeIds: StudyCatalogIds = ids,
+    db: StudyDb = this.prisma,
   ) {
     for (const [field, kind] of CATALOG_ID_FIELDS) {
       const id = ids[field];
       if (!id) continue;
 
-      const item = await studyCatalogDelegate(this.prisma, kind).findUnique({
+      const item = await studyCatalogDelegate(db, kind).findUnique({
         where: { id },
       });
       const { label, capitalized, ending } = catalogLabels(kind);
@@ -438,9 +461,10 @@ export class StudiesService {
     });
   }
 
-  private async assertPriceSheetsBelongToBranch(
+  async assertPriceSheetsBelongToBranch(
     priceSheetIds: string[],
     branchId: string,
+    db: StudyDb = this.prisma,
   ) {
     if (!priceSheetIds.length) return;
     if (new Set(priceSheetIds).size !== priceSheetIds.length) {
@@ -449,7 +473,7 @@ export class StudiesService {
       );
     }
 
-    const priceSheets = await this.prisma.priceSheets.findMany({
+    const priceSheets = await db.priceSheets.findMany({
       where: { id: { in: priceSheetIds } },
       select: { id: true, branchId: true },
     });
@@ -462,7 +486,295 @@ export class StudiesService {
     }
   }
 
-  async create(createStudyDto: CreateStudyDto, user: BranchScopedUser) {
+  /**
+   * assertCreatable for many studies of one branch with a fixed number of
+   * queries: services, each catalog and price sheets are read once for all.
+   * `label` prefixes each study's errors (e.g. form.panelItems[3].newStudy).
+   */
+  async assertCreatableMany(
+    items: {
+      label: string;
+      dto: Parameters<StudiesService['assertCreatable']>[0];
+    }[],
+    branchId: string,
+    db: StudyDb = this.prisma,
+  ) {
+    if (!items.length) return;
+
+    for (const { label, dto } of items) {
+      try {
+        this.assertPanelHasNoMeasurement(dto.isPanel ?? false, dto);
+        this.assertValidAgeRange(
+          dto.eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
+          dto.eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
+        );
+        if (dto.referenceValues?.length) {
+          this.assertValidReferenceValues(dto.referenceValues);
+        }
+        if (dto.studyPrices?.length) {
+          const sheetIds = dto.studyPrices.map((p) => p.priceSheetId);
+          if (new Set(sheetIds).size !== sheetIds.length) {
+            throw new BadRequestException(
+              'studyPrices no puede repetir la misma lista de precios',
+            );
+          }
+        }
+      } catch (error) {
+        throw prefixError(error, label);
+      }
+    }
+
+    const unique = <T>(values: (T | null | undefined)[]) => [
+      ...new Set(values.filter((v): v is T => v !== null && v !== undefined)),
+    ];
+
+    const serviceIds = unique(items.map((i) => i.dto.serviceId));
+    const services = await db.service.findMany({
+      where: { id: { in: serviceIds } },
+      select: { id: true, branchId: true },
+    });
+    const serviceBranch = new Map(services.map((s) => [s.id, s.branchId]));
+    for (const { label, dto } of items) {
+      const owner = serviceBranch.get(dto.serviceId);
+      if (!owner) {
+        throw new NotFoundException(
+          `${label}: servicio con el ID ${dto.serviceId} no encontrado`,
+        );
+      }
+      if (owner !== branchId) {
+        throw new BadRequestException(
+          `${label}: el servicio seleccionado pertenece a otra sucursal`,
+        );
+      }
+    }
+
+    for (const [field, kind] of CATALOG_ID_FIELDS) {
+      const ids = unique(items.map((i) => i.dto[field]));
+      if (!ids.length) continue;
+      const rows = await studyCatalogDelegate(db, kind).findMany({
+        where: { id: { in: ids } },
+      });
+      const byId = new Map(rows.map((row) => [row.id, row]));
+      const { label: kindLabel, capitalized, ending } = catalogLabels(kind);
+      for (const { label, dto } of items) {
+        const id = dto[field];
+        if (!id) continue;
+        const item = byId.get(id);
+        if (!item) {
+          throw new NotFoundException(
+            `${label}: no existe ${kindLabel} con el ID ${id}`,
+          );
+        }
+        if (item.branchId !== branchId) {
+          throw new BadRequestException(
+            `${label}: ${capitalized} seleccionad${ending} pertenece a otra sucursal`,
+          );
+        }
+        if (!item.isActive) {
+          throw new BadRequestException(
+            `${label}: ${capitalized} "${item.name}" está inactiv${ending}`,
+          );
+        }
+      }
+    }
+
+    const sheetIds = unique(
+      items.flatMap((i) =>
+        (i.dto.studyPrices ?? []).map((p) => p.priceSheetId),
+      ),
+    );
+    if (sheetIds.length) {
+      const sheets = await db.priceSheets.findMany({
+        where: { id: { in: sheetIds } },
+        select: { id: true, branchId: true },
+      });
+      if (
+        sheets.length !== sheetIds.length ||
+        sheets.some((sheet) => sheet.branchId !== branchId)
+      ) {
+        throw new BadRequestException(
+          'Todas las listas de precios asignadas deben existir y pertenecer a la sucursal del estudio',
+        );
+      }
+    }
+  }
+
+  /**
+   * Creates many studies of one branch in a handful of queries (used for the
+   * new parameters of a large panel). Same rules as create(); codes and slugs
+   * are checked against the branch and among themselves first, so a conflict
+   * names the offending code instead of failing the whole insert blindly.
+   */
+  async createMany(
+    items: { label: string; dto: CreateStudyDto }[],
+    user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+  ) {
+    if (!items.length) return [];
+    const branchId = items[0].dto.branchId;
+    if (items.some((i) => i.dto.branchId !== branchId)) {
+      throw new BadRequestException(
+        'createMany: todos los estudios deben ser de la misma sucursal',
+      );
+    }
+    assertBranchAccess(user, branchId);
+    await this.assertCreatableMany(items, branchId, db);
+
+    const rows = items.map(({ dto }) => ({
+      id: randomUUID(),
+      dto,
+      slug: toSlug(dto.slug ?? dto.name),
+    }));
+
+    const repeated = (values: string[]) =>
+      values.filter((value, index) => values.indexOf(value) !== index);
+    const dupCodes = repeated(rows.map((r) => r.dto.code));
+    if (dupCodes.length) {
+      throw new ConflictException(
+        `Códigos repetidos en la solicitud: ${[...new Set(dupCodes)].join(', ')}`,
+      );
+    }
+    const dupSlugs = repeated(rows.map((r) => r.slug));
+    if (dupSlugs.length) {
+      throw new ConflictException(
+        `Slugs repetidos en la solicitud: ${[...new Set(dupSlugs)].join(', ')}: envía un slug distinto`,
+      );
+    }
+    const taken = await db.study.findMany({
+      where: {
+        branchId,
+        OR: [
+          { code: { in: rows.map((r) => r.dto.code) } },
+          { slug: { in: rows.map((r) => r.slug) } },
+        ],
+      },
+      select: { code: true, slug: true },
+    });
+    if (taken.length) {
+      const codes = new Set(rows.map((r) => r.dto.code));
+      const takenCodes = taken
+        .filter((t) => codes.has(t.code))
+        .map((t) => t.code);
+      throw new ConflictException(
+        takenCodes.length
+          ? `Ya existe un estudio con el código ${takenCodes.map((c) => `'${c}'`).join(', ')} en esta sucursal`
+          : `Ya existe un estudio con el slug ${taken.map((t) => `'${t.slug}'`).join(', ')} en esta sucursal: envía un slug distinto`,
+      );
+    }
+
+    try {
+      await db.study.createMany({
+        data: rows.map(({ id, dto, slug }) => {
+          const isPanel = dto.isPanel ?? false;
+          return {
+            id,
+            branchId,
+            serviceId: dto.serviceId,
+            name: dto.name,
+            title: dto.title ?? dto.name,
+            slug,
+            code: dto.code,
+            abbreviation: dto.abbreviation,
+            description: dto.description,
+            preparation: dto.preparation,
+            deliveryTime: dto.deliveryTime,
+            isActive: dto.isActive,
+            isPanel,
+            units: isPanel ? null : dto.units,
+            decimals: isPanel ? null : dto.decimals,
+            sectionId: dto.sectionId,
+            sampleTypeId: dto.sampleTypeId,
+            techniqueId: dto.techniqueId ?? null,
+            ...eligiblePatientsData(dto.eligiblePatients),
+          };
+        }),
+      });
+      const referenceValues = rows.flatMap(({ id, dto }) =>
+        dto.referenceValues?.length && !dto.isPanel
+          ? referenceValuesData(dto.referenceValues).map((value) => ({
+              ...value,
+              studyId: id,
+            }))
+          : [],
+      );
+      if (referenceValues.length) {
+        await db.referenceValue.createMany({ data: referenceValues });
+      }
+      const prices = rows.flatMap(({ id, dto }) =>
+        (dto.studyPrices ?? []).map((p) => ({
+          studyId: id,
+          priceSheetId: p.priceSheetId,
+          price: new Prisma.Decimal(p.price),
+          showPrice: p.showPrice ?? true,
+        })),
+      );
+      if (prices.length) {
+        await db.studyOnPriceSheet.createMany({ data: prices });
+      }
+    } catch (error) {
+      handleStudyDbErrors(error);
+    }
+
+    return rows.map(({ id, dto }) => ({ id, code: dto.code, name: dto.name }));
+  }
+
+  /**
+   * Business rules of a new study that don't depend on its code/slug. Also used
+   * by ticket forms to validate a requested study before it's created.
+   */
+  async assertCreatable(
+    dto: Pick<
+      CreateStudyDto,
+      | 'branchId'
+      | 'serviceId'
+      | 'sectionId'
+      | 'sampleTypeId'
+      | 'techniqueId'
+      | 'isPanel'
+      | 'units'
+      | 'decimals'
+      | 'eligiblePatients'
+      | 'referenceValues'
+      | 'studyPrices'
+    >,
+    db: StudyDb = this.prisma,
+  ) {
+    const { branchId, eligiblePatients, referenceValues, studyPrices } = dto;
+    const catalogIds = {
+      sectionId: dto.sectionId,
+      sampleTypeId: dto.sampleTypeId,
+      techniqueId: dto.techniqueId,
+    };
+
+    this.assertPanelHasNoMeasurement(dto.isPanel ?? false, dto);
+    this.assertValidAgeRange(
+      eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
+      eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
+    );
+    if (referenceValues?.length) {
+      this.assertValidReferenceValues(referenceValues);
+    }
+    await this.assertServiceBelongsToBranch(dto.serviceId, branchId, db);
+    await this.assertCatalogsBelongToBranch(
+      catalogIds,
+      branchId,
+      catalogIds,
+      db,
+    );
+    if (studyPrices?.length) {
+      await this.assertPriceSheetsBelongToBranch(
+        studyPrices.map((p) => p.priceSheetId),
+        branchId,
+        db,
+      );
+    }
+  }
+
+  async create(
+    createStudyDto: CreateStudyDto,
+    user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+  ) {
     const {
       name,
       title,
@@ -484,29 +796,10 @@ export class StudiesService {
     const catalogIds = { sectionId, sampleTypeId, techniqueId };
     const isPanel = studyData.isPanel ?? false;
 
-    this.assertPanelHasNoMeasurement(isPanel, {
-      units,
-      decimals,
-      referenceValues,
-    });
-    this.assertValidAgeRange(
-      eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
-      eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
-    );
-    if (referenceValues?.length) {
-      this.assertValidReferenceValues(referenceValues);
-    }
-    await this.assertServiceBelongsToBranch(serviceId, branchId);
-    await this.assertCatalogsBelongToBranch(catalogIds, branchId);
-    if (studyPrices?.length) {
-      await this.assertPriceSheetsBelongToBranch(
-        studyPrices.map((p) => p.priceSheetId),
-        branchId,
-      );
-    }
+    await this.assertCreatable(createStudyDto, db);
 
     try {
-      const study = await this.prisma.study.create({
+      const study = await db.study.create({
         data: {
           ...studyData,
           ...eligiblePatientsData(eligiblePatients),
@@ -809,33 +1102,30 @@ export class StudiesService {
     };
   }
 
-  async setPanelItems(
-    id: string,
-    dto: SetPanelItemsDto,
-    user: BranchScopedUser,
+  /**
+   * Children rules of a panel (except cycles, checked when saving). `panelId`
+   * is null for a panel that doesn't exist yet.
+   */
+  async assertValidPanelChildren(
+    panelId: string | null,
+    branchId: string,
+    childIds: string[],
+    db: StudyDb = this.prisma,
   ) {
-    const panel = await this.findAccessibleStudy(id, user);
-    if (!panel.isPanel) {
-      throw new BadRequestException(
-        'Solo un estudio marcado como perfil (isPanel) puede tener estudios hijos',
-      );
-    }
-
-    const childIds = dto.items.map((item) => item.childId);
     if (new Set(childIds).size !== childIds.length) {
       throw new BadRequestException('El perfil contiene estudios repetidos');
     }
-    if (childIds.includes(id)) {
+    if (panelId && childIds.includes(panelId)) {
       throw new BadRequestException('Un perfil no puede contenerse a sí mismo');
     }
 
-    const children = await this.prisma.study.findMany({
+    const children = await db.study.findMany({
       where: { id: { in: childIds } },
       select: { id: true, code: true, branchId: true, isActive: true },
     });
     if (
       children.length !== childIds.length ||
-      children.some((c) => c.branchId !== panel.branchId)
+      children.some((c) => c.branchId !== branchId)
     ) {
       throw new BadRequestException(
         'Todos los estudios del perfil deben existir y pertenecer a la misma sucursal del perfil',
@@ -849,44 +1139,112 @@ export class StudiesService {
           .join(', ')}`,
       );
     }
+  }
+
+  /** With `tx`, runs inside the caller's transaction instead of its own. */
+  async setPanelItems(
+    id: string,
+    dto: SetPanelItemsDto,
+    user: BranchScopedUser,
+    tx?: StudyDb,
+  ) {
+    const db = tx ?? this.prisma;
+    const panel = await this.findAccessibleStudy(id, user, db);
+    if (!panel.isPanel) {
+      throw new BadRequestException(
+        'Solo un estudio marcado como perfil (isPanel) puede tener estudios hijos',
+      );
+    }
+
+    const childIds = dto.items.map((item) => item.childId);
+    await this.assertValidPanelChildren(id, panel.branchId, childIds, db);
+
+    const replaceItems = async (client: StudyDb) => {
+      const graph = await loadPanelGraph(client, panel.branchId);
+      graph.set(id, childIds);
+      if (findPanelsInCycle(graph, [id]).length) {
+        throw new BadRequestException(
+          'La lista crea un ciclo: algún perfil hijo ya contiene (directa o indirectamente) a este perfil',
+        );
+      }
+
+      await client.studyPanelItem.deleteMany({ where: { panelId: id } });
+      await client.studyPanelItem.createMany({
+        data: dto.items.map((item, index) => ({
+          panelId: id,
+          childId: item.childId,
+          order: item.order ?? index,
+        })),
+      });
+    };
 
     try {
-      await this.prisma.$transaction(async (tx) => {
-        const graph = await loadPanelGraph(tx, panel.branchId);
-        graph.set(id, childIds);
-        if (findPanelsInCycle(graph, [id]).length) {
-          throw new BadRequestException(
-            'La lista crea un ciclo: algún perfil hijo ya contiene (directa o indirectamente) a este perfil',
-          );
-        }
-
-        await tx.studyPanelItem.deleteMany({ where: { panelId: id } });
-        await tx.studyPanelItem.createMany({
-          data: dto.items.map((item, index) => ({
-            panelId: id,
-            childId: item.childId,
-            order: item.order ?? index,
-          })),
-        });
-      });
+      await (tx ? replaceItems(tx) : this.prisma.$transaction(replaceItems));
     } catch (error) {
       handleStudyDbErrors(error);
     }
 
-    return this.prisma.studyPanelItem.findMany({
+    return db.studyPanelItem.findMany({
       where: { panelId: id },
       ...PANEL_ITEMS_INCLUDE,
     });
   }
 
-  async update(
+  /**
+   * Replaces all of a study's prices: sheets missing from `prices` lose theirs.
+   * Same branch rules as `studyPrices` on create.
+   */
+  async replacePrices(
+    studyId: string,
+    prices: StudyPriceDto[],
+    user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+  ) {
+    const study = await this.findAccessibleStudy(studyId, user, db);
+    await this.assertPriceSheetsBelongToBranch(
+      prices.map((p) => p.priceSheetId),
+      study.branchId,
+      db,
+    );
+
+    try {
+      await db.studyOnPriceSheet.deleteMany({
+        where: {
+          studyId,
+          priceSheetId: { notIn: prices.map((p) => p.priceSheetId) },
+        },
+      });
+      for (const p of prices) {
+        const values = {
+          price: new Prisma.Decimal(p.price),
+          showPrice: p.showPrice ?? true,
+        };
+        await db.studyOnPriceSheet.upsert({
+          where: {
+            studyId_priceSheetId: { studyId, priceSheetId: p.priceSheetId },
+          },
+          update: values,
+          create: { ...values, studyId, priceSheetId: p.priceSheetId },
+        });
+      }
+    } catch (error) {
+      handleStudyDbErrors(error);
+    }
+  }
+
+  /**
+   * Business rules of an update (also used by ticket forms to validate a
+   * requested change before applying it). Returns the current study.
+   */
+  async assertUpdatable(
     id: string,
     updateStudyDto: UpdateStudyDto,
     user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+    /** The caller removes the panel's children before un-marking it. */
+    { childrenWillBeRemoved = false }: { childrenWillBeRemoved?: boolean } = {},
   ) {
     const {
-      name,
-      title,
       serviceId,
       sectionId,
       sampleTypeId,
@@ -895,15 +1253,14 @@ export class StudiesService {
       decimals,
       eligiblePatients,
       referenceValues,
-      slug: slugInput,
-      ...studyData
+      isPanel: isPanelInput,
+      isActive,
     } = updateStudyDto;
-    const slug = slugInput !== undefined ? toSlug(slugInput) : undefined;
     const catalogIds = { sectionId, sampleTypeId, techniqueId };
 
-    const existingStudy = await this.findAccessibleStudy(id, user);
+    const existingStudy = await this.findAccessibleStudy(id, user, db);
 
-    const isPanel = studyData.isPanel ?? existingStudy.isPanel;
+    const isPanel = isPanelInput ?? existingStudy.isPanel;
     this.assertPanelHasNoMeasurement(isPanel, {
       units,
       decimals,
@@ -923,8 +1280,12 @@ export class StudiesService {
       this.assertValidReferenceValues(referenceValues);
     }
 
-    if (studyData.isPanel === false && existingStudy.isPanel) {
-      const childCount = await this.prisma.studyPanelItem.count({
+    if (
+      isPanelInput === false &&
+      existingStudy.isPanel &&
+      !childrenWillBeRemoved
+    ) {
+      const childCount = await db.studyPanelItem.count({
         where: { panelId: id },
       });
       if (childCount > 0) {
@@ -934,20 +1295,60 @@ export class StudiesService {
       }
     }
 
-    if (studyData.isActive === false && existingStudy.isActive) {
-      await this.assertNotInAnyPanel(id);
+    if (isActive === false && existingStudy.isActive) {
+      await this.assertNotInAnyPanel(id, db);
     }
 
     if (serviceId) {
       await this.assertServiceBelongsToBranch(
         serviceId,
         existingStudy.branchId,
+        db,
       );
     }
-    await this.assertCatalogsBelongToBranch(catalogIds, existingStudy.branchId);
+    await this.assertCatalogsBelongToBranch(
+      catalogIds,
+      existingStudy.branchId,
+      catalogIds,
+      db,
+    );
+
+    return existingStudy;
+  }
+
+  async update(
+    id: string,
+    updateStudyDto: UpdateStudyDto,
+    user: BranchScopedUser,
+    db: StudyDb = this.prisma,
+  ) {
+    const {
+      name,
+      title,
+      serviceId,
+      sectionId,
+      sampleTypeId,
+      techniqueId,
+      units,
+      decimals,
+      eligiblePatients,
+      referenceValues,
+      slug: slugInput,
+      ...studyData
+    } = updateStudyDto;
+    const slug = slugInput !== undefined ? toSlug(slugInput) : undefined;
+    const catalogIds = { sectionId, sampleTypeId, techniqueId };
+
+    const existingStudy = await this.assertUpdatable(
+      id,
+      updateStudyDto,
+      user,
+      db,
+    );
+    const isPanel = studyData.isPanel ?? existingStudy.isPanel;
 
     try {
-      const study = await this.prisma.study.update({
+      const study = await db.study.update({
         where: { id },
         data: {
           ...studyData,
