@@ -43,6 +43,11 @@ jobs:
           npx prisma migrate deploy
           npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
 
+      # Ticket forms end to end against the migrated database (creates and
+      # deletes its own branch and users; emails are mocked).
+      - name: E2E tests
+        run: yarn test:e2e
+
       # openapi.json is what the frontends generate their types from.
       - name: openapi.json is up to date
         run: |

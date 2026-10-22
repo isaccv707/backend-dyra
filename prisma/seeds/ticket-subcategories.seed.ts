@@ -1,14 +1,41 @@
-import { Category, PrismaClient } from '@prisma/client';
+import { Category, PrismaClient, TicketFormType } from '@prisma/client';
 
-const TICKET_SUBCATEGORIES: { category: Category; name: string }[] = [
-  { category: 'COGNITI', name: 'Crear cliente' },
-  { category: 'COGNITI', name: 'Crear parámetro' },
-  { category: 'COGNITI', name: 'Actualizar parámetro' },
-  { category: 'COGNITI', name: 'Actualizar precio de parámetro' },
+const TICKET_SUBCATEGORIES: {
+  category: Category;
+  name: string;
+  formType: TicketFormType | null;
+  isActive: boolean;
+}[] = [
+  {
+    category: 'COGNITI',
+    name: 'Crear cliente',
+    formType: 'CLIENT_CREATE',
+    isActive: true,
+  },
+  {
+    category: 'COGNITI',
+    name: 'Crear parámetro',
+    formType: 'STUDY_CREATE',
+    isActive: true,
+  },
+  {
+    category: 'COGNITI',
+    name: 'Actualizar parámetro',
+    formType: 'STUDY_UPDATE',
+    isActive: true,
+  },
+  // Covered by "Actualizar parámetro" (STUDY_UPDATE also changes prices).
+  {
+    category: 'COGNITI',
+    name: 'Actualizar precio de parámetro',
+    formType: null,
+    isActive: false,
+  },
 ];
 
 export async function seedTicketSubcategories(prisma: PrismaClient) {
   for (const subcategory of TICKET_SUBCATEGORIES) {
+    const { formType, isActive } = subcategory;
     await prisma.ticketSubcategory.upsert({
       where: {
         category_name: {
@@ -16,7 +43,7 @@ export async function seedTicketSubcategories(prisma: PrismaClient) {
           name: subcategory.name,
         },
       },
-      update: {},
+      update: { formType, isActive },
       create: subcategory,
     });
   }

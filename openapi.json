@@ -8042,7 +8042,7 @@
     },
     "/api/tickets": {
       "post": {
-        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
+        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form (SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto). Con ACCESS y COGNITI el título se genera del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
         "operationId": "TicketsController_create",
         "parameters": [],
         "requestBody": {
@@ -8163,7 +8163,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -8208,6 +8207,34 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "name": "formType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SOFTWARE_REMOTE",
+                "ACCESS_REQUEST",
+                "STUDY_CREATE",
+                "STUDY_UPDATE",
+                "CLIENT_CREATE"
+              ]
+            }
+          },
+          {
+            "name": "formStatus",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "APPLIED",
+                "REJECTED"
+              ]
             }
           }
         ],
@@ -8301,6 +8328,91 @@
           }
         ],
         "summary": "Listar mis notificaciones de tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "delete": {
+        "description": "Borra las notificaciones leídas del usuario autenticado, o todas con all=true. Las leídas de más de 90 días se borran solas.",
+        "operationId": "TicketsController_purgeMyNotifications",
+        "parameters": [
+          {
+            "name": "all",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cantidad borrada ({ deleted })."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Borrar mis notificaciones",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/form-options/roles": {
+      "get": {
+        "description": "Roles que se pueden pedir en el formulario de Accesos (id, name, description). Requiere el permiso tickets:create.",
+        "operationId": "TicketsController_findFormRoles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Listado de roles."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Roles para solicitudes de acceso",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/notifications/{id}": {
+      "delete": {
+        "operationId": "TicketsController_removeNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador de la notificación.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notificación borrada."
+          },
+          "403": {
+            "description": "La notificación pertenece a otro usuario."
+          },
+          "404": {
+            "description": "Notificación no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Borrar una notificación",
         "tags": [
           "tickets"
         ]
@@ -8590,6 +8702,267 @@
         ]
       }
     },
+    "/api/tickets/{id}/form": {
+      "patch": {
+        "description": "Reemplaza los datos del formulario mientras no haya sido aprobado y el ticket no esté cerrado ni cancelado. El cuerpo tiene la misma forma que el campo form al crear el ticket y se valida igual. Solo quien reportó el ticket o un usuario con tickets:update (en su sucursal) pueden editarlo.",
+        "operationId": "TicketsController_updateForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/SoftwareRemoteFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AccessRequestFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StudyCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StudyUpdateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ClientCreateFormDto"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Formulario actualizado."
+          },
+          "400": {
+            "description": "Datos inválidos, el ticket no tiene formulario o está cerrado/cancelado."
+          },
+          "403": {
+            "description": "El usuario no es quien reportó el ticket ni tiene tickets:update."
+          },
+          "404": {
+            "description": "Ticket no encontrado."
+          },
+          "409": {
+            "description": "El formulario ya fue aprobado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Editar formulario del ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{id}/form/apply": {
+      "post": {
+        "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update o users:create.",
+        "operationId": "TicketsController_applyForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ApplyAccessRequestFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyStudyCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyStudyUpdateFormDto"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Solicitud aprobada y aplicada."
+          },
+          "400": {
+            "description": "Datos inválidos o ya no válidos (catálogos, tarifarios), formulario informativo, o ticket cerrado/cancelado."
+          },
+          "403": {
+            "description": "Falta tickets:update o el permiso de la acción, o no hay acceso a la sucursal."
+          },
+          "404": {
+            "description": "Ticket no encontrado."
+          },
+          "409": {
+            "description": "El formulario ya fue aprobado, o ya existe un estudio con ese code o un usuario con ese correo."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aprobar formulario del ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{id}/form/validate": {
+      "post": {
+        "description": "Recibe el mismo cuerpo que POST /tickets/:id/form/apply y hace exactamente lo mismo dentro de una transacción que se revierte: responde { valid, summary } si la aprobación funcionaría, o el mismo error que daría (400/403/409). No guarda nada. Requiere tickets:update y el permiso de la acción.",
+        "operationId": "TicketsController_validateForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/ApplyAccessRequestFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyStudyCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyStudyUpdateFormDto"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "La aprobación funcionaría."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Validar la aprobación sin aplicarla",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{id}/form/reject": {
+      "post": {
+        "description": "TI rechaza el formulario con un motivo (queda en el historial y se notifica a quien lo reportó). El formulario ya no se puede editar ni aprobar y el ticket pasa a Cancelado. Requiere tickets:update.",
+        "operationId": "TicketsController_rejectForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectTicketFormDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Solicitud rechazada."
+          },
+          "409": {
+            "description": "El formulario ya fue aprobado o rechazado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rechazar la solicitud",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{id}/form/resend-access-email": {
+      "post": {
+        "description": "Vuelve a enviar a un usuario creado por una solicitud de acceso aprobada el correo para definir su contraseña. Actualiza form.result.emailSent. Requiere tickets:update y users:create.",
+        "operationId": "TicketsController_resendAccessEmail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Correo enviado."
+          },
+          "503": {
+            "description": "El servidor de correo falló."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reenviar el correo de acceso",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/ticket-subcategories": {
       "get": {
         "description": "Devuelve el catálogo de subcategorías, agrupado por Category (p. ej. dentro de COGNITI: Crear cliente, Crear parámetro, Actualizar parámetro, Actualizar precio de parámetro). Abierto a cualquier usuario autenticado — quien reporta un ticket necesita esta lista para elegir subcategoría al crearlo.",
@@ -8653,7 +9026,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -8829,7 +9201,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -8906,7 +9277,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -8983,7 +9353,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -9060,7 +9429,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -9137,7 +9505,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -9228,7 +9595,6 @@
               "enum": [
                 "HARDWARE",
                 "SOFTWARE",
-                "NETWORK",
                 "ACCESS",
                 "COGNITI",
                 "OTHER"
@@ -10985,9 +11351,423 @@
         "type": "object",
         "properties": {}
       },
+      "SoftwareRemoteFormDto": {
+        "type": "object",
+        "properties": {
+          "teamViewerId": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "teamViewerId"
+        ]
+      },
+      "AccessRequestFormDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "fullName",
+          "email",
+          "roleId",
+          "branchId"
+        ]
+      },
+      "StudyFormChildDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "studyPrices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyPriceDto"
+            }
+          },
+          "sampleTypeId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "sectionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "techniqueId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "deliveryTime": {
+            "type": "number",
+            "minimum": 1
+          },
+          "preparation": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "serviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "units": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "decimals": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "eligiblePatients": {
+            "$ref": "#/components/schemas/EligiblePatientsDto"
+          },
+          "referenceValues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReferenceValueDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "sampleTypeId",
+          "sectionId",
+          "serviceId"
+        ]
+      },
+      "StudyFormPanelItemDto": {
+        "type": "object",
+        "properties": {
+          "newStudy": {
+            "$ref": "#/components/schemas/StudyFormChildDto"
+          },
+          "studyId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "StudyCreateFormDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "studyPrices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyPriceDto"
+            }
+          },
+          "sampleTypeId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "sectionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "techniqueId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "deliveryTime": {
+            "type": "number",
+            "minimum": 1
+          },
+          "preparation": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "serviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isPanel": {
+            "type": "boolean"
+          },
+          "units": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "decimals": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "eligiblePatients": {
+            "$ref": "#/components/schemas/EligiblePatientsDto"
+          },
+          "referenceValues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReferenceValueDto"
+            }
+          },
+          "panelItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyFormPanelItemDto"
+            }
+          }
+        },
+        "required": [
+          "name",
+          "sampleTypeId",
+          "sectionId",
+          "serviceId"
+        ]
+      },
+      "StudyUpdateFormDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "deliveryTime": {
+            "type": "number",
+            "minimum": 1
+          },
+          "preparation": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "serviceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isPanel": {
+            "type": "boolean"
+          },
+          "units": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "decimals": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 6
+          },
+          "eligiblePatients": {
+            "$ref": "#/components/schemas/EligiblePatientsDto"
+          },
+          "referenceValues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateReferenceValueDto"
+            }
+          },
+          "techniqueId": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
+          },
+          "studyPrices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyPriceDto"
+            }
+          },
+          "panelItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyFormPanelItemDto"
+            }
+          },
+          "studyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sectionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "sampleTypeId": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "studyId"
+        ]
+      },
+      "ClientCreateFormDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "receivable": {
+            "type": "boolean"
+          },
+          "payInCash": {
+            "type": "boolean"
+          },
+          "priceSheetId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "receivable",
+          "payInCash",
+          "priceSheetId"
+        ]
+      },
+      "ApplyAccessRequestFormDto": {
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "StudyIdentityDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "abbreviation": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "ApplyStudyCreateFormDto": {
+        "type": "object",
+        "properties": {
+          "newStudies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyIdentityDto"
+            }
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "abbreviation": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "slug": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "ApplyStudyUpdateFormDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "abbreviation": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "newStudies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StudyIdentityDto"
+            }
+          }
+        }
+      },
       "CreateTicketDto": {
         "type": "object",
         "properties": {
+          "form": {
+            "additionalProperties": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SoftwareRemoteFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/AccessRequestFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/StudyCreateFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/StudyUpdateFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/ClientCreateFormDto"
+              }
+            ]
+          },
           "branchId": {
             "type": "string",
             "format": "uuid"
@@ -11005,7 +11785,6 @@
             "enum": [
               "HARDWARE",
               "SOFTWARE",
-              "NETWORK",
               "ACCESS",
               "COGNITI",
               "OTHER"
@@ -11028,8 +11807,6 @@
         },
         "required": [
           "branchId",
-          "title",
-          "description",
           "category"
         ]
       },
@@ -11061,7 +11838,6 @@
             "enum": [
               "HARDWARE",
               "SOFTWARE",
-              "NETWORK",
               "ACCESS",
               "COGNITI",
               "OTHER"
@@ -11106,6 +11882,19 @@
           "body"
         ]
       },
+      "RejectTicketFormDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "CreateTicketSubcategoryDto": {
         "type": "object",
         "properties": {
@@ -11114,7 +11903,6 @@
             "enum": [
               "HARDWARE",
               "SOFTWARE",
-              "NETWORK",
               "ACCESS",
               "COGNITI",
               "OTHER"
@@ -11123,6 +11911,17 @@
           "name": {
             "type": "string",
             "maxLength": 100
+          },
+          "formType": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "SOFTWARE_REMOTE",
+              "ACCESS_REQUEST",
+              "STUDY_CREATE",
+              "STUDY_UPDATE",
+              "CLIENT_CREATE"
+            ]
           }
         },
         "required": [

@@ -1,7 +1,6 @@
 enum Category {
   HARDWARE
   SOFTWARE
-  NETWORK
   ACCESS
   COGNITI
   OTHER
@@ -23,11 +22,21 @@ enum TicketPriority {
   CRITICAL
 }
 
+/// Formulario estructurado que acompaña al ticket; lo define la categoría (o la subcategoría en COGNITI).
+enum TicketFormType {
+  SOFTWARE_REMOTE
+  ACCESS_REQUEST
+  STUDY_CREATE
+  STUDY_UPDATE
+  CLIENT_CREATE
+}
+
 model TicketSubcategory {
-  id       String   @id @default(uuid())
+  id       String          @id @default(uuid())
   category Category
   name     String
-  isActive Boolean  @default(true) @map("is_active")
+  isActive Boolean         @default(true) @map("is_active")
+  formType TicketFormType? @map("form_type")
 
   tickets Ticket[]
 
@@ -48,6 +57,18 @@ enum TicketEventType {
   UNASSIGNED
   COMMENTED
   REOPENED
+  FORM_UPDATED
+  FORM_APPLIED
+  FORM_REJECTED
+}
+
+/// What a notification is about, so the UI can show it with context.
+enum TicketNotificationKind {
+  COMMENT
+  CHANGE
+  ASSIGNMENT
+  OVERDUE
+  FORM
 }
 
 model TicketEvent {
@@ -72,10 +93,11 @@ model TicketEvent {
 }
 
 model Ticket {
-  id          String @id @default(uuid())
-  code        Int    @unique @default(autoincrement())
+  id          String  @id @default(uuid())
+  /// Folio per branch (TicketCounter): unique with branchId, not globally.
+  code        Int
   title       String
-  description String @db.Text
+  description String? @db.Text
 
   status   TicketStatus   @default(OPEN)
   priority TicketPriority @default(MEDIUM)
@@ -95,6 +117,7 @@ model Ticket {
   comments      TicketComment[]
   notifications TicketNotification[]
   events        TicketEvent[]
+  form          TicketForm?
 
   firstResponseAt   DateTime? @map("first_response_at")
   resolvedAt        DateTime? @map("resolved_at")
@@ -102,10 +125,15 @@ model Ticket {
   reopenedCount     Int       @default(0) @map("reopened_count")
   dueAt             DateTime? @map("due_at")
   overdueNotifiedAt DateTime? @map("overdue_notified_at")
+  /// The SLA stops while the ticket is ON_HOLD: start of the current pause.
+  onHoldSince       DateTime? @map("on_hold_since")
+  /// Total seconds spent ON_HOLD (already added to dueAt).
+  slaPausedSeconds  Int       @default(0) @map("sla_paused_seconds")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([branchId, code])
   @@index([branchId])
   @@index([createdById])
   @@index([status])
@@ -157,9 +185,14 @@ model TicketComment {
 }
 
 model TicketNotification {
-  id      String  @id @default(uuid())
-  message String  @db.Text
-  read    Boolean @default(false)
+  id      String                 @id @default(uuid())
+  kind    TicketNotificationKind @default(CHANGE)
+  message String                 @db.Text
+  read    Boolean                @default(false)
+
+  /// Who caused it (null: the system, e.g. an overdue SLA).
+  actorId String? @map("actor_id")
+  actor   User?   @relation("TicketNotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
 
   ticketId String @map("ticket_id")
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
@@ -171,5 +204,42 @@ model TicketNotification {
 
   @@index([userId, read])
   @@index([ticketId])
+  @@index([read, createdAt])
   @@map("ticket_notifications")
+}
+
+/// Last folio used per branch; incremented atomically when a ticket is created.
+model TicketCounter {
+  branchId String @id @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  lastCode Int    @default(0) @map("last_code")
+
+  @@map("ticket_counters")
+}
+
+model TicketForm {
+  id            String         @id @default(uuid())
+  type          TicketFormType
+  /// Version of the form's data shape (see TICKET_FORM_DEFINITIONS).
+  schemaVersion Int            @default(1) @map("schema_version")
+  data          Json
+  result        Json?
+
+  rejectedAt      DateTime? @map("rejected_at")
+  rejectedById    String?   @map("rejected_by_id")
+  rejectedBy      User?     @relation("TicketFormRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
+  rejectionReason String?   @map("rejection_reason") @db.Text
+
+  ticketId String @unique @map("ticket_id")
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  appliedAt   DateTime? @map("applied_at")
+  appliedById String?   @map("applied_by_id")
+  appliedBy   User?     @relation("TicketFormAppliedBy", fields: [appliedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type, appliedAt])
+  @@map("ticket_forms")
 }

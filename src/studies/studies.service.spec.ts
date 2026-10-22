@@ -1011,4 +1011,152 @@ describe('StudiesService', () => {
       expect(args.where).toMatchObject({ AND: [{ gender: 'M' }] });
     });
   });
+
+  describe('createMany (parámetros nuevos de un perfil grande)', () => {
+    let batch: {
+      serviceFindMany: jest.Mock;
+      catalogFindMany: jest.Mock;
+      studyCreateMany: jest.Mock;
+      referenceCreateMany: jest.Mock;
+      priceCreateMany: jest.Mock;
+    };
+
+    beforeEach(() => {
+      batch = {
+        serviceFindMany: jest.fn(
+          ({ where }: { where: { id: { in: string[] } } }) =>
+            Promise.resolve(
+              where.id.in.map((id) => ({ id, branchId: BRANCH_ID })),
+            ),
+        ),
+        catalogFindMany: jest.fn(
+          ({ where }: { where: { id: { in: number[] } } }) =>
+            Promise.resolve(
+              where.id.in.map((id) => ({
+                id,
+                name: `Catálogo ${id}`,
+                branchId: BRANCH_ID,
+                isActive: true,
+              })),
+            ),
+        ),
+        studyCreateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        referenceCreateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        priceCreateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      };
+      Object.assign(prisma.service, { findMany: batch.serviceFindMany });
+      for (const kind of [
+        'studySection',
+        'sampleType',
+        'studyTechnique',
+      ] as const) {
+        Object.assign(prisma[kind], { findMany: batch.catalogFindMany });
+      }
+      Object.assign(prisma.study, { createMany: batch.studyCreateMany });
+      Object.assign(prisma, {
+        referenceValue: { createMany: batch.referenceCreateMany },
+      });
+      Object.assign(prisma.studyOnPriceSheet, {
+        createMany: batch.priceCreateMany,
+      });
+    });
+
+    const child = (i: number) => ({
+      label: `form.panelItems[${i}].newStudy`,
+      dto: {
+        ...baseDto,
+        name: `Parámetro ${i}`,
+        code: `P${i}`,
+        units: 'mg/dL',
+        referenceValues: [{ minValue: 1, maxValue: 10 }],
+        studyPrices: [{ priceSheetId: 'ps-1', price: 100 }],
+      },
+    });
+
+    it('valida e inserta 200 estudios con un número fijo de consultas', async () => {
+      const items = Array.from({ length: 200 }, (_, i) => child(i));
+
+      const created = await service.createMany(items, user);
+
+      expect(created).toHaveLength(200);
+      expect(created[5]).toMatchObject({ code: 'P5', name: 'Parámetro 5' });
+      expect(batch.serviceFindMany).toHaveBeenCalledTimes(1);
+      // Una consulta por catálogo (sección, muestra, técnica), no por estudio.
+      expect(batch.catalogFindMany).toHaveBeenCalledTimes(3);
+      expect(prisma.priceSheets.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.study.findMany).toHaveBeenCalledTimes(1);
+      expect(batch.studyCreateMany).toHaveBeenCalledTimes(1);
+      expect(batch.referenceCreateMany).toHaveBeenCalledTimes(1);
+      expect(batch.priceCreateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.study.create).not.toHaveBeenCalled();
+
+      const rows = batch.studyCreateMany.mock.calls[0][0].data;
+      expect(rows).toHaveLength(200);
+      expect(rows[0]).toMatchObject({
+        id: created[0].id,
+        branchId: BRANCH_ID,
+        code: 'P0',
+        slug: 'parametro-0',
+        title: 'Parámetro 0',
+        units: 'mg/dL',
+      });
+      expect(batch.referenceCreateMany.mock.calls[0][0].data[0]).toMatchObject({
+        studyId: created[0].id,
+        order: 0,
+      });
+    });
+
+    it('rechaza códigos repetidos dentro de la solicitud', async () => {
+      await expect(
+        service.createMany(
+          [child(1), { ...child(2), dto: { ...child(2).dto, code: 'P1' } }],
+          user,
+        ),
+      ).rejects.toThrow('Códigos repetidos en la solicitud: P1');
+      expect(batch.studyCreateMany).not.toHaveBeenCalled();
+    });
+
+    it('nombra el código que ya existe en la sucursal', async () => {
+      prisma.study.findMany.mockResolvedValue([{ code: 'P2', slug: 'otro' }]);
+
+      await expect(
+        service.createMany([child(1), child(2)], user),
+      ).rejects.toThrow(
+        "Ya existe un estudio con el código 'P2' en esta sucursal",
+      );
+      expect(batch.studyCreateMany).not.toHaveBeenCalled();
+    });
+
+    it('indica qué parámetro tiene un catálogo de otra sucursal', async () => {
+      batch.catalogFindMany.mockResolvedValueOnce([
+        { id: 1, name: 'Química', branchId: 'otra', isActive: true },
+      ]);
+
+      await expect(
+        service.createMany([child(0), child(1)], user),
+      ).rejects.toThrow(
+        'form.panelItems[0].newStudy: La sección seleccionada pertenece a otra sucursal',
+      );
+    });
+
+    it('prefija con el parámetro los errores de reglas (rango de valores)', async () => {
+      const bad = {
+        ...child(3),
+        dto: {
+          ...child(3).dto,
+          referenceValues: [{ minValue: 10, maxValue: 1 }],
+        },
+      };
+
+      await expect(
+        service.createMany([child(0), bad], user),
+      ).rejects.toMatchObject({
+        response: {
+          message: [
+            'form.panelItems[3].newStudy: referenceValues[0]: minValue no puede ser mayor que maxValue',
+          ],
+        },
+      });
+    });
+  });
 });

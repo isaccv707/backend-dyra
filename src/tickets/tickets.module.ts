@@ -5,6 +5,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { MailModule } from 'src/mail/mail.module';
+import { StudiesModule } from 'src/studies/studies.module';
+import { UsersModule } from 'src/users/users.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
@@ -14,11 +16,19 @@ import { TicketSubcategoriesService } from './subcategories/ticket-subcategories
 import { TicketsAnalyticsController } from './analytics/tickets-analytics.controller';
 import { TicketsAnalyticsService } from './analytics/tickets-analytics.service';
 import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.renderer';
+import { TicketFormsService } from './forms/ticket-forms.service';
+import { AccessRequestFormHandler } from './forms/handlers/access-request-form.handler';
+import { ClientCreateFormHandler } from './forms/handlers/client-create-form.handler';
+import { SoftwareRemoteFormHandler } from './forms/handlers/software-remote-form.handler';
+import { StudyCreateFormHandler } from './forms/handlers/study-create-form.handler';
+import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handler';
 
 @Module({
   imports: [
     PrismaModule,
     MailModule,
+    StudiesModule,
+    UsersModule,
     ScheduleModule.forRoot(),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -47,6 +57,12 @@ import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.ren
     TicketSubcategoriesService,
     TicketsAnalyticsService,
     TicketAnalyticsPdfRenderer,
+    TicketFormsService,
+    SoftwareRemoteFormHandler,
+    AccessRequestFormHandler,
+    StudyCreateFormHandler,
+    StudyUpdateFormHandler,
+    ClientCreateFormHandler,
   ],
   exports: [TicketsService],
 })

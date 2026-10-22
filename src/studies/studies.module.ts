@@ -6,6 +6,6 @@ import { StudyExcelImportService } from './study-excel-import.service';
 @Module({
   controllers: [StudiesController],
   providers: [StudiesService, StudyExcelImportService],
-  exports: [StudyExcelImportService],
+  exports: [StudiesService, StudyExcelImportService],
 })
 export class StudiesModule {}
