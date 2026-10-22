@@ -8,6 +8,14 @@ export class TicketsSlaCron {
 
   constructor(private readonly ticketsService: TicketsService) {}
 
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async purgeOldNotifications() {
+    const { deleted } = await this.ticketsService.purgeOldNotifications();
+    if (deleted > 0) {
+      this.logger.log(`Notificaciones leídas antiguas borradas: ${deleted}.`);
+    }
+  }
+
   @Cron(CronExpression.EVERY_HOUR)
   async handleOverdueTickets() {
     const { notified } = await this.ticketsService.notifyOverdueTickets();

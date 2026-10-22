@@ -1,25 +1,54 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { TicketsGateway } from './tickets.gateway';
+import {
+  TI_GLOBAL_ROOM,
+  TicketsGateway,
+  toSocketTicket,
+} from './tickets.gateway';
 
 describe('TicketsGateway', () => {
   let gateway: TicketsGateway;
   let jwtService: { verify: jest.Mock };
-  let prisma: { user: { findUnique: jest.Mock } };
+  let prisma: { user: { findUnique: jest.Mock; findMany: jest.Mock } };
 
-  const createMockSocket = (overrides: Record<string, unknown> = {}) => ({
-    data: {},
-    handshake: { auth: {}, headers: {} },
-    disconnect: jest.fn(),
-    emit: jest.fn(),
-    join: jest.fn().mockResolvedValue(undefined),
-    ...overrides,
+  const createMockSocket = (overrides: Record<string, unknown> = {}) => {
+    const rooms = new Set<string>(['socket-id']);
+    return {
+      data: {},
+      rooms,
+      handshake: { auth: {}, headers: {} },
+      disconnect: jest.fn(),
+      emit: jest.fn(),
+      join: jest.fn((room: string) => {
+        rooms.add(room);
+        return Promise.resolve();
+      }),
+      leave: jest.fn((room: string) => {
+        rooms.delete(room);
+        return Promise.resolve();
+      }),
+      ...overrides,
+    };
+  };
+
+  const mockServer = () => {
+    const emit = jest.fn();
+    const to = jest.fn().mockReturnValue({ emit });
+    gateway.server = { to } as any;
+    return { to, emit };
+  };
+
+  const tiUser = (branches: string[], permissions = ['tickets:update']) => ({
+    id: 'user-1',
+    isActive: true,
+    role: { permissions: permissions.map((action) => ({ action })) },
+    branches: branches.map((id) => ({ id })),
   });
 
   beforeEach(async () => {
     jwtService = { verify: jest.fn() };
-    prisma = { user: { findUnique: jest.fn() } };
+    prisma = { user: { findUnique: jest.fn(), findMany: jest.fn() } };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -32,31 +61,26 @@ describe('TicketsGateway', () => {
     gateway = module.get(TicketsGateway);
   });
 
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.clearAllMocks();
+    jest.useRealTimers();
+  });
 
   describe('handleConnection', () => {
-    const activeUser = {
-      id: 'user-1',
-      isActive: true,
-      role: {
-        permissions: [{ action: 'tickets:update' }, { action: 'tickets:read' }],
-      },
-    };
-
-    it('autentica el socket con el token de handshake.auth y guarda userId/permissions', async () => {
+    it('autentica el socket con el token de handshake.auth y lo une a su sala personal', async () => {
       const client = createMockSocket({
         handshake: { auth: { token: 'valid-token' }, headers: {} },
       });
       jwtService.verify.mockReturnValue({ sub: 'user-1', email: 'a@dyra.com' });
-      prisma.user.findUnique.mockResolvedValue(activeUser);
+      prisma.user.findUnique.mockResolvedValue(tiUser(['branch-a']));
 
       await gateway.handleConnection(client as any);
 
       expect(jwtService.verify).toHaveBeenCalledWith('valid-token');
-      expect(client.data).toEqual({
-        userId: 'user-1',
-        permissions: ['tickets:update', 'tickets:read'],
-      });
+      expect(client.data).toMatchObject({ userId: 'user-1' });
+      expect(client.join).toHaveBeenCalledWith('user:user-1');
+      // La sala de TI solo se une con join_ti_room.
+      expect(client.join).toHaveBeenCalledTimes(1);
       expect(client.disconnect).not.toHaveBeenCalled();
     });
 
@@ -68,12 +92,31 @@ describe('TicketsGateway', () => {
         },
       });
       jwtService.verify.mockReturnValue({ sub: 'user-1', email: 'a@dyra.com' });
-      prisma.user.findUnique.mockResolvedValue(activeUser);
+      prisma.user.findUnique.mockResolvedValue(tiUser([]));
 
       await gateway.handleConnection(client as any);
 
       expect(jwtService.verify).toHaveBeenCalledWith('header-token');
       expect(client.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('desconecta el socket cuando expira su token', async () => {
+      jest.useFakeTimers();
+      const client = createMockSocket({
+        handshake: { auth: { token: 'valid-token' }, headers: {} },
+      });
+      jwtService.verify.mockReturnValue({
+        sub: 'user-1',
+        email: 'a@dyra.com',
+        exp: Math.floor(Date.now() / 1000) + 60,
+      });
+      prisma.user.findUnique.mockResolvedValue(tiUser([]));
+
+      await gateway.handleConnection(client as any);
+      expect(client.disconnect).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(61_000);
+      expect(client.disconnect).toHaveBeenCalledWith(true);
     });
 
     it('desconecta el socket si no viene ningún token', async () => {
@@ -99,52 +142,76 @@ describe('TicketsGateway', () => {
       expect(client.disconnect).toHaveBeenCalledWith(true);
     });
 
-    it('desconecta el socket si el usuario no existe', async () => {
-      const client = createMockSocket({
-        handshake: { auth: { token: 'valid-token' }, headers: {} },
-      });
-      jwtService.verify.mockReturnValue({ sub: 'ghost', email: 'a@dyra.com' });
-      prisma.user.findUnique.mockResolvedValue(null);
+    it('desconecta el socket si el usuario no existe o está inactivo', async () => {
+      for (const user of [null, { ...tiUser([]), isActive: false }]) {
+        const client = createMockSocket({
+          handshake: { auth: { token: 'valid-token' }, headers: {} },
+        });
+        jwtService.verify.mockReturnValue({ sub: 'user-1', email: 'a' });
+        prisma.user.findUnique.mockResolvedValue(user);
 
-      await gateway.handleConnection(client as any);
+        await gateway.handleConnection(client as any);
 
-      expect(client.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('desconecta el socket si el usuario está inactivo', async () => {
-      const client = createMockSocket({
-        handshake: { auth: { token: 'valid-token' }, headers: {} },
-      });
-      jwtService.verify.mockReturnValue({ sub: 'user-1', email: 'a@dyra.com' });
-      prisma.user.findUnique.mockResolvedValue({
-        ...activeUser,
-        isActive: false,
-      });
-
-      await gateway.handleConnection(client as any);
-
-      expect(client.disconnect).toHaveBeenCalledWith(true);
+        expect(client.disconnect).toHaveBeenCalledWith(true);
+      }
     });
   });
 
   describe('handleJoinTiRoom', () => {
-    it('une al socket a la sala de TI cuando tiene el permiso tickets:update', () => {
-      const client = createMockSocket({
-        data: { userId: 'user-1', permissions: ['tickets:update'] },
-      });
+    it('une a TI solo a las salas de sus sucursales, leyendo los permisos actuales', async () => {
+      const client = createMockSocket({ data: { userId: 'user-1' } });
+      prisma.user.findUnique.mockResolvedValue(
+        tiUser(['branch-a', 'branch-b']),
+      );
 
-      gateway.handleJoinTiRoom(client as any);
+      await gateway.handleJoinTiRoom(client as any);
 
-      expect(client.join).toHaveBeenCalledWith('ti_staff_room');
+      expect(prisma.user.findUnique).toHaveBeenCalled();
+      expect([...client.rooms]).toEqual(
+        expect.arrayContaining(['ti:branch-a', 'ti:branch-b']),
+      );
+      expect(client.rooms.has(TI_GLOBAL_ROOM)).toBe(false);
       expect(client.emit).not.toHaveBeenCalled();
     });
 
-    it('rechaza con un evento error cuando el socket no tiene el permiso', () => {
+    it('espera a que termine la autenticación si join_ti_room llega primero', async () => {
       const client = createMockSocket({
-        data: { userId: 'user-1', permissions: ['tickets:read'] },
+        id: 'socket-1',
+        handshake: { auth: { token: 'valid-token' }, headers: {} },
       });
+      jwtService.verify.mockReturnValue({ sub: 'user-1', email: 'a@dyra.com' });
+      let releaseUser: (value: unknown) => void = () => undefined;
+      prisma.user.findUnique
+        .mockImplementationOnce(
+          () => new Promise((resolve) => (releaseUser = resolve)),
+        )
+        .mockResolvedValue(tiUser(['branch-a']));
 
-      gateway.handleJoinTiRoom(client as any);
+      const connecting = gateway.handleConnection(client as any);
+      const joining = gateway.handleJoinTiRoom(client as any);
+      releaseUser(tiUser(['branch-a']));
+      await Promise.all([connecting, joining]);
+
+      expect(client.disconnect).not.toHaveBeenCalled();
+      expect(client.rooms.has('ti:branch-a')).toBe(true);
+    });
+
+    it('un usuario de TI sin sucursales (global) entra a la sala global', async () => {
+      const client = createMockSocket({ data: { userId: 'user-1' } });
+      prisma.user.findUnique.mockResolvedValue(tiUser([]));
+
+      await gateway.handleJoinTiRoom(client as any);
+
+      expect(client.join).toHaveBeenCalledWith(TI_GLOBAL_ROOM);
+    });
+
+    it('rechaza con un evento error cuando ya no tiene el permiso', async () => {
+      const client = createMockSocket({ data: { userId: 'user-1' } });
+      prisma.user.findUnique.mockResolvedValue(
+        tiUser(['branch-a'], ['tickets:create']),
+      );
+
+      await gateway.handleJoinTiRoom(client as any);
 
       expect(client.join).not.toHaveBeenCalled();
       expect(client.emit).toHaveBeenCalledWith('error', {
@@ -152,108 +219,161 @@ describe('TicketsGateway', () => {
       });
     });
 
-    it('rechaza cuando el socket no tiene permissions en absoluto', () => {
+    it('desconecta si la cuenta se desactivó', async () => {
       const client = createMockSocket({ data: { userId: 'user-1' } });
+      prisma.user.findUnique.mockResolvedValue({
+        ...tiUser(['branch-a']),
+        isActive: false,
+      });
 
-      gateway.handleJoinTiRoom(client as any);
+      await gateway.handleJoinTiRoom(client as any);
 
-      expect(client.join).not.toHaveBeenCalled();
-      expect(client.emit).toHaveBeenCalledWith(
-        'error',
-        expect.objectContaining({ message: expect.any(String) }),
-      );
+      expect(client.disconnect).toHaveBeenCalledWith(true);
     });
   });
 
-  describe('emitNewTicket / emitTicketUpdated', () => {
-    it('emite ticket_created a la sala de TI', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
+  describe('revalidateSockets', () => {
+    it('saca de las salas de TI a quien perdió el permiso o cambió de sucursal, y desconecta cuentas inactivas', async () => {
+      const lostPermission = createMockSocket({
+        data: { userId: 'user-1', wantsTiRoom: true },
+      });
+      lostPermission.rooms.add('ti:branch-a');
+      const movedBranch = createMockSocket({
+        data: { userId: 'user-2', wantsTiRoom: true },
+      });
+      movedBranch.rooms.add('ti:branch-a');
+      const deactivated = createMockSocket({ data: { userId: 'user-3' } });
 
-      const ticket = { id: 'ticket-1' } as any;
-      gateway.emitNewTicket(ticket);
+      gateway.server = {
+        fetchSockets: jest
+          .fn()
+          .mockResolvedValue([lostPermission, movedBranch, deactivated]),
+      } as any;
+      prisma.user.findMany.mockResolvedValue([
+        { ...tiUser(['branch-a'], ['tickets:create']), id: 'user-1' },
+        { ...tiUser(['branch-b']), id: 'user-2' },
+        { ...tiUser([]), id: 'user-3', isActive: false },
+      ]);
 
-      expect(to).toHaveBeenCalledWith('ti_staff_room');
-      expect(emit).toHaveBeenCalledWith('ticket_created', ticket);
+      await gateway.revalidateSockets();
+
+      expect(lostPermission.rooms.has('ti:branch-a')).toBe(false);
+      expect(movedBranch.rooms.has('ti:branch-a')).toBe(false);
+      expect(movedBranch.rooms.has('ti:branch-b')).toBe(true);
+      expect(deactivated.disconnect).toHaveBeenCalledWith(true);
     });
+  });
 
-    it('emite ticket_updated a la sala de TI', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
+  describe('emisiones a TI', () => {
+    it('ticket_created y ticket_updated van solo a TI de la sucursal del ticket (y a TI global)', () => {
+      const { to, emit } = mockServer();
+      const ticket = { id: 'ticket-1', branchId: 'branch-a' } as any;
 
-      const ticket = { id: 'ticket-1', status: 'RESOLVED' } as any;
+      gateway.emitNewTicket(ticket);
       gateway.emitTicketUpdated(ticket);
 
-      expect(to).toHaveBeenCalledWith('ti_staff_room');
+      expect(to).toHaveBeenNthCalledWith(1, ['ti:branch-a', TI_GLOBAL_ROOM]);
+      expect(to).toHaveBeenNthCalledWith(2, ['ti:branch-a', TI_GLOBAL_ROOM]);
+      expect(emit).toHaveBeenCalledWith('ticket_created', ticket);
       expect(emit).toHaveBeenCalledWith('ticket_updated', ticket);
+    });
+
+    it('el ticket viaja sin los datos ni el resultado del formulario', () => {
+      const { emit } = mockServer();
+      const ticket = {
+        id: 'ticket-1',
+        branchId: 'branch-a',
+        form: {
+          type: 'ACCESS_REQUEST',
+          data: { email: 'ana@dyra.com' },
+          result: { userId: 'u-1' },
+          appliedAt: null,
+        },
+      } as any;
+
+      gateway.emitTicketUpdated(ticket);
+
+      const sent = emit.mock.calls[0][1];
+      expect(sent.form).toEqual({
+        type: 'ACCESS_REQUEST',
+        appliedAt: null,
+        hasDetails: true,
+      });
+      expect(toSocketTicket({ ...ticket, form: null })).toEqual({
+        ...ticket,
+        form: null,
+      });
+    });
+
+    it('ticket_overdue va a TI de la sucursal sin exponer branchId en el payload', () => {
+      const { to, emit } = mockServer();
+
+      gateway.emitOverdueTicket({
+        id: 'ticket-1',
+        code: 42,
+        title: 'No enciende',
+        branchId: 'branch-a',
+      });
+
+      expect(to).toHaveBeenCalledWith(['ti:branch-a', TI_GLOBAL_ROOM]);
+      expect(emit).toHaveBeenCalledWith('ticket_overdue', {
+        id: 'ticket-1',
+        code: 42,
+        title: 'No enciende',
+      });
     });
   });
 
   describe('emitNewComment', () => {
-    it('emite un comentario público a TI y a las salas personales del creador y del asignado', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
+    const ticket = { id: 'ticket-1', branchId: 'branch-a' };
+
+    it('emite un comentario público a TI de la sucursal y a las salas personales', () => {
+      const { to, emit } = mockServer();
 
       const comment = { id: 'comment-1', isInternal: false } as any;
-      gateway.emitNewComment('ticket-1', comment, ['reporter-1', 'tech-1']);
+      gateway.emitNewComment(ticket, comment, ['reporter-1', 'tech-1']);
 
       const rooms = to.mock.calls[0][0];
       expect(rooms).toEqual(
         expect.arrayContaining([
-          'ti_staff_room',
+          'ti:branch-a',
+          TI_GLOBAL_ROOM,
           'user:reporter-1',
           'user:tech-1',
         ]),
       );
-      expect(rooms).toHaveLength(3);
+      expect(rooms).toHaveLength(4);
       expect(emit).toHaveBeenCalledWith('ticket_comment_added', {
         ticketId: 'ticket-1',
         comment,
       });
     });
 
-    it('no envía una nota interna a las salas personales, solo a TI', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
+    it('una nota interna solo llega a TI de la sucursal', () => {
+      const { to } = mockServer();
 
       const comment = { id: 'comment-1', isInternal: true } as any;
-      gateway.emitNewComment('ticket-1', comment, ['reporter-1', 'tech-1']);
+      gateway.emitNewComment(ticket, comment, ['reporter-1', 'tech-1']);
 
-      expect(to).toHaveBeenCalledWith(['ti_staff_room']);
+      expect(to).toHaveBeenCalledWith(['ti:branch-a', TI_GLOBAL_ROOM]);
     });
 
-    it('ignora IDs nulos/duplicados y no repite la sala de TI', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
+    it('ignora IDs nulos/duplicados', () => {
+      const { to } = mockServer();
 
       const comment = { id: 'comment-1', isInternal: false } as any;
-      gateway.emitNewComment('ticket-1', comment, [
+      gateway.emitNewComment(ticket, comment, [
         'reporter-1',
         null,
         undefined,
         'reporter-1',
       ]);
 
-      expect(to).toHaveBeenCalledWith(['ti_staff_room', 'user:reporter-1']);
-    });
-  });
-
-  describe('emitOverdueTicket', () => {
-    it('transmite el ticket vencido a la sala de TI', () => {
-      const emit = jest.fn();
-      const to = jest.fn().mockReturnValue({ emit });
-      gateway.server = { to } as any;
-
-      const ticket = { id: 'ticket-1', code: 42, title: 'No enciende' };
-      gateway.emitOverdueTicket(ticket);
-
-      expect(to).toHaveBeenCalledWith('ti_staff_room');
-      expect(emit).toHaveBeenCalledWith('ticket_overdue', ticket);
+      expect(to).toHaveBeenCalledWith([
+        'ti:branch-a',
+        TI_GLOBAL_ROOM,
+        'user:reporter-1',
+      ]);
     });
   });
 });
