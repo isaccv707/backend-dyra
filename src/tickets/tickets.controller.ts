@@ -26,7 +26,14 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import type { RequestUser } from 'src/auth/interfaces/request-user.interface';
-import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
+import {
+  CreateTicketCommentDto,
+  FindMentionableUsersDto,
+} from './dto/create-ticket-comment.dto';
+import {
+  TicketEmailPreferenceDto,
+  UpdateTicketEmailPreferencesDto,
+} from './dto/ticket-email-preferences.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FindAssignableUsersDto } from './dto/find-assignable-users.dto';
 import {
@@ -51,6 +58,7 @@ import {
   TicketFormRoleDto,
   TicketFormValidationDto,
   TicketResponseDto,
+  TicketUserRefDto,
   UpdatedCountDto,
 } from './dto/ticket-response.dto';
 import { TicketsService } from './tickets.service';
@@ -150,6 +158,31 @@ export class TicketsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.notifications.findMine(findTicketNotificationsDto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Mis preferencias de correo de tickets',
+    description:
+      'Qué correos de tickets recibe el usuario autenticado. Los avisos in-app (campana) siempre llegan.',
+  })
+  @ApiResponse({ status: 200, type: [TicketEmailPreferenceDto] })
+  @Get('notification-preferences')
+  getEmailPreferences(@CurrentUser() user: RequestUser) {
+    return this.notifications.getEmailPreferences(user);
+  }
+
+  @ApiOperation({
+    summary: 'Actualizar mis preferencias de correo de tickets',
+    description:
+      'Reemplaza la lista de eventos cuyo correo no quiere recibir el usuario (mutedEvents).',
+  })
+  @ApiResponse({ status: 200, type: [TicketEmailPreferenceDto] })
+  @Put('notification-preferences')
+  updateEmailPreferences(
+    @Body() dto: UpdateTicketEmailPreferencesDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.notifications.updateEmailPreferences(user, dto);
   }
 
   @ApiOperation({
@@ -292,6 +325,22 @@ export class TicketsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.ticketsService.update(id, updateTicketDto, user);
+  }
+
+  @ApiOperation({
+    summary: 'Usuarios que se pueden mencionar',
+    description:
+      'Para el selector de @menciones del comentario: quien reportó, los asignados y TI de la sucursal (sin el usuario ' +
+      'autenticado). Con internal=true (nota interna, requiere tickets:update) solo TI.',
+  })
+  @ApiResponse({ status: 200, type: [TicketUserRefDto] })
+  @Get(':id/mentionable-users')
+  findMentionableUsers(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: FindMentionableUsersDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.comments.findMentionableUsers(id, dto.internal ?? false, user);
   }
 
   @ApiOperation({

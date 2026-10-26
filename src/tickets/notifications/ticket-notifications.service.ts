@@ -25,7 +25,10 @@ import {
   AUTO_CLOSE_BUSINESS_DAYS,
   ESCALATION_ROLE,
 } from '../constants/ticket-lifecycle.const';
+import { UpdateTicketEmailPreferencesDto } from '../dto/ticket-email-preferences.dto';
 import {
+  TICKET_EMAIL_EVENT_LABELS,
+  TICKET_EMAIL_EVENTS,
   TICKET_NOTIFICATION_RULES,
   TicketAudience,
   TicketNotificationEvent,
@@ -51,6 +54,9 @@ export interface DispatchOptions {
   actorId?: string;
   addedAssigneeIds?: string[];
   removedAssigneeIds?: string[];
+  mentionedUserIds?: string[];
+  /** Left out of this event (e.g. the mentioned, who get MENTION instead). */
+  excludeUserIds?: string[];
   /** Email per recipient; defaults to the generic ticket update email. */
   email?: (to: string) => MailJob;
 }
@@ -110,10 +116,15 @@ export class TicketNotificationsService {
       administrators: administrators.map((admin) => admin.id),
       addedAssignees: options.addedAssigneeIds ?? [],
       removedAssignees: options.removedAssigneeIds ?? [],
+      mentioned: options.mentionedUserIds ?? [],
     };
+    const excluded = new Set([
+      ...(options.actorId ? [options.actorId] : []),
+      ...(options.excludeUserIds ?? []),
+    ]);
     const recipients = (audiences: TicketAudience[]) =>
       unique(audiences.flatMap((audience) => audienceIds[audience])).filter(
-        (id) => id !== options.actorId,
+        (id) => !excluded.has(id),
       );
 
     await this.notify(recipients(rule.inApp), ticket, {
@@ -122,7 +133,10 @@ export class TicketNotificationsService {
       actorId: options.actorId,
     });
 
-    const emailIds = recipients(rule.email);
+    const emailIds = await this.withoutMutedEmails(
+      event,
+      recipients(rule.email),
+    );
     if (emailIds.length === 0) return;
 
     const known = new Map(
@@ -158,6 +172,45 @@ export class TicketNotificationsService {
     }
   }
 
+  /** Drops the users who turned this event's email off. */
+  private async withoutMutedEmails(
+    event: TicketNotificationEvent,
+    userIds: string[],
+  ) {
+    if (userIds.length === 0) return userIds;
+    const muted = await this.prisma.ticketEmailPreference.findMany({
+      where: { userId: { in: userIds }, mutedEvents: { has: event } },
+      select: { userId: true },
+    });
+    const mutedIds = new Set(muted.map((pref) => pref.userId));
+    return userIds.filter((id) => !mutedIds.has(id));
+  }
+
+  async getEmailPreferences(user: RequestUser) {
+    const pref = await this.prisma.ticketEmailPreference.findUnique({
+      where: { userId: user.id },
+    });
+    const muted = new Set(pref?.mutedEvents ?? []);
+    return TICKET_EMAIL_EVENTS.map((event) => ({
+      event,
+      label: TICKET_EMAIL_EVENT_LABELS[event],
+      enabled: !muted.has(event),
+    }));
+  }
+
+  async updateEmailPreferences(
+    user: RequestUser,
+    dto: UpdateTicketEmailPreferencesDto,
+  ) {
+    const mutedEvents = unique(dto.mutedEvents);
+    await this.prisma.ticketEmailPreference.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, mutedEvents },
+      update: { mutedEvents },
+    });
+    return this.getEmailPreferences(user);
+  }
+
   /** Active users with ESCALATION_ROLE of the branch, or global. */
   private findAdministrators(branchId: string) {
     return this.prisma.user.findMany({
@@ -174,7 +227,7 @@ export class TicketNotificationsService {
   }
 
   /** Active TI (tickets:update) of the branch, or global. */
-  private findTiStaff(branchId: string) {
+  findTiStaff(branchId: string) {
     return this.prisma.user.findMany({
       where: {
         isActive: true,

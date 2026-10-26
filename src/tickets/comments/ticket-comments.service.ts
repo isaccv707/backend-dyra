@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -76,6 +77,23 @@ export class TicketCommentsService {
       );
     }
 
+    const mentionedIds = dto.mentionedUserIds ?? [];
+    if (mentionedIds.length > 0) {
+      const mentionable = await this.mentionableUsers(
+        { ...ticket, assigneeIds },
+        dto.isInternal ?? false,
+        user,
+      );
+      const allowed = new Set(mentionable.map((u) => u.id));
+      if (mentionedIds.some((id) => !allowed.has(id))) {
+        throw new BadRequestException(
+          dto.isInternal
+            ? 'En una nota interna solo puedes mencionar a TI'
+            : 'Solo puedes mencionar a quien reportó, a los asignados o a TI de la sucursal',
+        );
+      }
+    }
+
     const comment = await this.prisma.ticketComment.create({
       data: {
         body: dto.body,
@@ -118,8 +136,20 @@ export class TicketCommentsService {
       {
         message: `${user.name} ${comment.isInternal ? 'agregó una nota interna' : 'comentó'}: ${preview}`,
         actorId: user.id,
+        excludeUserIds: mentionedIds,
       },
     );
+    if (mentionedIds.length > 0) {
+      await this.notifications.dispatch(
+        'MENTION',
+        { ...ticket, assigneeIds },
+        {
+          message: `${user.name} te mencionó: ${preview}`,
+          actorId: user.id,
+          mentionedUserIds: mentionedIds,
+        },
+      );
+    }
 
     // The requester answering a resolved ticket means it isn't solved yet.
     if (
@@ -131,6 +161,55 @@ export class TicketCommentsService {
     }
 
     return comment;
+  }
+
+  /** Who the user can @mention in a comment of this ticket. */
+  async findMentionableUsers(
+    ticketId: string,
+    internal: boolean,
+    user: RequestUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        branchId: true,
+        createdById: true,
+        assignees: { select: { userId: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${ticketId}' not found`);
+    }
+    const assigneeIds = ticket.assignees.map((a) => a.userId);
+    const canSeeAllTickets = assertTicketAccess(ticket, assigneeIds, user);
+    if (internal && !canSeeAllTickets) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear notas internas',
+      );
+    }
+    return this.mentionableUsers({ ...ticket, assigneeIds }, internal, user);
+  }
+
+  /** Participants and TI of the branch (TI only on internal notes), minus the author. */
+  private async mentionableUsers(
+    ticket: { branchId: string; createdById: string; assigneeIds: string[] },
+    internal: boolean,
+    user: RequestUser,
+  ) {
+    const tiIds = (await this.notifications.findTiStaff(ticket.branchId)).map(
+      (member) => member.id,
+    );
+    const ids = new Set(
+      internal ? tiIds : [ticket.createdById, ...ticket.assigneeIds, ...tiIds],
+    );
+    ids.delete(user.id);
+    if (ids.size === 0) return [];
+    return this.prisma.user.findMany({
+      where: { id: { in: [...ids] }, isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   private async reopenOnReply(
