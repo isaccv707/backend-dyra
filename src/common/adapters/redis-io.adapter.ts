@@ -20,7 +20,11 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   async connectToRedis(): Promise<void> {
-    const pubClient = createClient({ url: this.redisUrl });
+    // family 0: IPv4 or IPv6 (Railway's private network may be IPv6-only).
+    const pubClient = createClient({
+      url: this.redisUrl,
+      socket: { family: 0 },
+    });
     const subClient = pubClient.duplicate();
     for (const client of [pubClient, subClient]) {
       client.on('error', (error: Error) =>
