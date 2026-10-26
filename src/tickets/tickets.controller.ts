@@ -42,6 +42,10 @@ import {
   TICKET_FORM_DTOS,
 } from './forms/ticket-form-dtos';
 import { TicketsService } from './tickets.service';
+import { TicketNotificationsService } from './notifications/ticket-notifications.service';
+import { TicketCommentsService } from './comments/ticket-comments.service';
+import { TicketAssigneesService } from './assignees/ticket-assignees.service';
+import { TicketFormWorkflowService } from './forms/ticket-form-workflow.service';
 
 @ApiTags('tickets')
 @ApiExtraModels(...TICKET_FORM_DTOS, ...TICKET_FORM_APPLY_DTOS)
@@ -49,7 +53,13 @@ import { TicketsService } from './tickets.service';
 @UseGuards(JwtAuthGuard)
 @Controller('tickets')
 export class TicketsController {
-  constructor(private readonly ticketsService: TicketsService) {}
+  constructor(
+    private readonly ticketsService: TicketsService,
+    private readonly notifications: TicketNotificationsService,
+    private readonly comments: TicketCommentsService,
+    private readonly assignees: TicketAssigneesService,
+    private readonly formWorkflow: TicketFormWorkflowService,
+  ) {}
 
   @ApiOperation({
     summary: 'Crear ticket',
@@ -118,10 +128,7 @@ export class TicketsController {
     @Query() findTicketNotificationsDto: FindTicketNotificationsDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.findMyNotifications(
-      findTicketNotificationsDto,
-      user,
-    );
+    return this.notifications.findMine(findTicketNotificationsDto, user);
   }
 
   @ApiOperation({
@@ -133,7 +140,7 @@ export class TicketsController {
   @Permissions('tickets:create')
   @Get('form-options/roles')
   findFormRoles() {
-    return this.ticketsService.findFormRoles();
+    return this.formWorkflow.findFormRoles();
   }
 
   @ApiOperation({
@@ -147,7 +154,7 @@ export class TicketsController {
     @Query() dto: PurgeTicketNotificationsDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.purgeMyNotifications(user, dto.all ?? false);
+    return this.notifications.purgeMine(user, dto.all ?? false);
   }
 
   @ApiOperation({ summary: 'Borrar una notificación' })
@@ -163,7 +170,7 @@ export class TicketsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.removeNotification(id, user);
+    return this.notifications.remove(id, user);
   }
 
   @ApiOperation({
@@ -175,7 +182,7 @@ export class TicketsController {
   })
   @Patch('notifications/read-all')
   markAllNotificationsRead(@CurrentUser() user: RequestUser) {
-    return this.ticketsService.markAllNotificationsRead(user);
+    return this.notifications.markAllRead(user);
   }
 
   @ApiOperation({
@@ -193,7 +200,7 @@ export class TicketsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.markNotificationRead(id, user);
+    return this.notifications.markRead(id, user);
   }
 
   @ApiOperation({
@@ -267,7 +274,7 @@ export class TicketsController {
     @Query() dto: FindAssignableUsersDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.findAssignableUsers(id, dto, user);
+    return this.assignees.findAssignableUsers(id, dto, user);
   }
 
   @ApiOperation({
@@ -300,7 +307,7 @@ export class TicketsController {
     @Body() dto: SetTicketAssigneesDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.setAssignees(id, dto, user);
+    return this.assignees.setAssignees(id, dto, user);
   }
 
   @ApiOperation({
@@ -331,7 +338,7 @@ export class TicketsController {
     @Body() dto: CreateTicketCommentDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.addComment(id, dto, user);
+    return this.comments.addComment(id, dto, user);
   }
 
   @ApiOperation({
@@ -366,7 +373,7 @@ export class TicketsController {
     @Body() body: Record<string, unknown>,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.updateForm(id, body, user);
+    return this.formWorkflow.updateForm(id, body, user);
   }
 
   @ApiOperation({
@@ -413,7 +420,7 @@ export class TicketsController {
     @Body() body: Record<string, unknown>,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.applyForm(id, body, user);
+    return this.formWorkflow.applyForm(id, body, user);
   }
 
   @ApiOperation({
@@ -440,7 +447,7 @@ export class TicketsController {
     @Body() body: Record<string, unknown>,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.validateForm(id, body, user);
+    return this.formWorkflow.validateForm(id, body, user);
   }
 
   @ApiOperation({
@@ -462,7 +469,7 @@ export class TicketsController {
     @Body() dto: RejectTicketFormDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.rejectForm(id, dto.reason, user);
+    return this.formWorkflow.rejectForm(id, dto.reason, user);
   }
 
   @ApiOperation({
@@ -480,6 +487,6 @@ export class TicketsController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.ticketsService.resendAccessEmail(id, user);
+    return this.formWorkflow.resendAccessEmail(id, user);
   }
 }

@@ -10,6 +10,10 @@ import { UsersModule } from 'src/users/users.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
+import { TicketNotificationsService } from './notifications/ticket-notifications.service';
+import { TicketCommentsService } from './comments/ticket-comments.service';
+import { TicketAssigneesService } from './assignees/ticket-assignees.service';
+import { TicketFormWorkflowService } from './forms/ticket-form-workflow.service';
 import { TicketsSlaCron } from './tickets-sla.cron';
 import { TicketSubcategoriesController } from './subcategories/ticket-subcategories.controller';
 import { TicketSubcategoriesService } from './subcategories/ticket-subcategories.service';
@@ -54,6 +58,10 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
   providers: [
     TicketsGateway,
     TicketsService,
+    TicketNotificationsService,
+    TicketCommentsService,
+    TicketAssigneesService,
+    TicketFormWorkflowService,
     TicketsSlaCron,
     TicketSubcategoriesService,
     TicketsAnalyticsService,
@@ -66,6 +74,5 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     ClientCreateFormHandler,
     ReferenceValuesUpdateFormHandler,
   ],
-  exports: [TicketsService],
 })
 export class TicketsModule {}

@@ -44,7 +44,9 @@ src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Per
 src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
 src/mail/            MailService (nodemailer)
-src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora)
+src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
+                     + notifications/, comments/, assignees/, forms/ticket-form-workflow;
+                     tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
 src/swagger.ts       createOpenApiDocument(): usado por main.ts y src/scripts/export-openapi.ts
 openapi.json         contrato generado (versionado; CI falla si está desactualizado)
 prisma/schema/       un .prisma por módulo; generator/datasource en schema.prisma

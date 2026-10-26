@@ -13,10 +13,7 @@ import { DefaultEventsMap, Namespace, RemoteSocket, Socket } from 'socket.io';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { JwtPayload } from 'src/auth/interfaces/jwt-payload.interface';
 import { parseCorsOrigins } from 'src/common/utils/cors.util';
-import {
-  TicketCommentWithAuthor,
-  TicketWithRelations,
-} from './tickets.service';
+import { TicketCommentWithAuthor, TicketWithRelations } from './tickets.shared';
 
 const TI_STAFF_PERMISSION = 'tickets:update';
 /** TI without branches (global users) sees every branch, like userBranchFilter. */
