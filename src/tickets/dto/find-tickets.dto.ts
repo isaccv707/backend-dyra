@@ -37,6 +37,16 @@ export class FindTicketsDto extends PaginatedQueryDto {
   @IsBoolean()
   assignedToMe?: boolean;
 
+  /**
+   * "Mis tickets": only the ones the user created or is assigned to, even with
+   * tickets:update. With branchId, created tickets are limited to that branch;
+   * assigned ones from branches the user has no access to are always included.
+   */
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  mine?: boolean;
+
   @IsOptional()
   @IsUUID()
   subcategoryId?: string;

@@ -10,7 +10,7 @@ import {
   CATEGORY_LABELS,
   TICKET_PRIORITY_LABELS,
   TICKET_STATUS_LABELS,
-} from '../tickets.service';
+} from '../tickets.shared';
 import { FindTicketAnalyticsDto } from './dto/find-ticket-analytics.dto';
 import { FindTicketTrendDto } from './dto/find-ticket-trend.dto';
 import { ExportTicketAnalyticsDto } from './dto/export-ticket-analytics.dto';
