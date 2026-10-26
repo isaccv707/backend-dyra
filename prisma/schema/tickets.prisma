@@ -152,6 +152,9 @@ model Ticket {
   @@index([category, createdAt])
   @@index([resolvedAt])
   @@index([dueAt])
+  /// Trigram indexes (pg_trgm) for the ILIKE search on title/description.
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "tickets_title_trgm_idx")
+  @@index([description(ops: raw("gin_trgm_ops"))], type: Gin, map: "tickets_description_trgm_idx")
   @@map("tickets")
 }
 
