@@ -8,7 +8,7 @@ API REST + WebSocket de DYRA (laboratorio clínico multi-sucursal). Dueño de la
 
 ## Stack
 
-NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
+NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · BullMQ (`@nestjs/bullmq` 11; la 12 es solo ESM) · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
 
 ## Comandos
 
@@ -43,7 +43,7 @@ src/<módulo>/        controller, service, dto/, *.spec.ts  (un módulo Nest por
 src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Permissions/@CurrentUser
 src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
-src/mail/            MailService (nodemailer)
+src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;
                      tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
@@ -64,6 +64,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 
 - **Bootstrap (`src/main.ts`):** prefijo global `/api`; Swagger en `/api` (`/api-json`) con `createOpenApiDocument()` de `src/swagger.ts` (siempre después de `setGlobalPrefix`); `ValidationPipe({ whitelist, forbidNonWhitelisted })`; `PrismaClientExceptionFilter` (P2002→409, P2025→404, P2003→400); CORS desde `CORS_ORIGINS`; query parser `extended`.
 - **Nueva entidad:** modelo en `prisma/schema/<módulo>.prisma` (los modelos se referencian entre archivos sin imports) → `yarn db:migrate --name <cambio>` (genera la migración y el cliente) → `src/<entidad>/` con controller/service/dto → importar en `src/app.module.ts` → permisos en `prisma/constants/roles-permissions.ts`. Imitar `src/services/` o `src/studies/`.
+- **DTOs de respuesta:** tickets documenta sus respuestas con clases en `src/tickets/dto/ticket-response.dto.ts` (`@ApiResponse({ type })`); `ticket-response.dto.spec.ts` compara esas clases (vía `openapi.json`) con las columnas e includes de Prisma: al agregar una columna o include, actualizar el DTO y `yarn openapi:export`.
 - **DTOs:** `class-validator`; `@Type(() => …)` para anidados y números (los query params llegan como string). Swagger se infiere del DTO; documentar con `@ApiOperation`/`@ApiResponse` como en `services.controller.ts`.
 - **Errores:** `handleDatabaseErrors()` (`src/common/handle-db-errors.ts`) en los catch de servicios; mensajes en español (estudios: `handleStudyDbErrors()`).
 - **Paginación:** `{ data, total, page, limit, totalPages }` vía `src/common/utils/paginate.util.ts`.
@@ -92,7 +93,8 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 **Tickets:**
 - `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
 - `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
-- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). Correo al asignar (`ADMIN_APP_URL`), fire-and-forget. Al crear un ticket se avisa (notificación `NEW_TICKET` + correo) a TI activo con `tickets:update` de esa sucursal o global, sin el creador; un fallo del aviso no falla la creación. El cron SLA solo notifica al creador + `ti_staff_room`.
+- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). **Avisos:** quién recibe qué (in-app y correo) se define solo en `TICKET_NOTIFICATION_RULES` (`src/tickets/notifications/ticket-notification-rules.ts`) y se envía con `TicketNotificationsService.dispatch()`; el actor nunca recibe su propio aviso. TI = activos con `tickets:update` de la sucursal o globales. Correos siempre por la cola (`MailQueueService.enqueue`, nunca `await` del SMTP en un request); excepción: el correo de acceso de formularios, que reporta `emailSent`. Un fallo del aviso no falla la creación del ticket.
+- **Ciclo de vida por tiempo** (`TicketSlaService`, cron cada 10 min en `tickets-sla.cron.ts`): aviso al 75% del SLA (asignados o TI), aviso de vencido (creador + asignados; correo a asignados), escalamiento a rol `Administrador` si sigue vencido y sin asignar `TICKET_ESCALATION_HOURS` h hábiles, y cierre automático de RESOLVED tras `TICKET_AUTO_CLOSE_DAYS` días hábiles. Cada paso reclama el ticket con un `updateMany` condicional (`slaWarnedAt`, `overdueNotifiedAt`, `escalatedAt`); cambiar prioridad/reabrir los limpia. Si el creador comenta un ticket RESOLVED, se reabre a IN_PROGRESS. Acciones del sistema: `TicketComment.authorId`/`TicketEvent.actorId` = null.
 
 **PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 
@@ -110,6 +112,8 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, asignación de tickets) |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Firma de subidas de documentos firmados |
 | `ADMIN_APP_URL` | Base de links en correos (opcional) |
+| `TICKET_AUTO_CLOSE_DAYS`, `TICKET_ESCALATION_HOURS` | Cierre automático (default 3 días hábiles) y escalamiento (default 2 h hábiles) |
+| `REDIS_URL` | **Requerido.** Cola de correos (BullMQ) y Socket.IO entre instancias (`docker compose` levanta redis) |
 
 ## Integración
 

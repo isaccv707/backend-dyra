@@ -1,14 +1,12 @@
 import {
   BadRequestException,
   Injectable,
-  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import { assertBranchAccess } from 'src/common/utils/branch-access.util';
-import { MailService } from 'src/mail/mail.service';
 import { TicketCommentsService } from '../comments/ticket-comments.service';
 import { FindAssignableUsersDto } from '../dto/find-assignable-users.dto';
 import { SetTicketAssigneesDto } from '../dto/set-ticket-assignees.dto';
@@ -22,12 +20,9 @@ import {
 
 @Injectable()
 export class TicketAssigneesService {
-  private readonly logger = new Logger(TicketAssigneesService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly ticketsGateway: TicketsGateway,
-    private readonly mailService: MailService,
     private readonly comments: TicketCommentsService,
   ) {}
 
@@ -162,30 +157,28 @@ export class TicketAssigneesService {
     ];
 
     await this.comments.recordChanges(
-      ticket,
+      { ...ticket, assigneeIds: assigneeIdsOf(updated) },
       entries,
-      [ticket.createdById, ...assigneeIdsOf(updated)],
       user,
+      {
+        addedAssigneeIds: addedIds,
+        removedAssigneeIds: removed.map((a) => a.userId),
+        email: (to) => ({
+          type: 'ticketAssigned',
+          to,
+          data: {
+            ticketId: id,
+            code: ticket.code,
+            title: ticket.title,
+            priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
+            branchName: ticket.branch.name,
+            assignedByName: user.name,
+          },
+        }),
+      },
     );
 
     this.ticketsGateway.emitTicketUpdated(updated);
-
-    for (const assignee of addedUsers) {
-      this.mailService
-        .sendTicketAssignedEmail(assignee.email, {
-          ticketId: id,
-          code: ticket.code,
-          title: ticket.title,
-          priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
-          branchName: ticket.branch.name,
-          assignedByName: user.name,
-        })
-        .catch((error: unknown) => {
-          this.logger.error(
-            `No se pudo enviar el correo de asignación del ticket #${ticket.code} a ${assignee.email}: ${(error as Error).message}`,
-          );
-        });
-    }
 
     return updated;
   }

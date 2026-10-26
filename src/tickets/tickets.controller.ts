@@ -26,7 +26,14 @@ import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import { Permissions } from 'src/auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from 'src/auth/guards/jwt-auth.guard';
 import type { RequestUser } from 'src/auth/interfaces/request-user.interface';
-import { CreateTicketCommentDto } from './dto/create-ticket-comment.dto';
+import {
+  CreateTicketCommentDto,
+  FindMentionableUsersDto,
+} from './dto/create-ticket-comment.dto';
+import {
+  TicketEmailPreferenceDto,
+  UpdateTicketEmailPreferencesDto,
+} from './dto/ticket-email-preferences.dto';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { FindAssignableUsersDto } from './dto/find-assignable-users.dto';
 import {
@@ -41,6 +48,19 @@ import {
   TICKET_FORM_APPLY_DTOS,
   TICKET_FORM_DTOS,
 } from './forms/ticket-form-dtos';
+import {
+  AssignableUserDto,
+  DeletedCountDto,
+  PaginatedTicketNotificationsResponseDto,
+  PaginatedTicketsResponseDto,
+  TicketCommentResponseDto,
+  TicketDetailResponseDto,
+  TicketFormRoleDto,
+  TicketFormValidationDto,
+  TicketResponseDto,
+  TicketUserRefDto,
+  UpdatedCountDto,
+} from './dto/ticket-response.dto';
 import { TicketsService } from './tickets.service';
 import { TicketNotificationsService } from './notifications/ticket-notifications.service';
 import { TicketCommentsService } from './comments/ticket-comments.service';
@@ -72,7 +92,11 @@ export class TicketsController {
       'Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá ' +
       'consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.',
   })
-  @ApiResponse({ status: 201, description: 'Ticket creado exitosamente.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Ticket creado exitosamente.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -104,7 +128,11 @@ export class TicketsController {
       'esa misma regla a quien sí tiene tickets:update ("Mis tickets"). En ese modo, branchId acota los creados y asignados ' +
       'a esa sucursal, pero los asignados en sucursales a las que el usuario no tiene acceso siempre se incluyen.',
   })
-  @ApiResponse({ status: 200, description: 'Listado paginado de tickets.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado de tickets.',
+    type: PaginatedTicketsResponseDto,
+  })
   @Get()
   findAll(
     @Query() findTicketsDto: FindTicketsDto,
@@ -122,6 +150,7 @@ export class TicketsController {
   @ApiResponse({
     status: 200,
     description: 'Listado paginado de notificaciones.',
+    type: PaginatedTicketNotificationsResponseDto,
   })
   @Get('notifications')
   findMyNotifications(
@@ -132,11 +161,40 @@ export class TicketsController {
   }
 
   @ApiOperation({
+    summary: 'Mis preferencias de correo de tickets',
+    description:
+      'Qué correos de tickets recibe el usuario autenticado. Los avisos in-app (campana) siempre llegan.',
+  })
+  @ApiResponse({ status: 200, type: [TicketEmailPreferenceDto] })
+  @Get('notification-preferences')
+  getEmailPreferences(@CurrentUser() user: RequestUser) {
+    return this.notifications.getEmailPreferences(user);
+  }
+
+  @ApiOperation({
+    summary: 'Actualizar mis preferencias de correo de tickets',
+    description:
+      'Reemplaza la lista de eventos cuyo correo no quiere recibir el usuario (mutedEvents).',
+  })
+  @ApiResponse({ status: 200, type: [TicketEmailPreferenceDto] })
+  @Put('notification-preferences')
+  updateEmailPreferences(
+    @Body() dto: UpdateTicketEmailPreferencesDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.notifications.updateEmailPreferences(user, dto);
+  }
+
+  @ApiOperation({
     summary: 'Roles para solicitudes de acceso',
     description:
       'Roles que se pueden pedir en el formulario de Accesos (id, name, description). Requiere el permiso tickets:create.',
   })
-  @ApiResponse({ status: 200, description: 'Listado de roles.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de roles.',
+    type: [TicketFormRoleDto],
+  })
   @Permissions('tickets:create')
   @Get('form-options/roles')
   findFormRoles() {
@@ -148,7 +206,11 @@ export class TicketsController {
     description:
       'Borra las notificaciones leídas del usuario autenticado, o todas con all=true. Las leídas de más de 90 días se borran solas.',
   })
-  @ApiResponse({ status: 200, description: 'Cantidad borrada ({ deleted }).' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cantidad borrada.',
+    type: DeletedCountDto,
+  })
   @Delete('notifications')
   purgeMyNotifications(
     @Query() dto: PurgeTicketNotificationsDto,
@@ -159,7 +221,11 @@ export class TicketsController {
 
   @ApiOperation({ summary: 'Borrar una notificación' })
   @ApiParam({ name: 'id', description: 'Identificador de la notificación.' })
-  @ApiResponse({ status: 200, description: 'Notificación borrada.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Notificación borrada.',
+    type: DeletedCountDto,
+  })
   @ApiResponse({
     status: 403,
     description: 'La notificación pertenece a otro usuario.',
@@ -179,6 +245,7 @@ export class TicketsController {
   @ApiResponse({
     status: 200,
     description: 'Notificaciones marcadas como leídas.',
+    type: UpdatedCountDto,
   })
   @Patch('notifications/read-all')
   markAllNotificationsRead(@CurrentUser() user: RequestUser) {
@@ -212,7 +279,11 @@ export class TicketsController {
       'o uno que se tenga asignado actualmente.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 200, description: 'Ticket encontrado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket encontrado.',
+    type: TicketDetailResponseDto,
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -235,7 +306,11 @@ export class TicketsController {
       'asignados se gestionan con PUT /tickets/:id/assignees. Requiere el permiso tickets:update.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 200, description: 'Ticket actualizado exitosamente.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ticket actualizado exitosamente.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -253,6 +328,22 @@ export class TicketsController {
   }
 
   @ApiOperation({
+    summary: 'Usuarios que se pueden mencionar',
+    description:
+      'Para el selector de @menciones del comentario: quien reportó, los asignados y TI de la sucursal (sin el usuario ' +
+      'autenticado). Con internal=true (nota interna, requiere tickets:update) solo TI.',
+  })
+  @ApiResponse({ status: 200, type: [TicketUserRefDto] })
+  @Get(':id/mentionable-users')
+  findMentionableUsers(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() dto: FindMentionableUsersDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.comments.findMentionableUsers(id, dto.internal ?? false, user);
+  }
+
+  @ApiOperation({
     summary: 'Listar usuarios asignables al ticket',
     description:
       'Devuelve los usuarios que se pueden asignar al ticket (para el selector de asignados): activos, con acceso a la ' +
@@ -260,7 +351,11 @@ export class TicketsController {
       'Filtrable por nombre o email con search. Requiere el permiso tickets:update.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 200, description: 'Listado de usuarios asignables.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado de usuarios asignables.',
+    type: [AssignableUserDto],
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -285,7 +380,11 @@ export class TicketsController {
       'aviso in-app y un correo; los que se quitan pierden el acceso al ticket de inmediato. Requiere el permiso tickets:update.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 200, description: 'Asignados actualizados.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Asignados actualizados.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -318,7 +417,11 @@ export class TicketsController {
       'comentar en tickets propios o asignados.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 201, description: 'Comentario creado exitosamente.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Comentario creado exitosamente.',
+    type: TicketCommentResponseDto,
+  })
   @ApiResponse({
     status: 403,
     description:
@@ -354,7 +457,11 @@ export class TicketsController {
       oneOf: TICKET_FORM_DTOS.map((dto) => ({ $ref: getSchemaPath(dto) })),
     },
   })
-  @ApiResponse({ status: 200, description: 'Formulario actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Formulario actualizado.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -396,7 +503,11 @@ export class TicketsController {
       })),
     },
   })
-  @ApiResponse({ status: 201, description: 'Solicitud aprobada y aplicada.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Solicitud aprobada y aplicada.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -439,7 +550,11 @@ export class TicketsController {
       })),
     },
   })
-  @ApiResponse({ status: 201, description: 'La aprobación funcionaría.' })
+  @ApiResponse({
+    status: 201,
+    description: 'La aprobación funcionaría.',
+    type: TicketFormValidationDto,
+  })
   @Permissions('tickets:update')
   @Post(':id/form/validate')
   validateForm(
@@ -457,7 +572,11 @@ export class TicketsController {
       'ya no se puede editar ni aprobar y el ticket pasa a Cancelado. Requiere tickets:update.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 201, description: 'Solicitud rechazada.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Solicitud rechazada.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({
     status: 409,
     description: 'El formulario ya fue aprobado o rechazado.',
@@ -479,7 +598,11 @@ export class TicketsController {
       'Actualiza form.result.emailSent. Requiere tickets:update y users:create.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
-  @ApiResponse({ status: 201, description: 'Correo enviado.' })
+  @ApiResponse({
+    status: 201,
+    description: 'Correo enviado.',
+    type: TicketResponseDto,
+  })
   @ApiResponse({ status: 503, description: 'El servidor de correo falló.' })
   @Permissions('tickets:update')
   @Post(':id/form/resend-access-email')

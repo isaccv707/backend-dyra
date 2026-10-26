@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bullmq';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { redisConnectionFromUrl } from './common/utils/redis-connection.util';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { StudiesModule } from './studies/studies.module';
@@ -27,6 +29,15 @@ import { TicketsModule } from './tickets/tickets.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+    }),
+    // Background jobs (email queue). Redis is required.
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: redisConnectionFromUrl(
+          config.getOrThrow<string>('REDIS_URL'),
+        ),
+      }),
     }),
     PrismaModule,
     QuotationsModule,

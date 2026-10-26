@@ -23,6 +23,17 @@ export interface NewTicketEmailData {
   createdByName: string;
 }
 
+/** Generic ticket notice: resolved, form decided, SLA overdue/warning, escalation… */
+export interface TicketUpdateEmailData {
+  ticketId: string;
+  code: number;
+  title: string;
+  /** Subject prefix and heading, e.g. "Tu ticket fue resuelto". */
+  heading: string;
+  /** Plain-text body (escaped when rendered). */
+  message: string;
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -200,6 +211,43 @@ export class MailService {
           <p style="color: #666; font-size: 13px;">
             Si el botón no funciona, copia este enlace en tu navegador:<br/>
             <a href="${loginUrl}" style="color: #1a1a2e;">${loginUrl}</a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            DYRA Analítica — No respondas a este correo automático.
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  async sendTicketUpdateEmail(
+    to: string,
+    data: TicketUpdateEmailData,
+  ): Promise<void> {
+    const from = this.configService.getOrThrow<string>('MAIL_FROM');
+    const baseUrl = (
+      this.configService.get<string>('ADMIN_APP_URL') ?? DEFAULT_ADMIN_APP_URL
+    ).replace(/\/+$/, '');
+    const ticketUrl = `${baseUrl}/tickets/${data.ticketId}`;
+
+    await this.transporter.sendMail({
+      from,
+      to,
+      subject: `${data.heading} — ticket #${data.code}: ${data.title} — DYRA Analítica`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
+          <h2 style="color: #1a1a2e; margin-bottom: 8px;">${escapeHtml(data.heading)}</h2>
+          <p style="color: #444; margin-bottom: 24px;">
+            Ticket <strong>#${data.code}</strong> · ${escapeHtml(data.title)}
+          </p>
+          <div style="background: #ffffff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 24px; color: #444; font-size: 14px; white-space: pre-line;">${escapeHtml(data.message)}</div>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <a href="${ticketUrl}" style="display: inline-block; background: #1a1a2e; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Ver ticket</a>
+          </div>
+          <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copia este enlace en tu navegador:<br/>
+            <a href="${ticketUrl}" style="color: #1a1a2e;">${ticketUrl}</a>
           </p>
           <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
           <p style="color: #999; font-size: 12px; text-align: center;">

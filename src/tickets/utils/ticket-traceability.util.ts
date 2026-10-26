@@ -13,10 +13,19 @@ export interface TraceabilityFields {
   reopenedCount?: number;
   dueAt?: Date | null;
   overdueNotifiedAt?: Date | null;
+  slaWarnedAt?: Date | null;
+  escalatedAt?: Date | null;
   firstResponseAt?: Date;
   onHoldSince?: Date | null;
   slaPausedSeconds?: number;
 }
+
+/** A new or moved deadline gets its SLA notices again. */
+const SLA_NOTICES_RESET = {
+  overdueNotifiedAt: null,
+  slaWarnedAt: null,
+  escalatedAt: null,
+} as const;
 
 /** Lifecycle and SLA columns that change with a status or priority change. */
 export function computeTraceabilityFields(
@@ -41,7 +50,7 @@ export function computeTraceabilityFields(
       if (dueAt) {
         dueAt = addBusinessTime(dueAt, pausedMs);
         data.dueAt = dueAt;
-        if (dueAt > now) data.overdueNotifiedAt = null;
+        if (dueAt > now) Object.assign(data, SLA_NOTICES_RESET);
       }
     }
   }
@@ -61,7 +70,7 @@ export function computeTraceabilityFields(
       data.resolvedAt = null;
       data.closedAt = null;
       data.reopenedCount = ticket.reopenedCount + 1;
-      data.overdueNotifiedAt = null;
+      Object.assign(data, SLA_NOTICES_RESET);
     }
   }
 
@@ -71,7 +80,7 @@ export function computeTraceabilityFields(
       ticket.createdAt,
       pausedSeconds * 1000,
     );
-    data.overdueNotifiedAt = null;
+    Object.assign(data, SLA_NOTICES_RESET);
   }
 
   return data;
