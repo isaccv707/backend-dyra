@@ -2,10 +2,18 @@ import { TicketNotificationKind } from '@prisma/client';
 
 /**
  * Who a ticket notice goes to. "tiStaff" = active users with tickets:update
- * of the ticket's branch or global.
+ * of the ticket's branch or global; "assigneesOrTi" = the assignees, or TI if
+ * there are none; "administrators" = active users with ESCALATION_ROLE, global
+ * or of the ticket's branch.
  */
 export type TicketAudience =
-  'creator' | 'assignees' | 'tiStaff' | 'addedAssignees' | 'removedAssignees';
+  | 'creator'
+  | 'assignees'
+  | 'tiStaff'
+  | 'assigneesOrTi'
+  | 'administrators'
+  | 'addedAssignees'
+  | 'removedAssignees';
 
 export type TicketNotificationEvent =
   | 'NEW_TICKET'
@@ -16,7 +24,10 @@ export type TicketNotificationEvent =
   | 'RESOLVED'
   | 'FORM_UPDATED'
   | 'FORM_DECIDED'
-  | 'OVERDUE';
+  | 'OVERDUE'
+  | 'SLA_WARNING'
+  | 'ESCALATION'
+  | 'AUTO_CLOSED';
 
 export interface TicketNotificationRule {
   /** Stored in TicketNotification.kind (the bell's icon/filter). */
@@ -64,5 +75,21 @@ export const TICKET_NOTIFICATION_RULES: Record<
     kind: 'OVERDUE',
     inApp: ['creator', 'assignees'],
     email: ['assignees'],
+  },
+  SLA_WARNING: {
+    kind: 'SLA_WARNING',
+    inApp: ['assigneesOrTi'],
+    email: ['assigneesOrTi'],
+  },
+  // Overdue and still unassigned after ESCALATION_BUSINESS_HOURS.
+  ESCALATION: {
+    kind: 'ESCALATION',
+    inApp: ['administrators'],
+    email: ['administrators'],
+  },
+  AUTO_CLOSED: {
+    kind: 'CHANGE',
+    inApp: ['creator', 'assignees'],
+    email: ['creator'],
   },
 };

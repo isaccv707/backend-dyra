@@ -13,7 +13,14 @@ import {
 } from '../notifications/ticket-notifications.service';
 import { TicketNotificationEvent } from '../notifications/ticket-notification-rules';
 import { TicketsGateway } from '../tickets.gateway';
-import { ChangeEntry, commentWithAuthor } from '../tickets.shared';
+import { Ticket } from '@prisma/client';
+import {
+  ChangeEntry,
+  commentWithAuthor,
+  TICKET_STATUS_LABELS,
+  ticketWithRelations,
+} from '../tickets.shared';
+import { computeTraceabilityFields } from '../utils/ticket-traceability.util';
 import { assertTicketAccess } from '../utils/ticket-access.util';
 
 const COMMENT_PREVIEW_LENGTH = 140;
@@ -114,7 +121,50 @@ export class TicketCommentsService {
       },
     );
 
+    // The requester answering a resolved ticket means it isn't solved yet.
+    if (
+      ticket.status === 'RESOLVED' &&
+      user.id === ticket.createdById &&
+      !comment.isInternal
+    ) {
+      await this.reopenOnReply(ticket, assigneeIds, user);
+    }
+
     return comment;
+  }
+
+  private async reopenOnReply(
+    ticket: Ticket,
+    assigneeIds: string[],
+    user: RequestUser,
+  ) {
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        status: 'IN_PROGRESS',
+        ...computeTraceabilityFields(ticket, { status: 'IN_PROGRESS' }),
+      },
+      ...ticketWithRelations,
+    });
+    await this.recordChanges(
+      { ...ticket, assigneeIds },
+      [
+        {
+          type: 'STATUS_CHANGED',
+          fromValue: 'RESOLVED',
+          toValue: 'IN_PROGRESS',
+          text: `respondió y el ticket pasó de "${TICKET_STATUS_LABELS.RESOLVED}" a "${TICKET_STATUS_LABELS.IN_PROGRESS}"`,
+        },
+        {
+          type: 'REOPENED',
+          fromValue: 'RESOLVED',
+          toValue: 'IN_PROGRESS',
+          text: 'reabrió el ticket',
+        },
+      ],
+      user,
+    );
+    this.ticketsGateway.emitTicketUpdated(updated);
   }
 
   /**
@@ -124,16 +174,23 @@ export class TicketCommentsService {
   async recordChanges(
     ticket: NotifiableTicket,
     entries: ChangeEntry[],
-    user: RequestUser,
-    options: Pick<
+    /** null = the system itself (cron), e.g. the auto-close. */
+    actor: Pick<RequestUser, 'id' | 'name'> | null,
+    {
+      event = changeEventOf(entries),
+      ...options
+    }: Pick<
       DispatchOptions,
       'addedAssigneeIds' | 'removedAssigneeIds' | 'email'
-    > = {},
+    > & { event?: TicketNotificationEvent } = {},
   ) {
     if (entries.length === 0) return;
     const ticketId = ticket.id;
 
-    const message = `${user.name} ${entries.map((e) => e.text).join(', ')}.`;
+    const text = entries.map((e) => e.text).join(', ');
+    const message = actor
+      ? `${actor.name} ${text}.`
+      : `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 
     const comment = await this.prisma.ticketComment.create({
       data: {
@@ -141,7 +198,7 @@ export class TicketCommentsService {
         isInternal: false,
         isSystem: true,
         ticketId,
-        authorId: user.id,
+        authorId: actor?.id ?? null,
       },
       ...commentWithAuthor,
     });
@@ -152,7 +209,7 @@ export class TicketCommentsService {
         fromValue: entry.fromValue,
         toValue: entry.toValue,
         ticketId,
-        actorId: user.id,
+        actorId: actor?.id ?? null,
       })),
     });
 
@@ -160,10 +217,10 @@ export class TicketCommentsService {
       ticket.createdById,
       ...ticket.assigneeIds,
     ]);
-    await this.notifications.dispatch(changeEventOf(entries), ticket, {
+    await this.notifications.dispatch(event, ticket, {
       ...options,
       message,
-      actorId: user.id,
+      actorId: actor?.id,
     });
   }
 }

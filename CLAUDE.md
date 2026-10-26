@@ -93,6 +93,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 - `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
 - `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
 - N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). **Avisos:** quién recibe qué (in-app y correo) se define solo en `TICKET_NOTIFICATION_RULES` (`src/tickets/notifications/ticket-notification-rules.ts`) y se envía con `TicketNotificationsService.dispatch()`; el actor nunca recibe su propio aviso. TI = activos con `tickets:update` de la sucursal o globales. Correos siempre por la cola (`MailQueueService.enqueue`, nunca `await` del SMTP en un request); excepción: el correo de acceso de formularios, que reporta `emailSent`. Un fallo del aviso no falla la creación del ticket.
+- **Ciclo de vida por tiempo** (`TicketSlaService`, cron cada 10 min en `tickets-sla.cron.ts`): aviso al 75% del SLA (asignados o TI), aviso de vencido (creador + asignados; correo a asignados), escalamiento a rol `Administrador` si sigue vencido y sin asignar `TICKET_ESCALATION_HOURS` h hábiles, y cierre automático de RESOLVED tras `TICKET_AUTO_CLOSE_DAYS` días hábiles. Cada paso reclama el ticket con un `updateMany` condicional (`slaWarnedAt`, `overdueNotifiedAt`, `escalatedAt`); cambiar prioridad/reabrir los limpia. Si el creador comenta un ticket RESOLVED, se reabre a IN_PROGRESS. Acciones del sistema: `TicketComment.authorId`/`TicketEvent.actorId` = null.
 
 **PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 
@@ -110,6 +111,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, asignación de tickets) |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Firma de subidas de documentos firmados |
 | `ADMIN_APP_URL` | Base de links en correos (opcional) |
+| `TICKET_AUTO_CLOSE_DAYS`, `TICKET_ESCALATION_HOURS` | Cierre automático (default 3 días hábiles) y escalamiento (default 2 h hábiles) |
 | `REDIS_URL` | **Requerido.** Cola de correos (BullMQ) y Socket.IO entre instancias (`docker compose` levanta redis) |
 
 ## Integración

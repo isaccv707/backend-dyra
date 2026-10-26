@@ -1,4 +1,8 @@
-import { addBusinessTime, businessTimeBetween } from './business-hours';
+import {
+  addBusinessDays,
+  addBusinessTime,
+  businessTimeBetween,
+} from './business-hours';
 import { computeDueAt } from './ticket-sla.const';
 
 // America/Mexico_City is UTC-6 all year (no daylight saving since 2022).
@@ -52,5 +56,20 @@ describe('business hours (L–V 9–17, sáb 9–14, dom cerrado)', () => {
     expect(computeDueAt('CRITICAL', mx('2026-10-21T09:00:00'), HOUR)).toEqual(
       mx('2026-10-21T14:00:00'),
     );
+  });
+
+  describe('addBusinessDays', () => {
+    it('cuenta el sábado como día hábil y salta el domingo', () => {
+      // Viernes 23/10 10:00 + 3 días hábiles: sábado, lunes, martes
+      expect(addBusinessDays(mx('2026-10-23T10:00:00'), 3)).toEqual(
+        mx('2026-10-27T10:00:00'),
+      );
+    });
+
+    it('conserva la hora local', () => {
+      expect(addBusinessDays(mx('2026-10-22T16:45:30'), 1)).toEqual(
+        mx('2026-10-23T16:45:30'),
+      );
+    });
   });
 });

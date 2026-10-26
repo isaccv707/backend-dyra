@@ -125,3 +125,22 @@ export function businessTimeBetween(from: Date, to: Date): number {
   }
   return total;
 }
+
+/**
+ * Same local time `days` business days later (days with business hours; a
+ * Sunday doesn't count). Used for day-based deadlines like the auto-close.
+ */
+export function addBusinessDays(from: Date, days: number): Date {
+  const p = localParts(from);
+  const timeOfDay = ((p.hour * 60 + p.minute) * 60 + p.second) * 1000;
+  let { year, month, day } = p;
+  for (let counted = 0, i = 0; counted < days && i < MAX_DAYS; i++) {
+    const next = localParts(
+      new Date(localToInstant(year, month, day, 0) + DAY_MS + HOUR_MS * 2),
+    );
+    ({ year, month, day } = next);
+    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    if (BUSINESS_HOURS[weekday]) counted++;
+  }
+  return new Date(localToInstant(year, month, day, 0) + timeOfDay);
+}

@@ -9,6 +9,7 @@ import { CreateTicketDto } from '../dto/create-ticket.dto';
 import { TicketFormWorkflowService } from '../forms/ticket-form-workflow.service';
 import { TicketFormsService } from '../forms/ticket-forms.service';
 import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
+import { TicketSlaService } from '../sla/ticket-sla.service';
 import { TicketsGateway } from '../tickets.gateway';
 import { TicketsService } from '../tickets.service';
 
@@ -122,6 +123,7 @@ export async function createTicketsTestContext() {
       TicketCommentsService,
       TicketAssigneesService,
       TicketFormWorkflowService,
+      TicketSlaService,
       { provide: PrismaService, useValue: prisma },
       { provide: TicketsGateway, useValue: gateway },
       { provide: MailService, useValue: mailService },
@@ -141,6 +143,7 @@ export async function createTicketsTestContext() {
     commentsService: module.get(TicketCommentsService),
     assigneesService: module.get(TicketAssigneesService),
     formWorkflowService: module.get(TicketFormWorkflowService),
+    slaService: module.get(TicketSlaService),
   };
 }
 

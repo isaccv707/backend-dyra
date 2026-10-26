@@ -329,6 +329,72 @@ describe('TicketCommentsService', () => {
     });
   });
 
+  describe('respuesta del creador a un ticket resuelto', () => {
+    it('reabre el ticket (IN_PROGRESS) y lo registra', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        code: 42,
+        title: 'Sin internet',
+        branchId,
+        createdById: scopedUser.id,
+        status: 'RESOLVED',
+        priority: 'MEDIUM',
+        resolvedAt: new Date(),
+        reopenedCount: 0,
+        slaPausedSeconds: 0,
+        firstResponseAt: new Date(),
+        assignees: [{ userId: 'tech-1' }],
+      });
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+      prisma.ticket.update.mockResolvedValue({ id: 'ticket-1' });
+
+      await commentsService.addComment(
+        'ticket-1',
+        { body: 'Sigue sin funcionar' },
+        scopedUser,
+      );
+
+      expect(prisma.ticket.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'ticket-1' },
+          data: expect.objectContaining({
+            status: 'IN_PROGRESS',
+            resolvedAt: null,
+            reopenedCount: 1,
+          }),
+        }),
+      );
+      expect(prisma.ticketEvent.createMany).toHaveBeenCalledWith({
+        data: expect.arrayContaining([
+          expect.objectContaining({ type: 'REOPENED' }),
+        ]),
+      });
+      expect(gateway.emitTicketUpdated).toHaveBeenCalled();
+    });
+
+    it('una respuesta de TI no lo reabre', async () => {
+      prisma.ticket.findUnique.mockResolvedValue({
+        id: 'ticket-1',
+        branchId,
+        createdById: 'reporter-1',
+        status: 'RESOLVED',
+        firstResponseAt: new Date(),
+        assignees: [],
+      });
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+
+      await commentsService.addComment('ticket-1', { body: 'Ok' }, staffUser);
+
+      expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('changeEventOf', () => {
     const entry = (type: string, toValue: string | null = null) =>
       ({ type, fromValue: null, toValue, text: '' }) as Parameters<
