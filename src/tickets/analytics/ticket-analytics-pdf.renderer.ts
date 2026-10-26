@@ -4,7 +4,7 @@ import {
   CATEGORY_LABELS,
   TICKET_PRIORITY_LABELS,
   TICKET_STATUS_LABELS,
-} from '../tickets.service';
+} from '../tickets.shared';
 import {
   TicketAnalyticsSummary,
   TicketsByCategoryRow,
