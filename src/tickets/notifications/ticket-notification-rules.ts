@@ -13,7 +13,8 @@ export type TicketAudience =
   | 'assigneesOrTi'
   | 'administrators'
   | 'addedAssignees'
-  | 'removedAssignees';
+  | 'removedAssignees'
+  | 'mentioned';
 
 export type TicketNotificationEvent =
   | 'NEW_TICKET'
@@ -27,7 +28,8 @@ export type TicketNotificationEvent =
   | 'OVERDUE'
   | 'SLA_WARNING'
   | 'ESCALATION'
-  | 'AUTO_CLOSED';
+  | 'AUTO_CLOSED'
+  | 'MENTION';
 
 export interface TicketNotificationRule {
   /** Stored in TicketNotification.kind (the bell's icon/filter). */
@@ -92,4 +94,25 @@ export const TICKET_NOTIFICATION_RULES: Record<
     inApp: ['creator', 'assignees'],
     email: ['creator'],
   },
+  // @mentions in a comment (only participants and TI can be mentioned).
+  MENTION: { kind: 'COMMENT', inApp: ['mentioned'], email: ['mentioned'] },
 };
+
+/** Events with an email, as the user sees them in their preferences. */
+export const TICKET_EMAIL_EVENT_LABELS = {
+  NEW_TICKET: 'Ticket nuevo en mi sucursal (TI)',
+  ASSIGNMENT: 'Me asignaron un ticket',
+  MENTION: 'Me mencionaron en un comentario',
+  RESOLVED: 'Mi ticket fue resuelto',
+  AUTO_CLOSED: 'Mi ticket se cerró automáticamente',
+  FORM_DECIDED: 'Mi solicitud fue aprobada o rechazada',
+  SLA_WARNING: 'Un ticket que atiendo está por vencer',
+  OVERDUE: 'Un ticket que atiendo venció',
+  ESCALATION: 'Escalamiento de tickets vencidos sin asignar',
+} as const satisfies Partial<Record<TicketNotificationEvent, string>>;
+
+export type TicketEmailEvent = keyof typeof TICKET_EMAIL_EVENT_LABELS;
+
+export const TICKET_EMAIL_EVENTS = Object.keys(
+  TICKET_EMAIL_EVENT_LABELS,
+) as TicketEmailEvent[];

@@ -256,3 +256,29 @@ model TicketForm {
   @@index([type, appliedAt])
   @@map("ticket_forms")
 }
+
+/// Ticket emails a user chose not to receive (in-app notices always arrive).
+model TicketEmailPreference {
+  userId      String   @id @map("user_id")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// TicketNotificationEvent values (see ticket-notification-rules.ts).
+  mutedEvents String[] @default([]) @map("muted_events")
+  updatedAt   DateTime @updatedAt
+
+  @@map("ticket_email_preferences")
+}
+
+/// Canned replies IT inserts into ticket comments, per branch.
+model TicketReplyTemplate {
+  id       String @id @default(uuid())
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  title    String
+  body     String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, title])
+  @@map("ticket_reply_templates")
+}

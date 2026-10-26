@@ -8398,6 +8398,76 @@
         ]
       }
     },
+    "/api/tickets/notification-preferences": {
+      "get": {
+        "description": "Qué correos de tickets recibe el usuario autenticado. Los avisos in-app (campana) siempre llegan.",
+        "operationId": "TicketsController_getEmailPreferences",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketEmailPreferenceDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Mis preferencias de correo de tickets",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "put": {
+        "description": "Reemplaza la lista de eventos cuyo correo no quiere recibir el usuario (mutedEvents).",
+        "operationId": "TicketsController_updateEmailPreferences",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTicketEmailPreferencesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketEmailPreferenceDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar mis preferencias de correo de tickets",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/tickets/form-options/roles": {
       "get": {
         "description": "Roles que se pueden pedir en el formulario de Accesos (id, name, description). Requiere el permiso tickets:create.",
@@ -8626,6 +8696,54 @@
           }
         ],
         "summary": "Actualizar ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/tickets/{id}/mentionable-users": {
+      "get": {
+        "description": "Para el selector de @menciones del comentario: quien reportó, los asignados y TI de la sucursal (sin el usuario autenticado). Con internal=true (nota interna, requiere tickets:update) solo TI.",
+        "operationId": "TicketsController_findMentionableUsers",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "internal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketUserRefDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Usuarios que se pueden mencionar",
         "tags": [
           "tickets"
         ]
@@ -9785,6 +9903,165 @@
         "summary": "Exportar reporte de tickets",
         "tags": [
           "tickets-analytics"
+        ]
+      }
+    },
+    "/api/ticket-reply-templates": {
+      "get": {
+        "description": "Respuestas predefinidas que TI inserta en los comentarios, por sucursal. Requiere tickets:update y acceso a la sucursal.",
+        "operationId": "TicketReplyTemplatesController_findAll",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketReplyTemplateDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar plantillas de respuesta",
+        "tags": [
+          "ticket-reply-templates"
+        ]
+      },
+      "post": {
+        "operationId": "TicketReplyTemplatesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTicketReplyTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketReplyTemplateDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Título repetido en la sucursal."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear plantilla de respuesta",
+        "tags": [
+          "ticket-reply-templates"
+        ]
+      }
+    },
+    "/api/ticket-reply-templates/{id}": {
+      "patch": {
+        "operationId": "TicketReplyTemplatesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTicketReplyTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketReplyTemplateDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Editar plantilla de respuesta",
+        "tags": [
+          "ticket-reply-templates"
+        ]
+      },
+      "delete": {
+        "operationId": "TicketReplyTemplatesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedCountDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Borrar plantilla de respuesta",
+        "tags": [
+          "ticket-reply-templates"
         ]
       }
     }
@@ -12528,6 +12805,62 @@
           "totalPages"
         ]
       },
+      "TicketEmailPreferenceDto": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "enum": [
+              "NEW_TICKET",
+              "ASSIGNMENT",
+              "MENTION",
+              "RESOLVED",
+              "AUTO_CLOSED",
+              "FORM_DECIDED",
+              "SLA_WARNING",
+              "OVERDUE",
+              "ESCALATION"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "event",
+          "label",
+          "enabled"
+        ]
+      },
+      "UpdateTicketEmailPreferencesDto": {
+        "type": "object",
+        "properties": {
+          "mutedEvents": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "NEW_TICKET",
+                "ASSIGNMENT",
+                "MENTION",
+                "RESOLVED",
+                "AUTO_CLOSED",
+                "FORM_DECIDED",
+                "SLA_WARNING",
+                "OVERDUE",
+                "ESCALATION"
+              ]
+            }
+          }
+        },
+        "required": [
+          "mutedEvents"
+        ]
+      },
       "TicketFormRoleDto": {
         "type": "object",
         "properties": {
@@ -12887,6 +13220,15 @@
           },
           "isInternal": {
             "type": "boolean"
+          },
+          "mentionedUserIds": {
+            "uniqueItems": true,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         },
         "required": [
@@ -12961,6 +13303,74 @@
         "properties": {
           "isActive": {
             "type": "boolean"
+          }
+        }
+      },
+      "TicketReplyTemplateDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "branchId",
+          "title",
+          "body",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateTicketReplyTemplateDto": {
+        "type": "object",
+        "properties": {
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "branchId",
+          "title",
+          "body"
+        ]
+      },
+      "UpdateTicketReplyTemplateDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 2000
           }
         }
       }

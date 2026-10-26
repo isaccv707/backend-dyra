@@ -79,6 +79,11 @@ const createPrismaMock = () => {
       findUniqueOrThrow: jest.fn(),
     },
     role: { findMany: jest.fn() },
+    ticketEmailPreference: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn(),
+      upsert: jest.fn(),
+    },
     user: { findMany: jest.fn().mockResolvedValue([]) },
     // Interactive transactions run against the same mocks; array batches
     // (findAll) are mocked per test.

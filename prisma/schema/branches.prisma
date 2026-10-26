@@ -59,8 +59,9 @@ model Branch {
   vehicleMovementHistoryDestination  VehicleMovementHistory[] @relation("VehicleMovementDestination")
   vehicleSafeguards                  VehicleSafeguard[]       @relation("VehicleSafeguardBranch")
 
-  tickets       Ticket[]
-  ticketCounter TicketCounter?
+  tickets              Ticket[]
+  ticketCounter        TicketCounter?
+  ticketReplyTemplates TicketReplyTemplate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

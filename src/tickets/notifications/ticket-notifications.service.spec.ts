@@ -282,4 +282,71 @@ describe('TicketNotificationsService', () => {
       });
     });
   });
+
+  describe('preferencias de correo', () => {
+    const ticket = {
+      id: 'ticket-1',
+      code: 42,
+      title: 'Sin internet',
+      branchId,
+      createdById: 'reporter-1',
+      assigneeIds: [],
+    };
+
+    it('no manda el correo a quien lo silenció, pero sí el aviso in-app', async () => {
+      prisma.ticketEmailPreference.findMany.mockResolvedValue([
+        { userId: 'reporter-1' },
+      ]);
+
+      await notificationsService.dispatch('RESOLVED', ticket, {
+        message: 'resuelto',
+        actorId: 'tech-1',
+      });
+
+      expect(prisma.ticketEmailPreference.findMany).toHaveBeenCalledWith({
+        where: {
+          userId: { in: ['reporter-1'] },
+          mutedEvents: { has: 'RESOLVED' },
+        },
+        select: { userId: true },
+      });
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1'],
+        expect.anything(),
+      );
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('lista los eventos con correo y cuáles están activos', async () => {
+      prisma.ticketEmailPreference.findUnique.mockResolvedValue({
+        mutedEvents: ['OVERDUE'],
+      });
+
+      const prefs = await notificationsService.getEmailPreferences(globalUser);
+
+      expect(prefs).toContainEqual(
+        expect.objectContaining({ event: 'OVERDUE', enabled: false }),
+      );
+      expect(prefs).toContainEqual(
+        expect.objectContaining({ event: 'ASSIGNMENT', enabled: true }),
+      );
+    });
+
+    it('guarda la lista de eventos silenciados', async () => {
+      prisma.ticketEmailPreference.findUnique.mockResolvedValue(null);
+
+      await notificationsService.updateEmailPreferences(globalUser, {
+        mutedEvents: ['OVERDUE', 'SLA_WARNING'],
+      });
+
+      expect(prisma.ticketEmailPreference.upsert).toHaveBeenCalledWith({
+        where: { userId: globalUser.id },
+        create: {
+          userId: globalUser.id,
+          mutedEvents: ['OVERDUE', 'SLA_WARNING'],
+        },
+        update: { mutedEvents: ['OVERDUE', 'SLA_WARNING'] },
+      });
+    });
+  });
 });

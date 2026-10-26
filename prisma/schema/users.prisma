@@ -17,15 +17,16 @@ model User {
   createdVehicleSafeguards VehicleSafeguard[] @relation("VehicleSafeguardCreatedBy")
   signedVehicleSafeguards  VehicleSafeguard[] @relation("VehicleSafeguardSignedBy")
 
-  createdTickets            Ticket[]             @relation("TicketCreatedBy")
-  ticketAssignments         TicketAssignee[]     @relation("TicketAssigneeUser")
-  ticketAssignmentsBy       TicketAssignee[]     @relation("TicketAssigneeAssignedBy")
-  ticketComments            TicketComment[]      @relation("TicketCommentAuthor")
+  createdTickets            Ticket[]               @relation("TicketCreatedBy")
+  ticketAssignments         TicketAssignee[]       @relation("TicketAssigneeUser")
+  ticketAssignmentsBy       TicketAssignee[]       @relation("TicketAssigneeAssignedBy")
+  ticketComments            TicketComment[]        @relation("TicketCommentAuthor")
   ticketNotifications       TicketNotification[]
-  ticketEvents              TicketEvent[]        @relation("TicketEventActor")
-  ticketFormsApplied        TicketForm[]         @relation("TicketFormAppliedBy")
-  ticketFormsRejected       TicketForm[]         @relation("TicketFormRejectedBy")
-  ticketNotificationsCaused TicketNotification[] @relation("TicketNotificationActor")
+  ticketEvents              TicketEvent[]          @relation("TicketEventActor")
+  ticketFormsApplied        TicketForm[]           @relation("TicketFormAppliedBy")
+  ticketFormsRejected       TicketForm[]           @relation("TicketFormRejectedBy")
+  ticketNotificationsCaused TicketNotification[]   @relation("TicketNotificationActor")
+  ticketEmailPreference     TicketEmailPreference?
 }
 
 model PasswordResetToken {

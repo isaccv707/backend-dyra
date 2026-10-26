@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CreateTicketCommentDto } from '../dto/create-ticket-comment.dto';
 import {
   changeEventOf,
@@ -419,6 +423,89 @@ describe('TicketCommentsService', () => {
       ],
     ])('%#: %s', (entries, event) => {
       expect(changeEventOf(entries)).toBe(event);
+    });
+  });
+
+  describe('menciones', () => {
+    const ticket = {
+      id: 'ticket-1',
+      code: 42,
+      title: 'Sin internet',
+      branchId,
+      createdById: 'reporter-1',
+      status: 'IN_PROGRESS',
+      firstResponseAt: new Date(),
+      assignees: [{ userId: 'tech-1' }],
+    };
+
+    beforeEach(() => {
+      prisma.ticket.findUnique.mockResolvedValue(ticket);
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+    });
+
+    it('avisa al mencionado con MENTION y no le duplica el aviso del comentario', async () => {
+      prisma.user.findMany
+        // TI of the branch, then the active mentionable users
+        .mockResolvedValueOnce([{ id: 'ti-9', email: 'ti9@dyra.com' }])
+        .mockResolvedValueOnce([
+          { id: 'reporter-1', name: 'Reportero' },
+          { id: 'tech-1', name: 'Técnico' },
+          { id: 'ti-9', name: 'TI 9' },
+        ])
+        .mockResolvedValue([{ id: 'ti-9', email: 'ti9@dyra.com' }]);
+
+      await commentsService.addComment(
+        'ticket-1',
+        { body: 'Revisa esto', mentionedUserIds: ['ti-9'] },
+        staffUser,
+      );
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'tech-1'],
+        expect.objectContaining({ kind: 'COMMENT' }),
+      );
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['ti-9'],
+        expect.objectContaining({
+          kind: 'COMMENT',
+          message: expect.stringContaining('te mencionó'),
+        }),
+      );
+      expect(mailQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'ti9@dyra.com' }),
+      );
+    });
+
+    it('rechaza mencionar a alguien ajeno al ticket', async () => {
+      prisma.user.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ id: 'reporter-1', name: 'Reportero' }]);
+
+      await expect(
+        commentsService.addComment(
+          'ticket-1',
+          { body: 'Hola', mentionedUserIds: ['stranger-1'] },
+          staffUser,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.ticketComment.create).not.toHaveBeenCalled();
+    });
+
+    it('en una nota interna no se puede mencionar a quien reportó', async () => {
+      prisma.user.findMany
+        .mockResolvedValueOnce([{ id: 'ti-9', email: 'ti9@dyra.com' }])
+        .mockResolvedValueOnce([{ id: 'ti-9', name: 'TI 9' }]);
+
+      await expect(
+        commentsService.addComment(
+          'ticket-1',
+          { body: 'Nota', isInternal: true, mentionedUserIds: ['reporter-1'] },
+          staffUser,
+        ),
+      ).rejects.toThrow('solo puedes mencionar a TI');
     });
   });
 });

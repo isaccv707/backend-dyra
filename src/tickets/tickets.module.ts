@@ -15,6 +15,8 @@ import { TicketCommentsService } from './comments/ticket-comments.service';
 import { TicketAssigneesService } from './assignees/ticket-assignees.service';
 import { TicketFormWorkflowService } from './forms/ticket-form-workflow.service';
 import { TicketSlaService } from './sla/ticket-sla.service';
+import { TicketReplyTemplatesController } from './reply-templates/ticket-reply-templates.controller';
+import { TicketReplyTemplatesService } from './reply-templates/ticket-reply-templates.service';
 import { TicketsSlaCron } from './tickets-sla.cron';
 import { TicketSubcategoriesController } from './subcategories/ticket-subcategories.controller';
 import { TicketSubcategoriesService } from './subcategories/ticket-subcategories.service';
@@ -55,6 +57,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     TicketsController,
     TicketSubcategoriesController,
     TicketsAnalyticsController,
+    TicketReplyTemplatesController,
   ],
   providers: [
     TicketsGateway,
@@ -64,6 +67,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     TicketAssigneesService,
     TicketFormWorkflowService,
     TicketSlaService,
+    TicketReplyTemplatesService,
     TicketsSlaCron,
     TicketSubcategoriesService,
     TicketsAnalyticsService,
