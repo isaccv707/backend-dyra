@@ -1,10 +1,4 @@
-import {
-  Category,
-  Prisma,
-  TicketNotificationKind,
-  TicketPriority,
-  TicketStatus,
-} from '@prisma/client';
+import { Category, Prisma, TicketPriority, TicketStatus } from '@prisma/client';
 
 export const TICKET_UPDATE_PERMISSION = 'tickets:update';
 
@@ -107,15 +101,6 @@ export interface ChangeEntry {
   toValue: string | null;
   text: string;
 }
-
-export const notificationKindOf = (
-  entries: ChangeEntry[],
-): TicketNotificationKind =>
-  entries.some((e) => e.type.startsWith('FORM_'))
-    ? 'FORM'
-    : entries.some((e) => e.type === 'ASSIGNED' || e.type === 'UNASSIGNED')
-      ? 'ASSIGNMENT'
-      : 'CHANGE';
 
 export const assigneeIdsOf = (ticket: {
   assignees: { user: { id: string } }[];

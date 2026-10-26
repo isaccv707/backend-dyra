@@ -16,11 +16,11 @@ import {
 describe('TicketAssigneesService', () => {
   let prisma: TicketsTestContext['prisma'];
   let gateway: TicketsTestContext['gateway'];
-  let mailService: TicketsTestContext['mailService'];
+  let mailQueue: TicketsTestContext['mailQueue'];
   let assigneesService: TicketAssigneesService;
 
   beforeEach(async () => {
-    ({ prisma, gateway, mailService, assigneesService } =
+    ({ prisma, gateway, mailQueue, assigneesService } =
       await createTicketsTestContext());
   });
 
@@ -55,7 +55,11 @@ describe('TicketAssigneesService', () => {
 
     it('agrega los nuevos, quita los que salen, registra eventos y manda correo solo a los nuevos', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticket);
-      prisma.user.findMany.mockResolvedValue([activeUser('new-1', 'María')]);
+      prisma.user.findMany
+        // assignee validation, TI of the branch, emails of the new assignees
+        .mockResolvedValueOnce([activeUser('new-1', 'María')])
+        .mockResolvedValueOnce([{ id: 'ti-9', email: 'ti9@dyra.com' }])
+        .mockResolvedValueOnce([{ id: 'new-1', email: 'new-1@dyra.com' }]);
       const updated = {
         id: 'ticket-1',
         assignees: [{ user: { id: 'new-1' } }],
@@ -86,17 +90,20 @@ describe('TicketAssigneesService', () => {
         .body as string;
       expect(body).toContain('María');
       expect(body).toContain('Pedro');
+      // Participants, TI of the branch and whoever was removed; not the actor.
       expect(gateway.notifyUsers).toHaveBeenCalledWith(
-        ['reporter-1', 'new-1'],
+        ['reporter-1', 'new-1', 'ti-9', 'old-1'],
         expect.objectContaining({
           ticketId: 'ticket-1',
+          kind: 'ASSIGNMENT',
           message: expect.any(String),
         }),
       );
-      expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledTimes(1);
-      expect(mailService.sendTicketAssignedEmail).toHaveBeenCalledWith(
-        'new-1@dyra.com',
-        {
+      expect(mailQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(mailQueue.enqueue).toHaveBeenCalledWith({
+        type: 'ticketAssigned',
+        to: 'new-1@dyra.com',
+        data: {
           ticketId: 'ticket-1',
           code: 42,
           title: 'No enciende el monitor',
@@ -104,7 +111,7 @@ describe('TicketAssigneesService', () => {
           branchName: 'Sucursal 1',
           assignedByName: staffUser.name,
         },
-      );
+      });
       expect(gateway.emitTicketUpdated).toHaveBeenCalledWith(updated);
       expect(result).toBe(updated);
     });
@@ -144,10 +151,10 @@ describe('TicketAssigneesService', () => {
 
       expect(prisma.user.findMany).not.toHaveBeenCalled();
       expect(prisma.ticketComment.create).not.toHaveBeenCalled();
-      expect(mailService.sendTicketAssignedEmail).not.toHaveBeenCalled();
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
     });
 
-    it('la asignación se mantiene aunque el correo falle', async () => {
+    it('el correo se encola: la asignación no espera al SMTP', async () => {
       prisma.ticket.findUnique.mockResolvedValue({ ...ticket, assignees: [] });
       prisma.user.findMany.mockResolvedValue([activeUser('new-1', 'María')]);
       const updated = {
@@ -155,13 +162,13 @@ describe('TicketAssigneesService', () => {
         assignees: [{ user: { id: 'new-1' } }],
       };
       prisma.ticket.findUniqueOrThrow.mockResolvedValue(updated);
-      mailService.sendTicketAssignedEmail.mockRejectedValue(
-        new Error('SMTP caído'),
-      );
 
       await expect(
         assigneesService.setAssignees('ticket-1', setDto(['new-1']), staffUser),
       ).resolves.toBe(updated);
+      expect(mailQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'ticketAssigned' }),
+      );
     });
 
     it('lanza NotFoundException si el ticket no existe', async () => {

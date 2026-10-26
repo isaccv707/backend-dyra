@@ -14,7 +14,7 @@ services:
     volumes:
       - ./postgres:/var/lib/postgresql/data
 
-  # Opcional: con REDIS_URL el socket /tickets reparte eventos entre instancias.
+  # Requerido (REDIS_URL): cola de correos y eventos del socket /tickets entre instancias.
   redis:
     image: redis:7.4-alpine
     container_name: dyraredis

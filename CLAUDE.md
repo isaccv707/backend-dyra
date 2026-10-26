@@ -8,7 +8,7 @@ API REST + WebSocket de DYRA (laboratorio clínico multi-sucursal). Dueño de la
 
 ## Stack
 
-NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
+NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · BullMQ (`@nestjs/bullmq` 11; la 12 es solo ESM) · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
 
 ## Comandos
 
@@ -43,7 +43,7 @@ src/<módulo>/        controller, service, dto/, *.spec.ts  (un módulo Nest por
 src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Permissions/@CurrentUser
 src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
-src/mail/            MailService (nodemailer)
+src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;
                      tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
@@ -92,7 +92,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 **Tickets:**
 - `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
 - `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
-- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). Correo al asignar (`ADMIN_APP_URL`), fire-and-forget. Al crear un ticket se avisa (notificación `NEW_TICKET` + correo) a TI activo con `tickets:update` de esa sucursal o global, sin el creador; un fallo del aviso no falla la creación. El cron SLA solo notifica al creador + `ti_staff_room`.
+- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). **Avisos:** quién recibe qué (in-app y correo) se define solo en `TICKET_NOTIFICATION_RULES` (`src/tickets/notifications/ticket-notification-rules.ts`) y se envía con `TicketNotificationsService.dispatch()`; el actor nunca recibe su propio aviso. TI = activos con `tickets:update` de la sucursal o globales. Correos siempre por la cola (`MailQueueService.enqueue`, nunca `await` del SMTP en un request); excepción: el correo de acceso de formularios, que reporta `emailSent`. Un fallo del aviso no falla la creación del ticket.
 
 **PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 
@@ -110,6 +110,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 | `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, asignación de tickets) |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Firma de subidas de documentos firmados |
 | `ADMIN_APP_URL` | Base de links en correos (opcional) |
+| `REDIS_URL` | **Requerido.** Cola de correos (BullMQ) y Socket.IO entre instancias (`docker compose` levanta redis) |
 
 ## Integración
 

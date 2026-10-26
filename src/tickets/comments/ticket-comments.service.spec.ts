@@ -1,6 +1,9 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CreateTicketCommentDto } from '../dto/create-ticket-comment.dto';
-import { TicketCommentsService } from '../comments/ticket-comments.service';
+import {
+  changeEventOf,
+  TicketCommentsService,
+} from '../comments/ticket-comments.service';
 import {
   createTicketsTestContext,
   branchId,
@@ -13,10 +16,12 @@ import {
 describe('TicketCommentsService', () => {
   let prisma: TicketsTestContext['prisma'];
   let gateway: TicketsTestContext['gateway'];
+  let mailQueue: TicketsTestContext['mailQueue'];
   let commentsService: TicketCommentsService;
 
   beforeEach(async () => {
-    ({ prisma, gateway, commentsService } = await createTicketsTestContext());
+    ({ prisma, gateway, mailQueue, commentsService } =
+      await createTicketsTestContext());
   });
 
   afterEach(() => jest.clearAllMocks());
@@ -98,12 +103,36 @@ describe('TicketCommentsService', () => {
       );
     });
 
-    it('no notifica por notas internas (ya llegan solo a TI vía emitNewComment)', async () => {
+    it('avisa también a TI de la sucursal en comentarios públicos', async () => {
+      prisma.ticket.findUnique.mockResolvedValue(ticketWithParties);
+      prisma.ticketComment.create.mockResolvedValue({
+        id: 'comment-1',
+        isInternal: false,
+      });
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'ti-9', email: 'ti9@dyra.com' },
+        { id: staffUser.id, email: staffUser.email },
+      ]);
+
+      await commentsService.addComment('ticket-1', commentDto, staffUser);
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'tech-1', 'ti-9'],
+        expect.objectContaining({ kind: 'COMMENT' }),
+      );
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('una nota interna solo avisa a TI, nunca a quien reportó', async () => {
       prisma.ticket.findUnique.mockResolvedValue(ticketWithParties);
       prisma.ticketComment.create.mockResolvedValue({
         id: 'comment-1',
         isInternal: true,
       });
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'ti-9', email: 'ti9@dyra.com' },
+        { id: staffUser.id, email: staffUser.email },
+      ]);
 
       await commentsService.addComment(
         'ticket-1',
@@ -111,7 +140,14 @@ describe('TicketCommentsService', () => {
         staffUser,
       );
 
-      expect(gateway.notifyUsers).not.toHaveBeenCalled();
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['ti-9'],
+        expect.objectContaining({
+          kind: 'COMMENT',
+          message: expect.stringContaining('nota interna'),
+        }),
+      );
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
     });
 
     it('permite isInternal:true cuando el usuario tiene el permiso tickets:update', async () => {
@@ -290,6 +326,33 @@ describe('TicketCommentsService', () => {
       );
 
       expect(prisma.ticket.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('changeEventOf', () => {
+    const entry = (type: string, toValue: string | null = null) =>
+      ({ type, fromValue: null, toValue, text: '' }) as Parameters<
+        typeof changeEventOf
+      >[0][number];
+
+    it.each([
+      [
+        [entry('FORM_APPLIED'), entry('STATUS_CHANGED', 'RESOLVED')],
+        'FORM_DECIDED',
+      ],
+      [
+        [entry('FORM_REJECTED'), entry('STATUS_CHANGED', 'CANCELLED')],
+        'FORM_DECIDED',
+      ],
+      [[entry('FORM_UPDATED')], 'FORM_UPDATED'],
+      [[entry('ASSIGNED'), entry('UNASSIGNED')], 'ASSIGNMENT'],
+      [[entry('STATUS_CHANGED', 'RESOLVED')], 'RESOLVED'],
+      [
+        [entry('STATUS_CHANGED', 'IN_PROGRESS'), entry('PRIORITY_CHANGED')],
+        'CHANGE',
+      ],
+    ])('%#: %s', (entries, event) => {
+      expect(changeEventOf(entries)).toBe(event);
     });
   });
 });

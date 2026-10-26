@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import { AppModule } from 'src/app.module';
 import { configureApp } from 'src/app.setup';
 import { MailService } from 'src/mail/mail.service';
+import { MailQueueService } from 'src/mail/mail-queue.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { seedRolesAndPermissions } from 'prisma/seeds/roles-permissions.seed';
 import { seedStates } from 'prisma/seeds/states.seed';
@@ -26,6 +27,7 @@ describe('Formularios de tickets (e2e)', () => {
     sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
     sendOtpEmail: jest.fn().mockResolvedValue(undefined),
   };
+  const mailQueue = { enqueue: jest.fn() };
 
   const ids = {
     branchId: '',
@@ -55,6 +57,8 @@ describe('Formularios de tickets (e2e)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(MailService)
       .useValue(mail)
+      .overrideProvider(MailQueueService)
+      .useValue(mailQueue)
       .compile();
     app = moduleRef.createNestApplication({ bodyParser: false });
     configureApp(app);
