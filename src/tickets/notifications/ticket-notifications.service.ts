@@ -22,6 +22,10 @@ import {
   TicketWithRelations,
 } from '../tickets.shared';
 import {
+  AUTO_CLOSE_BUSINESS_DAYS,
+  ESCALATION_ROLE,
+} from '../constants/ticket-lifecycle.const';
+import {
   TICKET_NOTIFICATION_RULES,
   TicketAudience,
   TicketNotificationEvent,
@@ -56,6 +60,14 @@ const EMAIL_HEADINGS: Partial<Record<TicketNotificationEvent, string>> = {
   RESOLVED: 'Tu ticket fue resuelto',
   FORM_DECIDED: 'Tu solicitud fue revisada',
   OVERDUE: 'Ticket con tiempo de atención vencido',
+  SLA_WARNING: 'Ticket por vencer',
+  ESCALATION: 'Ticket vencido sin asignar',
+  AUTO_CLOSED: 'Tu ticket se cerró',
+};
+
+/** Extra text of the generic email, after the event's message. */
+const EMAIL_FOOTERS: Partial<Record<TicketNotificationEvent, string>> = {
+  RESOLVED: `Si el problema sigue, responde en el ticket: se reabrirá. Si no hay respuesta en ${AUTO_CLOSE_BUSINESS_DAYS} días hábiles se cerrará automáticamente.`,
 };
 
 const unique = (ids: string[]) => [...new Set(ids)];
@@ -80,13 +92,22 @@ export class TicketNotificationsService {
     options: DispatchOptions,
   ) {
     const rule = TICKET_NOTIFICATION_RULES[event];
-    const needsTi = [...rule.inApp, ...rule.email].includes('tiStaff');
+    const audiences = [...rule.inApp, ...rule.email];
+    const needsTi =
+      audiences.includes('tiStaff') ||
+      (audiences.includes('assigneesOrTi') && ticket.assigneeIds.length === 0);
     const tiStaff = needsTi ? await this.findTiStaff(ticket.branchId) : [];
+    const administrators = audiences.includes('administrators')
+      ? await this.findAdministrators(ticket.branchId)
+      : [];
 
+    const tiIds = tiStaff.map((member) => member.id);
     const audienceIds: Record<TicketAudience, string[]> = {
       creator: [ticket.createdById],
       assignees: ticket.assigneeIds,
-      tiStaff: tiStaff.map((member) => member.id),
+      tiStaff: tiIds,
+      assigneesOrTi: ticket.assigneeIds.length > 0 ? ticket.assigneeIds : tiIds,
+      administrators: administrators.map((admin) => admin.id),
       addedAssignees: options.addedAssigneeIds ?? [],
       removedAssignees: options.removedAssigneeIds ?? [],
     };
@@ -104,7 +125,9 @@ export class TicketNotificationsService {
     const emailIds = recipients(rule.email);
     if (emailIds.length === 0) return;
 
-    const known = new Map(tiStaff.map((member) => [member.id, member.email]));
+    const known = new Map(
+      [...tiStaff, ...administrators].map((user) => [user.id, user.email]),
+    );
     const missing = emailIds.filter((id) => !known.has(id));
     if (missing.length > 0) {
       const users = await this.prisma.user.findMany({
@@ -126,11 +149,28 @@ export class TicketNotificationsService {
             code: ticket.code,
             title: ticket.title,
             heading: EMAIL_HEADINGS[event] ?? 'Novedades del ticket',
-            message: options.message,
+            message: [options.message, EMAIL_FOOTERS[event]]
+              .filter(Boolean)
+              .join('\n\n'),
           },
         },
       );
     }
+  }
+
+  /** Active users with ESCALATION_ROLE of the branch, or global. */
+  private findAdministrators(branchId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: { name: ESCALATION_ROLE },
+        OR: [
+          { branches: { none: {} } },
+          { branches: { some: { id: branchId } } },
+        ],
+      },
+      select: { id: true, email: true },
+    });
   }
 
   /** Active TI (tickets:update) of the branch, or global. */
@@ -310,52 +350,5 @@ export class TicketNotificationsService {
       },
     });
     return { deleted: count };
-  }
-
-  async notifyOverdueTickets(): Promise<{ notified: number }> {
-    const now = new Date();
-    const overdue = await this.prisma.ticket.findMany({
-      where: {
-        dueAt: { lt: now },
-        overdueNotifiedAt: null,
-        // ON_HOLD pauses the SLA (dueAt moves when it resumes).
-        status: { notIn: ['ON_HOLD', 'RESOLVED', 'CLOSED', 'CANCELLED'] },
-      },
-      select: {
-        id: true,
-        code: true,
-        title: true,
-        branchId: true,
-        createdById: true,
-        assignees: { select: { userId: true } },
-      },
-    });
-
-    let notified = 0;
-    for (const ticket of overdue) {
-      // Claim first: with several instances only one notifies each ticket.
-      const { count } = await this.prisma.ticket.updateMany({
-        where: { id: ticket.id, overdueNotifiedAt: null },
-        data: { overdueNotifiedAt: now },
-      });
-      if (count === 0) continue;
-      notified++;
-
-      const message = `El ticket #${ticket.code} "${ticket.title}" venció su tiempo de atención (SLA).`;
-
-      await this.dispatch(
-        'OVERDUE',
-        { ...ticket, assigneeIds: ticket.assignees.map((a) => a.userId) },
-        { message },
-      );
-      this.ticketsGateway.emitOverdueTicket({
-        id: ticket.id,
-        code: ticket.code,
-        title: ticket.title,
-        branchId: ticket.branchId,
-      });
-    }
-
-    return { notified };
   }
 }

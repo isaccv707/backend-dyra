@@ -1,3 +1,4 @@
+import { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import {
   BadRequestException,
   ForbiddenException,

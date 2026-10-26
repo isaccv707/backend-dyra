@@ -71,6 +71,8 @@ enum TicketNotificationKind {
   OVERDUE
   FORM
   NEW_TICKET
+  SLA_WARNING
+  ESCALATION
 }
 
 model TicketEvent {
@@ -80,8 +82,9 @@ model TicketEvent {
   ticketId String @map("ticket_id")
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
-  actorId String @map("actor_id")
-  actor   User   @relation("TicketEventActor", fields: [actorId], references: [id])
+  /// null = done by the system (e.g. auto-close).
+  actorId String? @map("actor_id")
+  actor   User?   @relation("TicketEventActor", fields: [actorId], references: [id], onDelete: Restrict)
 
   fromValue String? @map("from_value")
   toValue   String? @map("to_value")
@@ -127,6 +130,10 @@ model Ticket {
   reopenedCount     Int       @default(0) @map("reopened_count")
   dueAt             DateTime? @map("due_at")
   overdueNotifiedAt DateTime? @map("overdue_notified_at")
+  /// "SLA about to expire" notice sent (75% of the SLA used).
+  slaWarnedAt       DateTime? @map("sla_warned_at")
+  /// Overdue without assignees for a while: escalated to the administrators.
+  escalatedAt       DateTime? @map("escalated_at")
   /// The SLA stops while the ticket is ON_HOLD: start of the current pause.
   onHoldSince       DateTime? @map("on_hold_since")
   /// Total seconds spent ON_HOLD (already added to dueAt).
@@ -176,8 +183,9 @@ model TicketComment {
   ticketId String @map("ticket_id")
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
-  authorId String @map("author_id")
-  author   User   @relation("TicketCommentAuthor", fields: [authorId], references: [id])
+  /// null = written by the system itself (e.g. auto-close).
+  authorId String? @map("author_id")
+  author   User?   @relation("TicketCommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
 
   createdAt DateTime @default(now())
 

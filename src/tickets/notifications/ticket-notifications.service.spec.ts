@@ -59,7 +59,9 @@ describe('TicketNotificationsService', () => {
         to: 'reporter@dyra.com',
         data: expect.objectContaining({
           heading: 'Tu ticket fue resuelto',
-          message: 'TI resolvió el ticket.',
+          message: expect.stringMatching(
+            /^TI resolvió el ticket\.\n\n.*se cerrará automáticamente/s,
+          ),
         }),
       });
     });
@@ -278,81 +280,6 @@ describe('TicketNotificationsService', () => {
           createdAt: { lt: new Date('2026-07-24T00:00:00.000Z') },
         },
       });
-    });
-  });
-
-  describe('notifyOverdueTickets', () => {
-    const overdueTicket = {
-      id: 'ticket-1',
-      code: 42,
-      title: 'No enciende el monitor',
-      branchId,
-      createdById: 'reporter-1',
-      assignees: [{ userId: 'tech-1' }],
-    };
-
-    it('reclama cada ticket vencido, avisa al creador y a los asignados y transmite a TI de su sucursal', async () => {
-      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
-      prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
-      prisma.user.findMany.mockResolvedValue([
-        { id: 'tech-1', email: 'tech@dyra.com' },
-      ]);
-
-      const result = await notificationsService.notifyOverdueTickets();
-
-      expect(prisma.ticket.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            status: { notIn: ['ON_HOLD', 'RESOLVED', 'CLOSED', 'CANCELLED'] },
-          }),
-        }),
-      );
-      expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
-        where: { id: 'ticket-1', overdueNotifiedAt: null },
-        data: { overdueNotifiedAt: expect.any(Date) },
-      });
-      expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
-        data: ['reporter-1', 'tech-1'].map((userId) => ({
-          userId,
-          ticketId: 'ticket-1',
-          kind: 'OVERDUE',
-          message: expect.stringContaining('#42'),
-        })),
-      });
-      // Email only to whoever must act: the assignees.
-      expect(mailQueue.enqueue).toHaveBeenCalledTimes(1);
-      expect(mailQueue.enqueue).toHaveBeenCalledWith({
-        type: 'ticketUpdate',
-        to: 'tech@dyra.com',
-        data: expect.objectContaining({ ticketId: 'ticket-1', code: 42 }),
-      });
-      expect(gateway.emitOverdueTicket).toHaveBeenCalledWith({
-        id: 'ticket-1',
-        code: 42,
-        title: 'No enciende el monitor',
-        branchId,
-      });
-      expect(result).toEqual({ notified: 1 });
-    });
-
-    it('no repite el aviso si otra instancia ya reclamó el ticket', async () => {
-      prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
-      prisma.ticket.updateMany.mockResolvedValue({ count: 0 });
-
-      const result = await notificationsService.notifyOverdueTickets();
-
-      expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
-      expect(gateway.emitOverdueTicket).not.toHaveBeenCalled();
-      expect(result).toEqual({ notified: 0 });
-    });
-
-    it('no hace nada si no hay tickets vencidos', async () => {
-      prisma.ticket.findMany.mockResolvedValue([]);
-
-      const result = await notificationsService.notifyOverdueTickets();
-
-      expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
-      expect(result).toEqual({ notified: 0 });
     });
   });
 });
