@@ -83,6 +83,24 @@ const FORM_STATUS_WHERE: Record<TicketFormStatus, Prisma.TicketWhereInput> = {
 };
 
 /**
+ * Title/description contain the term (trigram-indexed ILIKE); "123" or "#123"
+ * also matches that folio.
+ */
+export function ticketSearchWhere(search?: string): Prisma.TicketWhereInput {
+  const term = search?.trim();
+  if (!term) return {};
+
+  const folio = /^#?(\d{1,9})$/.exec(term);
+  return {
+    OR: [
+      ...(folio ? [{ code: Number(folio[1]) }] : []),
+      { title: { contains: term, mode: 'insensitive' } },
+      { description: { contains: term, mode: 'insensitive' } },
+    ],
+  };
+}
+
+/**
  * Tickets a user may create per minute. Counted on created tickets, so a form
  * rejected by validation doesn't use up the quota (the throttler on the route
  * only stops floods).
@@ -230,8 +248,9 @@ export class TicketsService {
   }
 
   async findAll(dto: FindTicketsDto, user: RequestUser) {
+    // Search is built here (ticketSearchWhere) to also match the folio.
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
-      searchFields: ['title', 'description'],
+      searchFields: [],
       defaultSort: { createdAt: 'desc' },
       allowedFields: TICKET_ALLOWED_FIELDS,
     });
@@ -240,6 +259,7 @@ export class TicketsService {
 
     const conditions: Prisma.TicketWhereInput[] = [
       where as Prisma.TicketWhereInput,
+      ticketSearchWhere(dto.search),
       {
         ...(!onlyMine && userBranchFilter(user, dto.branchId)),
         ...(dto.status && { status: dto.status }),

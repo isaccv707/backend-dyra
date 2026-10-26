@@ -12,7 +12,7 @@ import {
   addBusinessTime,
   businessTimeBetween,
 } from './constants/business-hours';
-import { TicketsService } from './tickets.service';
+import { TicketsService, ticketSearchWhere } from './tickets.service';
 import {
   createTicketsTestContext,
   branchId,
@@ -936,5 +936,36 @@ describe('TicketsService', () => {
         ]),
       );
     });
+  });
+
+  describe('ticketSearchWhere', () => {
+    it('busca en título y descripción sin distinguir mayúsculas', () => {
+      expect(ticketSearchWhere(' impresora ')).toEqual({
+        OR: [
+          { title: { contains: 'impresora', mode: 'insensitive' } },
+          { description: { contains: 'impresora', mode: 'insensitive' } },
+        ],
+      });
+    });
+
+    it.each(['123', '#123'])('"%s" también busca por folio', (term) => {
+      expect(ticketSearchWhere(term).OR).toContainEqual({ code: 123 });
+    });
+
+    it('sin término no filtra', () => {
+      expect(ticketSearchWhere('  ')).toEqual({});
+    });
+  });
+
+  it('findAll aplica la búsqueda por folio', async () => {
+    prisma.$transaction.mockResolvedValue([[], 0]);
+
+    await service.findAll({ search: '#7' } as FindTicketsDto, staffUser);
+
+    expect(prisma.ticket.findMany.mock.calls[0][0].where.AND).toContainEqual(
+      expect.objectContaining({
+        OR: expect.arrayContaining([{ code: 7 }]),
+      }),
+    );
   });
 });
