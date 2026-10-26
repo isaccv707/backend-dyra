@@ -3,20 +3,41 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Ticket } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import { CreateTicketCommentDto } from '../dto/create-ticket-comment.dto';
-import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
-import { TicketsGateway } from '../tickets.gateway';
 import {
-  ChangeEntry,
-  commentWithAuthor,
-  notificationKindOf,
-} from '../tickets.shared';
+  DispatchOptions,
+  NotifiableTicket,
+  TicketNotificationsService,
+} from '../notifications/ticket-notifications.service';
+import { TicketNotificationEvent } from '../notifications/ticket-notification-rules';
+import { TicketsGateway } from '../tickets.gateway';
+import { ChangeEntry, commentWithAuthor } from '../tickets.shared';
 import { assertTicketAccess } from '../utils/ticket-access.util';
 
 const COMMENT_PREVIEW_LENGTH = 140;
+
+/** Notice event of a batch of changes (one system comment). */
+export const changeEventOf = (
+  entries: ChangeEntry[],
+): TicketNotificationEvent => {
+  if (
+    entries.some((e) => e.type === 'FORM_APPLIED' || e.type === 'FORM_REJECTED')
+  ) {
+    return 'FORM_DECIDED';
+  }
+  if (entries.some((e) => e.type.startsWith('FORM_'))) return 'FORM_UPDATED';
+  if (entries.some((e) => e.type === 'ASSIGNED' || e.type === 'UNASSIGNED')) {
+    return 'ASSIGNMENT';
+  }
+  if (
+    entries.some((e) => e.type === 'STATUS_CHANGED' && e.toValue === 'RESOLVED')
+  ) {
+    return 'RESOLVED';
+  }
+  return 'CHANGE';
+};
 
 @Injectable()
 export class TicketCommentsService {
@@ -79,35 +100,35 @@ export class TicketCommentsService {
       ...assigneeIds,
     ]);
 
-    if (!comment.isInternal) {
-      const preview =
-        dto.body.length > COMMENT_PREVIEW_LENGTH
-          ? `${dto.body.slice(0, COMMENT_PREVIEW_LENGTH)}…`
-          : dto.body;
+    const preview =
+      dto.body.length > COMMENT_PREVIEW_LENGTH
+        ? `${dto.body.slice(0, COMMENT_PREVIEW_LENGTH)}…`
+        : dto.body;
 
-      await this.notifications.notify(
-        [ticket.createdById, ...assigneeIds].filter((id) => id !== user.id),
-        ticket,
-        {
-          kind: 'COMMENT',
-          message: `${user.name} comentó: ${preview}`,
-          actorId: user.id,
-        },
-      );
-    }
+    await this.notifications.dispatch(
+      comment.isInternal ? 'INTERNAL_NOTE' : 'COMMENT',
+      { ...ticket, assigneeIds },
+      {
+        message: `${user.name} ${comment.isInternal ? 'agregó una nota interna' : 'comentó'}: ${preview}`,
+        actorId: user.id,
+      },
+    );
 
     return comment;
   }
 
   /**
-   * Records changes as one system comment plus a TicketEvent each, and
-   * notifies the recipients except the actor.
+   * Records changes as one system comment plus a TicketEvent each, and sends
+   * the notices of their event (changeEventOf).
    */
   async recordChanges(
-    ticket: Pick<Ticket, 'id' | 'branchId' | 'code' | 'title'>,
+    ticket: NotifiableTicket,
     entries: ChangeEntry[],
-    recipientIds: string[],
     user: RequestUser,
+    options: Pick<
+      DispatchOptions,
+      'addedAssigneeIds' | 'removedAssigneeIds' | 'email'
+    > = {},
   ) {
     if (entries.length === 0) return;
     const ticketId = ticket.id;
@@ -135,12 +156,14 @@ export class TicketCommentsService {
       })),
     });
 
-    this.ticketsGateway.emitNewComment(ticket, comment, recipientIds);
-    // The actor already knows what they did: no notification for them.
-    await this.notifications.notify(
-      recipientIds.filter((id) => id !== user.id),
-      ticket,
-      { kind: notificationKindOf(entries), message, actorId: user.id },
-    );
+    this.ticketsGateway.emitNewComment(ticket, comment, [
+      ticket.createdById,
+      ...ticket.assigneeIds,
+    ]);
+    await this.notifications.dispatch(changeEventOf(entries), ticket, {
+      ...options,
+      message,
+      actorId: user.id,
+    });
   }
 }

@@ -13,15 +13,100 @@ import {
 describe('TicketNotificationsService', () => {
   let prisma: TicketsTestContext['prisma'];
   let gateway: TicketsTestContext['gateway'];
+  let mailQueue: TicketsTestContext['mailQueue'];
   let commentsService: TicketCommentsService;
   let notificationsService: TicketNotificationsService;
 
   beforeEach(async () => {
-    ({ prisma, gateway, commentsService, notificationsService } =
+    ({ prisma, gateway, mailQueue, commentsService, notificationsService } =
       await createTicketsTestContext());
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  describe('dispatch (reglas por evento)', () => {
+    const ticket = {
+      id: 'ticket-1',
+      code: 42,
+      title: 'No enciende el monitor',
+      branchId,
+      createdById: 'reporter-1',
+      assigneeIds: ['tech-1'],
+    };
+    const emails = [
+      { id: 'reporter-1', email: 'reporter@dyra.com' },
+      { id: 'tech-1', email: 'tech@dyra.com' },
+    ];
+
+    it('RESOLVED: aviso a creador y asignados, correo solo al creador', async () => {
+      prisma.user.findMany.mockResolvedValue([emails[0]]);
+
+      await notificationsService.dispatch('RESOLVED', ticket, {
+        message: 'TI resolvió el ticket.',
+        actorId: 'tech-1',
+      });
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1'],
+        expect.objectContaining({ kind: 'CHANGE' }),
+      );
+      expect(prisma.user.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['reporter-1'] }, isActive: true },
+        select: { id: true, email: true },
+      });
+      expect(mailQueue.enqueue).toHaveBeenCalledWith({
+        type: 'ticketUpdate',
+        to: 'reporter@dyra.com',
+        data: expect.objectContaining({
+          heading: 'Tu ticket fue resuelto',
+          message: 'TI resolvió el ticket.',
+        }),
+      });
+    });
+
+    it('CHANGE: solo aviso in-app, sin correo ni TI', async () => {
+      await notificationsService.dispatch('CHANGE', ticket, {
+        message: 'cambió la prioridad',
+        actorId: 'staff-1',
+      });
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'tech-1'],
+        expect.objectContaining({ kind: 'CHANGE' }),
+      );
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('FORM_DECIDED: correo al creador', async () => {
+      prisma.user.findMany.mockResolvedValue([emails[0]]);
+
+      await notificationsService.dispatch('FORM_DECIDED', ticket, {
+        message: 'aprobó la solicitud',
+        actorId: 'staff-1',
+      });
+
+      expect(gateway.notifyUsers).toHaveBeenCalledWith(
+        ['reporter-1', 'tech-1'],
+        expect.objectContaining({ kind: 'FORM' }),
+      );
+      expect(mailQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(mailQueue.enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({ to: 'reporter@dyra.com' }),
+      );
+    });
+
+    it('no manda correo a usuarios inactivos', async () => {
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await notificationsService.dispatch('RESOLVED', ticket, {
+        message: 'resuelto',
+        actorId: 'tech-1',
+      });
+
+      expect(mailQueue.enqueue).not.toHaveBeenCalled();
+    });
+  });
 
   describe('persistencia de notificaciones', () => {
     const commentDto: CreateTicketCommentDto = { body: 'Ya voy en camino' };
@@ -203,11 +288,15 @@ describe('TicketNotificationsService', () => {
       title: 'No enciende el monitor',
       branchId,
       createdById: 'reporter-1',
+      assignees: [{ userId: 'tech-1' }],
     };
 
-    it('reclama cada ticket vencido, avisa al creador y transmite a TI de su sucursal', async () => {
+    it('reclama cada ticket vencido, avisa al creador y a los asignados y transmite a TI de su sucursal', async () => {
       prisma.ticket.findMany.mockResolvedValue([overdueTicket]);
       prisma.ticket.updateMany.mockResolvedValue({ count: 1 });
+      prisma.user.findMany.mockResolvedValue([
+        { id: 'tech-1', email: 'tech@dyra.com' },
+      ]);
 
       const result = await notificationsService.notifyOverdueTickets();
 
@@ -223,14 +312,19 @@ describe('TicketNotificationsService', () => {
         data: { overdueNotifiedAt: expect.any(Date) },
       });
       expect(prisma.ticketNotification.createMany).toHaveBeenCalledWith({
-        data: [
-          {
-            userId: 'reporter-1',
-            ticketId: 'ticket-1',
-            kind: 'OVERDUE',
-            message: expect.stringContaining('#42'),
-          },
-        ],
+        data: ['reporter-1', 'tech-1'].map((userId) => ({
+          userId,
+          ticketId: 'ticket-1',
+          kind: 'OVERDUE',
+          message: expect.stringContaining('#42'),
+        })),
+      });
+      // Email only to whoever must act: the assignees.
+      expect(mailQueue.enqueue).toHaveBeenCalledTimes(1);
+      expect(mailQueue.enqueue).toHaveBeenCalledWith({
+        type: 'ticketUpdate',
+        to: 'tech@dyra.com',
+        data: expect.objectContaining({ ticketId: 'ticket-1', code: 42 }),
       });
       expect(gateway.emitOverdueTicket).toHaveBeenCalledWith({
         id: 'ticket-1',

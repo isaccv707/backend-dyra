@@ -464,9 +464,8 @@ export class TicketsService {
     );
 
     await this.comments.recordChanges(
-      previousTicket,
+      { ...previousTicket, assigneeIds: assigneeIdsOf(updatedTicket) },
       entries,
-      [previousTicket.createdById, ...assigneeIdsOf(updatedTicket)],
       user,
     );
   }

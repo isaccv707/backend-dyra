@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
+import { MailQueueService } from 'src/mail/mail-queue.service';
 import { MailService } from 'src/mail/mail.service';
 import { TicketAssigneesService } from '../assignees/ticket-assignees.service';
 import { TicketCommentsService } from '../comments/ticket-comments.service';
@@ -110,10 +111,9 @@ export async function createTicketsTestContext() {
     emitOverdueTicket: jest.fn(),
   };
   const mailService = {
-    sendTicketAssignedEmail: jest.fn().mockResolvedValue(undefined),
     sendAccessGrantedEmail: jest.fn().mockResolvedValue(undefined),
-    sendNewTicketEmail: jest.fn().mockResolvedValue(undefined),
   };
+  const mailQueue = { enqueue: jest.fn() };
 
   const module = await Test.createTestingModule({
     providers: [
@@ -125,6 +125,7 @@ export async function createTicketsTestContext() {
       { provide: PrismaService, useValue: prisma },
       { provide: TicketsGateway, useValue: gateway },
       { provide: MailService, useValue: mailService },
+      { provide: MailQueueService, useValue: mailQueue },
       { provide: TicketFormsService, useValue: ticketForms },
     ],
   }).compile();
@@ -134,6 +135,7 @@ export async function createTicketsTestContext() {
     ticketForms,
     gateway,
     mailService,
+    mailQueue,
     ticketsService: module.get(TicketsService),
     notificationsService: module.get(TicketNotificationsService),
     commentsService: module.get(TicketCommentsService),

@@ -26,14 +26,14 @@ import {
 describe('TicketsService', () => {
   let prisma: TicketsTestContext['prisma'];
   let gateway: TicketsTestContext['gateway'];
-  let mailService: TicketsTestContext['mailService'];
+  let mailQueue: TicketsTestContext['mailQueue'];
   let service: TicketsService;
 
   beforeEach(async () => {
     ({
       prisma,
       gateway,
-      mailService,
+      mailQueue,
       ticketsService: service,
     } = await createTicketsTestContext());
   });
@@ -80,6 +80,8 @@ describe('TicketsService', () => {
         category: 'HARDWARE',
         priority: 'MEDIUM',
         branch: { id: branchId, name: 'Sucursal 1' },
+        createdById: globalUser.id,
+        assignees: [],
       };
 
       beforeEach(() => {
@@ -90,13 +92,12 @@ describe('TicketsService', () => {
         ]);
       });
 
-      it('busca a TI activo de la sucursal (o global), sin el creador', async () => {
+      it('busca a TI activo de la sucursal (o global)', async () => {
         await service.create(createDto, globalUser);
 
         expect(prisma.user.findMany).toHaveBeenCalledWith({
           where: {
             isActive: true,
-            id: { not: globalUser.id },
             role: {
               permissions: { some: { action: 'tickets:update' } },
             },
@@ -127,13 +128,14 @@ describe('TicketsService', () => {
         );
       });
 
-      it('envía un correo a cada miembro de TI', async () => {
+      it('encola un correo a cada miembro de TI', async () => {
         await service.create(createDto, globalUser);
 
-        expect(mailService.sendNewTicketEmail).toHaveBeenCalledTimes(2);
-        expect(mailService.sendNewTicketEmail).toHaveBeenCalledWith(
-          'ti@dyra.com',
-          {
+        expect(mailQueue.enqueue).toHaveBeenCalledTimes(2);
+        expect(mailQueue.enqueue).toHaveBeenCalledWith({
+          type: 'newTicket',
+          to: 'ti@dyra.com',
+          data: {
             ticketId: 'ticket-1',
             code: 7,
             title: 'No enciende el monitor',
@@ -142,6 +144,24 @@ describe('TicketsService', () => {
             branchName: 'Sucursal 1',
             createdByName: globalUser.name,
           },
+        });
+      });
+
+      it('si quien crea es TI, no se avisa a sí mismo', async () => {
+        prisma.ticket.create.mockResolvedValue({
+          ...created,
+          createdById: 'staff-1',
+        });
+
+        await service.create(createDto, { ...staffUser, id: 'staff-1' });
+
+        expect(gateway.notifyUsers).toHaveBeenCalledWith(
+          ['staff-2'],
+          expect.objectContaining({ kind: 'NEW_TICKET' }),
+        );
+        expect(mailQueue.enqueue).toHaveBeenCalledTimes(1);
+        expect(mailQueue.enqueue).toHaveBeenCalledWith(
+          expect.objectContaining({ to: 'ti2@dyra.com' }),
         );
       });
 
@@ -151,14 +171,13 @@ describe('TicketsService', () => {
         await service.create(createDto, globalUser);
 
         expect(prisma.ticketNotification.createMany).not.toHaveBeenCalled();
-        expect(mailService.sendNewTicketEmail).not.toHaveBeenCalled();
+        expect(mailQueue.enqueue).not.toHaveBeenCalled();
       });
 
       it('un fallo al avisar no hace fallar la creación', async () => {
         prisma.ticketNotification.createMany.mockRejectedValue(
           new Error('db caída'),
         );
-        mailService.sendNewTicketEmail.mockRejectedValue(new Error('smtp'));
 
         await expect(service.create(createDto, globalUser)).resolves.toBe(
           created,
