@@ -414,6 +414,32 @@ export class TicketsService {
     return canSeeAllTickets;
   }
 
+  /**
+   * Tickets the user created or is assigned to. With branchId, both are limited
+   * to that branch, except assignments in branches the user has no access to:
+   * those have no branch of their own to show up in, so they always appear.
+   */
+  private ownTicketsFilter(
+    user: RequestUser,
+    branchId?: string,
+  ): Prisma.TicketWhereInput {
+    const isAssignee = { assignees: { some: { userId: user.id } } };
+    if (!branchId) {
+      return { OR: [{ createdById: user.id }, isAssignee] };
+    }
+
+    const userBranchIds = user.branches?.map((b) => b.id) ?? [];
+    return {
+      OR: [
+        { createdById: user.id, branchId },
+        { ...isAssignee, branchId },
+        ...(userBranchIds.length > 0
+          ? [{ ...isAssignee, branchId: { notIn: userBranchIds } }]
+          : []),
+      ],
+    };
+  }
+
   async findAll(dto: FindTicketsDto, user: RequestUser) {
     const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
       searchFields: ['title', 'description'],
@@ -421,14 +447,12 @@ export class TicketsService {
       allowedFields: TICKET_ALLOWED_FIELDS,
     });
 
-    const canSeeAllTickets = this.hasTicketUpdatePermission(user);
+    const onlyMine = dto.mine || !this.hasTicketUpdatePermission(user);
 
     const conditions: Prisma.TicketWhereInput[] = [
       where as Prisma.TicketWhereInput,
       {
-        ...(canSeeAllTickets
-          ? userBranchFilter(user, dto.branchId)
-          : dto.branchId && { branchId: dto.branchId }),
+        ...(!onlyMine && userBranchFilter(user, dto.branchId)),
         ...(dto.status && { status: dto.status }),
         ...(dto.category && { category: dto.category }),
         ...(dto.priority && { priority: dto.priority }),
@@ -447,13 +471,8 @@ export class TicketsService {
     if (dto.assignedToMe) {
       conditions.push({ assignees: { some: { userId: user.id } } });
     }
-    if (!canSeeAllTickets) {
-      conditions.push({
-        OR: [
-          { createdById: user.id },
-          { assignees: { some: { userId: user.id } } },
-        ],
-      });
+    if (onlyMine) {
+      conditions.push(this.ownTicketsFilter(user, dto.branchId));
     }
 
     const finalWhere: Prisma.TicketWhereInput = { AND: conditions };

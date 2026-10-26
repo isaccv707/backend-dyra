@@ -90,8 +90,9 @@ export class TicketsController {
     description:
       'Devuelve los tickets paginados, filtrables por sucursal, estado, categoría, prioridad, usuario asignado (assigneeId) ' +
       'o solo los asignados al usuario autenticado (assignedToMe=true). Sin el permiso tickets:update, solo se devuelven ' +
-      'los tickets reportados por el propio usuario (su histórico) más los que tiene asignados actualmente, sin importar ' +
-      'la sucursal en la que se crearon ni las sucursales a las que el usuario esté asignado.',
+      'los tickets reportados por el propio usuario (su histórico) más los que tiene asignados actualmente; mine=true aplica ' +
+      'esa misma regla a quien sí tiene tickets:update ("Mis tickets"). En ese modo, branchId acota los creados y asignados ' +
+      'a esa sucursal, pero los asignados en sucursales a las que el usuario no tiene acceso siempre se incluyen.',
   })
   @ApiResponse({ status: 200, description: 'Listado paginado de tickets.' })
   @Get()

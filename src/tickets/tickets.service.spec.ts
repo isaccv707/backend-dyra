@@ -464,24 +464,56 @@ describe('TicketsService', () => {
       expect(where).not.toContain('branchId');
     });
 
-    it('permite filtrar por branchId a un usuario sin tickets:update como un filtro más sobre sus tickets', async () => {
+    it('con branchId, acota sus tickets a esa sucursal pero conserva los asignados de sucursales sin acceso', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll({ branchId } as FindTicketsDto, scopedUser);
+
+      expect(whereConditions()).toContainEqual({
+        OR: [
+          { createdById: scopedUser.id, branchId },
+          { assignees: { some: { userId: scopedUser.id } }, branchId },
+          {
+            assignees: { some: { userId: scopedUser.id } },
+            branchId: { notIn: [branchId] },
+          },
+        ],
+      });
+    });
+
+    it('con branchId, un usuario global no agrega asignados de otras sucursales', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.findAll({ branchId } as FindTicketsDto, globalUser);
+
+      expect(whereConditions()).toContainEqual({
+        OR: [
+          { createdById: globalUser.id, branchId },
+          { assignees: { some: { userId: globalUser.id } }, branchId },
+        ],
+      });
+    });
+
+    it('mine=true restringe a TI a sus tickets propios o asignados, sin el filtro de sucursales de la bandeja', async () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       await service.findAll(
-        { branchId: 'other-branch' } as FindTicketsDto,
-        scopedUser,
+        { mine: true, branchId } as FindTicketsDto,
+        scopedStaffUser,
       );
 
-      expect(whereConditions()).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ branchId: 'other-branch' }),
+      expect(whereConditions()).toContainEqual({
+        OR: [
+          { createdById: scopedStaffUser.id, branchId },
+          { assignees: { some: { userId: scopedStaffUser.id } }, branchId },
           {
-            OR: [
-              { createdById: scopedUser.id },
-              { assignees: { some: { userId: scopedUser.id } } },
-            ],
+            assignees: { some: { userId: scopedStaffUser.id } },
+            branchId: { notIn: [branchId] },
           },
-        ]),
+        ],
+      });
+      expect(whereConditions()).not.toContainEqual(
+        expect.objectContaining({ branchId: { in: [branchId] } }),
       );
     });
   });
