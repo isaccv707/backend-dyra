@@ -1,22 +1,51 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Ticket } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
 import { CreateTicketCommentDto } from '../dto/create-ticket-comment.dto';
-import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
+import {
+  DispatchOptions,
+  NotifiableTicket,
+  TicketNotificationsService,
+} from '../notifications/ticket-notifications.service';
+import { TicketNotificationEvent } from '../notifications/ticket-notification-rules';
 import { TicketsGateway } from '../tickets.gateway';
+import { Ticket } from '@prisma/client';
 import {
   ChangeEntry,
   commentWithAuthor,
-  notificationKindOf,
+  TICKET_STATUS_LABELS,
+  ticketWithRelations,
 } from '../tickets.shared';
+import { computeTraceabilityFields } from '../utils/ticket-traceability.util';
 import { assertTicketAccess } from '../utils/ticket-access.util';
 
 const COMMENT_PREVIEW_LENGTH = 140;
+
+/** Notice event of a batch of changes (one system comment). */
+export const changeEventOf = (
+  entries: ChangeEntry[],
+): TicketNotificationEvent => {
+  if (
+    entries.some((e) => e.type === 'FORM_APPLIED' || e.type === 'FORM_REJECTED')
+  ) {
+    return 'FORM_DECIDED';
+  }
+  if (entries.some((e) => e.type.startsWith('FORM_'))) return 'FORM_UPDATED';
+  if (entries.some((e) => e.type === 'ASSIGNED' || e.type === 'UNASSIGNED')) {
+    return 'ASSIGNMENT';
+  }
+  if (
+    entries.some((e) => e.type === 'STATUS_CHANGED' && e.toValue === 'RESOLVED')
+  ) {
+    return 'RESOLVED';
+  }
+  return 'CHANGE';
+};
 
 @Injectable()
 export class TicketCommentsService {
@@ -46,6 +75,23 @@ export class TicketCommentsService {
       throw new ForbiddenException(
         'No tienes permiso para crear notas internas',
       );
+    }
+
+    const mentionedIds = dto.mentionedUserIds ?? [];
+    if (mentionedIds.length > 0) {
+      const mentionable = await this.mentionableUsers(
+        { ...ticket, assigneeIds },
+        dto.isInternal ?? false,
+        user,
+      );
+      const allowed = new Set(mentionable.map((u) => u.id));
+      if (mentionedIds.some((id) => !allowed.has(id))) {
+        throw new BadRequestException(
+          dto.isInternal
+            ? 'En una nota interna solo puedes mencionar a TI'
+            : 'Solo puedes mencionar a quien reportó, a los asignados o a TI de la sucursal',
+        );
+      }
     }
 
     const comment = await this.prisma.ticketComment.create({
@@ -79,40 +125,151 @@ export class TicketCommentsService {
       ...assigneeIds,
     ]);
 
-    if (!comment.isInternal) {
-      const preview =
-        dto.body.length > COMMENT_PREVIEW_LENGTH
-          ? `${dto.body.slice(0, COMMENT_PREVIEW_LENGTH)}…`
-          : dto.body;
+    const preview =
+      dto.body.length > COMMENT_PREVIEW_LENGTH
+        ? `${dto.body.slice(0, COMMENT_PREVIEW_LENGTH)}…`
+        : dto.body;
 
-      await this.notifications.notify(
-        [ticket.createdById, ...assigneeIds].filter((id) => id !== user.id),
-        ticket,
+    await this.notifications.dispatch(
+      comment.isInternal ? 'INTERNAL_NOTE' : 'COMMENT',
+      { ...ticket, assigneeIds },
+      {
+        message: `${user.name} ${comment.isInternal ? 'agregó una nota interna' : 'comentó'}: ${preview}`,
+        actorId: user.id,
+        excludeUserIds: mentionedIds,
+      },
+    );
+    if (mentionedIds.length > 0) {
+      await this.notifications.dispatch(
+        'MENTION',
+        { ...ticket, assigneeIds },
         {
-          kind: 'COMMENT',
-          message: `${user.name} comentó: ${preview}`,
+          message: `${user.name} te mencionó: ${preview}`,
           actorId: user.id,
+          mentionedUserIds: mentionedIds,
         },
       );
+    }
+
+    // The requester answering a resolved ticket means it isn't solved yet.
+    if (
+      ticket.status === 'RESOLVED' &&
+      user.id === ticket.createdById &&
+      !comment.isInternal
+    ) {
+      await this.reopenOnReply(ticket, assigneeIds, user);
     }
 
     return comment;
   }
 
+  /** Who the user can @mention in a comment of this ticket. */
+  async findMentionableUsers(
+    ticketId: string,
+    internal: boolean,
+    user: RequestUser,
+  ) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id: ticketId },
+      select: {
+        id: true,
+        branchId: true,
+        createdById: true,
+        assignees: { select: { userId: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${ticketId}' not found`);
+    }
+    const assigneeIds = ticket.assignees.map((a) => a.userId);
+    const canSeeAllTickets = assertTicketAccess(ticket, assigneeIds, user);
+    if (internal && !canSeeAllTickets) {
+      throw new ForbiddenException(
+        'No tienes permiso para crear notas internas',
+      );
+    }
+    return this.mentionableUsers({ ...ticket, assigneeIds }, internal, user);
+  }
+
+  /** Participants and TI of the branch (TI only on internal notes), minus the author. */
+  private async mentionableUsers(
+    ticket: { branchId: string; createdById: string; assigneeIds: string[] },
+    internal: boolean,
+    user: RequestUser,
+  ) {
+    const tiIds = (await this.notifications.findTiStaff(ticket.branchId)).map(
+      (member) => member.id,
+    );
+    const ids = new Set(
+      internal ? tiIds : [ticket.createdById, ...ticket.assigneeIds, ...tiIds],
+    );
+    ids.delete(user.id);
+    if (ids.size === 0) return [];
+    return this.prisma.user.findMany({
+      where: { id: { in: [...ids] }, isActive: true },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  private async reopenOnReply(
+    ticket: Ticket,
+    assigneeIds: string[],
+    user: RequestUser,
+  ) {
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: {
+        status: 'IN_PROGRESS',
+        ...computeTraceabilityFields(ticket, { status: 'IN_PROGRESS' }),
+      },
+      ...ticketWithRelations,
+    });
+    await this.recordChanges(
+      { ...ticket, assigneeIds },
+      [
+        {
+          type: 'STATUS_CHANGED',
+          fromValue: 'RESOLVED',
+          toValue: 'IN_PROGRESS',
+          text: `respondió y el ticket pasó de "${TICKET_STATUS_LABELS.RESOLVED}" a "${TICKET_STATUS_LABELS.IN_PROGRESS}"`,
+        },
+        {
+          type: 'REOPENED',
+          fromValue: 'RESOLVED',
+          toValue: 'IN_PROGRESS',
+          text: 'reabrió el ticket',
+        },
+      ],
+      user,
+    );
+    this.ticketsGateway.emitTicketUpdated(updated);
+  }
+
   /**
-   * Records changes as one system comment plus a TicketEvent each, and
-   * notifies the recipients except the actor.
+   * Records changes as one system comment plus a TicketEvent each, and sends
+   * the notices of their event (changeEventOf).
    */
   async recordChanges(
-    ticket: Pick<Ticket, 'id' | 'branchId' | 'code' | 'title'>,
+    ticket: NotifiableTicket,
     entries: ChangeEntry[],
-    recipientIds: string[],
-    user: RequestUser,
+    /** null = the system itself (cron), e.g. the auto-close. */
+    actor: Pick<RequestUser, 'id' | 'name'> | null,
+    {
+      event = changeEventOf(entries),
+      ...options
+    }: Pick<
+      DispatchOptions,
+      'addedAssigneeIds' | 'removedAssigneeIds' | 'email'
+    > & { event?: TicketNotificationEvent } = {},
   ) {
     if (entries.length === 0) return;
     const ticketId = ticket.id;
 
-    const message = `${user.name} ${entries.map((e) => e.text).join(', ')}.`;
+    const text = entries.map((e) => e.text).join(', ');
+    const message = actor
+      ? `${actor.name} ${text}.`
+      : `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 
     const comment = await this.prisma.ticketComment.create({
       data: {
@@ -120,7 +277,7 @@ export class TicketCommentsService {
         isInternal: false,
         isSystem: true,
         ticketId,
-        authorId: user.id,
+        authorId: actor?.id ?? null,
       },
       ...commentWithAuthor,
     });
@@ -131,16 +288,18 @@ export class TicketCommentsService {
         fromValue: entry.fromValue,
         toValue: entry.toValue,
         ticketId,
-        actorId: user.id,
+        actorId: actor?.id ?? null,
       })),
     });
 
-    this.ticketsGateway.emitNewComment(ticket, comment, recipientIds);
-    // The actor already knows what they did: no notification for them.
-    await this.notifications.notify(
-      recipientIds.filter((id) => id !== user.id),
-      ticket,
-      { kind: notificationKindOf(entries), message, actorId: user.id },
-    );
+    this.ticketsGateway.emitNewComment(ticket, comment, [
+      ticket.createdById,
+      ...ticket.assigneeIds,
+    ]);
+    await this.notifications.dispatch(event, ticket, {
+      ...options,
+      message,
+      actorId: actor?.id,
+    });
   }
 }

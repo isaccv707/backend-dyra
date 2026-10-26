@@ -11,19 +11,72 @@ import {
   buildPaginatedQuery,
   paginatedResponse,
 } from 'src/common/utils/paginate.util';
-import { MailService } from 'src/mail/mail.service';
+import { MailJob, MailQueueService } from 'src/mail/mail-queue.service';
 import { FindTicketNotificationsDto } from '../dto/find-ticket-notifications.dto';
 import { TicketsGateway } from '../tickets.gateway';
 import {
+  assigneeIdsOf,
   CATEGORY_LABELS,
   TICKET_PRIORITY_LABELS,
   TICKET_UPDATE_PERMISSION,
   TicketWithRelations,
 } from '../tickets.shared';
+import {
+  AUTO_CLOSE_BUSINESS_DAYS,
+  ESCALATION_ROLE,
+} from '../constants/ticket-lifecycle.const';
+import { UpdateTicketEmailPreferencesDto } from '../dto/ticket-email-preferences.dto';
+import {
+  TICKET_EMAIL_EVENT_LABELS,
+  TICKET_EMAIL_EVENTS,
+  TICKET_NOTIFICATION_RULES,
+  TicketAudience,
+  TicketNotificationEvent,
+} from './ticket-notification-rules';
 
 /** Read notifications are deleted after this many days (unread ones stay). */
 export const NOTIFICATION_RETENTION_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** What every notice needs to resolve its audiences. */
+export interface NotifiableTicket {
+  id: string;
+  code: number;
+  title: string;
+  branchId: string;
+  createdById: string;
+  assigneeIds: string[];
+}
+
+export interface DispatchOptions {
+  message: string;
+  /** Who caused the event: excluded from every channel. */
+  actorId?: string;
+  addedAssigneeIds?: string[];
+  removedAssigneeIds?: string[];
+  mentionedUserIds?: string[];
+  /** Left out of this event (e.g. the mentioned, who get MENTION instead). */
+  excludeUserIds?: string[];
+  /** Email per recipient; defaults to the generic ticket update email. */
+  email?: (to: string) => MailJob;
+}
+
+/** Heading of the generic email, for events that send it. */
+const EMAIL_HEADINGS: Partial<Record<TicketNotificationEvent, string>> = {
+  RESOLVED: 'Tu ticket fue resuelto',
+  FORM_DECIDED: 'Tu solicitud fue revisada',
+  OVERDUE: 'Ticket con tiempo de atención vencido',
+  SLA_WARNING: 'Ticket por vencer',
+  ESCALATION: 'Ticket vencido sin asignar',
+  AUTO_CLOSED: 'Tu ticket se cerró',
+};
+
+/** Extra text of the generic email, after the event's message. */
+const EMAIL_FOOTERS: Partial<Record<TicketNotificationEvent, string>> = {
+  RESOLVED: `Si el problema sigue, responde en el ticket: se reabrirá. Si no hay respuesta en ${AUTO_CLOSE_BUSINESS_DAYS} días hábiles se cerrará automáticamente.`,
+};
+
+const unique = (ids: string[]) => [...new Set(ids)];
 
 @Injectable()
 export class TicketNotificationsService {
@@ -32,8 +85,163 @@ export class TicketNotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ticketsGateway: TicketsGateway,
-    private readonly mailService: MailService,
+    private readonly mailQueue: MailQueueService,
   ) {}
+
+  /**
+   * Sends an event's notices following TICKET_NOTIFICATION_RULES: in-app to
+   * its inApp audiences, queued emails to its email audiences.
+   */
+  async dispatch(
+    event: TicketNotificationEvent,
+    ticket: NotifiableTicket,
+    options: DispatchOptions,
+  ) {
+    const rule = TICKET_NOTIFICATION_RULES[event];
+    const audiences = [...rule.inApp, ...rule.email];
+    const needsTi =
+      audiences.includes('tiStaff') ||
+      (audiences.includes('assigneesOrTi') && ticket.assigneeIds.length === 0);
+    const tiStaff = needsTi ? await this.findTiStaff(ticket.branchId) : [];
+    const administrators = audiences.includes('administrators')
+      ? await this.findAdministrators(ticket.branchId)
+      : [];
+
+    const tiIds = tiStaff.map((member) => member.id);
+    const audienceIds: Record<TicketAudience, string[]> = {
+      creator: [ticket.createdById],
+      assignees: ticket.assigneeIds,
+      tiStaff: tiIds,
+      assigneesOrTi: ticket.assigneeIds.length > 0 ? ticket.assigneeIds : tiIds,
+      administrators: administrators.map((admin) => admin.id),
+      addedAssignees: options.addedAssigneeIds ?? [],
+      removedAssignees: options.removedAssigneeIds ?? [],
+      mentioned: options.mentionedUserIds ?? [],
+    };
+    const excluded = new Set([
+      ...(options.actorId ? [options.actorId] : []),
+      ...(options.excludeUserIds ?? []),
+    ]);
+    const recipients = (audiences: TicketAudience[]) =>
+      unique(audiences.flatMap((audience) => audienceIds[audience])).filter(
+        (id) => !excluded.has(id),
+      );
+
+    await this.notify(recipients(rule.inApp), ticket, {
+      kind: rule.kind,
+      message: options.message,
+      actorId: options.actorId,
+    });
+
+    const emailIds = await this.withoutMutedEmails(
+      event,
+      recipients(rule.email),
+    );
+    if (emailIds.length === 0) return;
+
+    const known = new Map(
+      [...tiStaff, ...administrators].map((user) => [user.id, user.email]),
+    );
+    const missing = emailIds.filter((id) => !known.has(id));
+    if (missing.length > 0) {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: missing }, isActive: true },
+        select: { id: true, email: true },
+      });
+      for (const user of users) known.set(user.id, user.email);
+    }
+
+    for (const id of emailIds) {
+      const to = known.get(id);
+      if (!to) continue;
+      this.mailQueue.enqueue(
+        options.email?.(to) ?? {
+          type: 'ticketUpdate',
+          to,
+          data: {
+            ticketId: ticket.id,
+            code: ticket.code,
+            title: ticket.title,
+            heading: EMAIL_HEADINGS[event] ?? 'Novedades del ticket',
+            message: [options.message, EMAIL_FOOTERS[event]]
+              .filter(Boolean)
+              .join('\n\n'),
+          },
+        },
+      );
+    }
+  }
+
+  /** Drops the users who turned this event's email off. */
+  private async withoutMutedEmails(
+    event: TicketNotificationEvent,
+    userIds: string[],
+  ) {
+    if (userIds.length === 0) return userIds;
+    const muted = await this.prisma.ticketEmailPreference.findMany({
+      where: { userId: { in: userIds }, mutedEvents: { has: event } },
+      select: { userId: true },
+    });
+    const mutedIds = new Set(muted.map((pref) => pref.userId));
+    return userIds.filter((id) => !mutedIds.has(id));
+  }
+
+  async getEmailPreferences(user: RequestUser) {
+    const pref = await this.prisma.ticketEmailPreference.findUnique({
+      where: { userId: user.id },
+    });
+    const muted = new Set(pref?.mutedEvents ?? []);
+    return TICKET_EMAIL_EVENTS.map((event) => ({
+      event,
+      label: TICKET_EMAIL_EVENT_LABELS[event],
+      enabled: !muted.has(event),
+    }));
+  }
+
+  async updateEmailPreferences(
+    user: RequestUser,
+    dto: UpdateTicketEmailPreferencesDto,
+  ) {
+    const mutedEvents = unique(dto.mutedEvents);
+    await this.prisma.ticketEmailPreference.upsert({
+      where: { userId: user.id },
+      create: { userId: user.id, mutedEvents },
+      update: { mutedEvents },
+    });
+    return this.getEmailPreferences(user);
+  }
+
+  /** Active users with ESCALATION_ROLE of the branch, or global. */
+  private findAdministrators(branchId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: { name: ESCALATION_ROLE },
+        OR: [
+          { branches: { none: {} } },
+          { branches: { some: { id: branchId } } },
+        ],
+      },
+      select: { id: true, email: true },
+    });
+  }
+
+  /** Active TI (tickets:update) of the branch, or global. */
+  findTiStaff(branchId: string) {
+    return this.prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: {
+          permissions: { some: { action: TICKET_UPDATE_PERMISSION } },
+        },
+        OR: [
+          { branches: { none: {} } },
+          { branches: { some: { id: branchId } } },
+        ],
+      },
+      select: { id: true, email: true },
+    });
+  }
 
   /** Saves an in-app notification per user and pushes it to their sockets. */
   async notify(
@@ -66,55 +274,30 @@ export class TicketNotificationsService {
     });
   }
 
-  /**
-   * Notifies the TI staff that can see the ticket (tickets:update, global or
-   * of its branch). The ticket already exists: a failure is only logged.
-   */
+  /** NEW_TICKET notice. The ticket already exists: a failure is only logged. */
   async notifyNewTicket(ticket: TicketWithRelations, user: RequestUser) {
     try {
-      const staff = await this.prisma.user.findMany({
-        where: {
-          isActive: true,
-          id: { not: user.id },
-          role: {
-            permissions: { some: { action: TICKET_UPDATE_PERMISSION } },
-          },
-          OR: [
-            { branches: { none: {} } },
-            { branches: { some: { id: ticket.branchId } } },
-          ],
-        },
-        select: { id: true, email: true },
-      });
-      if (staff.length === 0) return;
-
-      await this.notify(
-        staff.map((member) => member.id),
-        ticket,
+      await this.dispatch(
+        'NEW_TICKET',
+        { ...ticket, assigneeIds: assigneeIdsOf(ticket) },
         {
-          kind: 'NEW_TICKET',
           message: `${user.name} levantó el ticket #${ticket.code} "${ticket.title}" en ${ticket.branch.name}.`,
           actorId: user.id,
+          email: (to) => ({
+            type: 'newTicket',
+            to,
+            data: {
+              ticketId: ticket.id,
+              code: ticket.code,
+              title: ticket.title,
+              categoryLabel: CATEGORY_LABELS[ticket.category],
+              priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
+              branchName: ticket.branch.name,
+              createdByName: user.name,
+            },
+          }),
         },
       );
-
-      for (const member of staff) {
-        this.mailService
-          .sendNewTicketEmail(member.email, {
-            ticketId: ticket.id,
-            code: ticket.code,
-            title: ticket.title,
-            categoryLabel: CATEGORY_LABELS[ticket.category],
-            priorityLabel: TICKET_PRIORITY_LABELS[ticket.priority],
-            branchName: ticket.branch.name,
-            createdByName: user.name,
-          })
-          .catch((error: unknown) => {
-            this.logger.error(
-              `No se pudo enviar el correo del ticket nuevo #${ticket.code} a ${member.email}: ${(error as Error).message}`,
-            );
-          });
-      }
     } catch (error) {
       this.logger.error(
         `No se pudo notificar el ticket nuevo #${ticket.code}: ${(error as Error).message}`,
@@ -220,50 +403,5 @@ export class TicketNotificationsService {
       },
     });
     return { deleted: count };
-  }
-
-  async notifyOverdueTickets(): Promise<{ notified: number }> {
-    const now = new Date();
-    const overdue = await this.prisma.ticket.findMany({
-      where: {
-        dueAt: { lt: now },
-        overdueNotifiedAt: null,
-        // ON_HOLD pauses the SLA (dueAt moves when it resumes).
-        status: { notIn: ['ON_HOLD', 'RESOLVED', 'CLOSED', 'CANCELLED'] },
-      },
-      select: {
-        id: true,
-        code: true,
-        title: true,
-        branchId: true,
-        createdById: true,
-      },
-    });
-
-    let notified = 0;
-    for (const ticket of overdue) {
-      // Claim first: with several instances only one notifies each ticket.
-      const { count } = await this.prisma.ticket.updateMany({
-        where: { id: ticket.id, overdueNotifiedAt: null },
-        data: { overdueNotifiedAt: now },
-      });
-      if (count === 0) continue;
-      notified++;
-
-      const message = `El ticket #${ticket.code} "${ticket.title}" venció su tiempo de atención (SLA).`;
-
-      await this.notify([ticket.createdById], ticket, {
-        kind: 'OVERDUE',
-        message,
-      });
-      this.ticketsGateway.emitOverdueTicket({
-        id: ticket.id,
-        code: ticket.code,
-        title: ticket.title,
-        branchId: ticket.branchId,
-      });
-    }
-
-    return { notified };
   }
 }

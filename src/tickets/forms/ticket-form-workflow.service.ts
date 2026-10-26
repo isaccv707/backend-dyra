@@ -446,9 +446,8 @@ export class TicketFormWorkflowService {
     // never reported as if the change had failed.
     try {
       await this.comments.recordChanges(
-        ticket,
+        { ...ticket, assigneeIds: ticket.assignees.map((a) => a.userId) },
         entries,
-        [ticket.createdById, ...ticket.assignees.map((a) => a.userId)],
         user,
       );
     } catch (error) {

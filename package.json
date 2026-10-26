@@ -31,6 +31,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@nestjs/bullmq": "^11.0.5",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -47,11 +48,13 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "@types/express": "^5.0.6",
     "bcrypt": "^6.0.0",
+    "bullmq": "^6.4.2",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "cloudinary": "^2.11.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "ioredis": "^6.0.0",
     "nodemailer": "^9.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
