@@ -8057,7 +8057,14 @@
         },
         "responses": {
           "201": {
-            "description": "Ticket creado exitosamente."
+            "description": "Ticket creado exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "403": {
             "description": "El usuario no tiene el permiso tickets:create, o no tiene acceso a esa sucursal."
@@ -8249,7 +8256,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Listado paginado de tickets."
+            "description": "Listado paginado de tickets.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTicketsResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8328,7 +8342,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Listado paginado de notificaciones."
+            "description": "Listado paginado de notificaciones.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedTicketNotificationsResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8356,7 +8377,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Cantidad borrada ({ deleted })."
+            "description": "Cantidad borrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedCountDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8377,7 +8405,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Listado de roles."
+            "description": "Listado de roles.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketFormRoleDto"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8407,7 +8445,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Notificación borrada."
+            "description": "Notificación borrada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletedCountDto"
+                }
+              }
+            }
           },
           "403": {
             "description": "La notificación pertenece a otro usuario."
@@ -8433,7 +8478,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "Notificaciones marcadas como leídas."
+            "description": "Notificaciones marcadas como leídas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdatedCountDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8500,7 +8552,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Ticket encontrado."
+            "description": "Ticket encontrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketDetailResponseDto"
+                }
+              }
+            }
           },
           "403": {
             "description": "El ticket es de otro usuario, quien consulta no está asignado y no tiene el permiso tickets:update, o quien tiene tickets:update no tiene acceso a la sucursal del ticket."
@@ -8545,7 +8604,14 @@
         },
         "responses": {
           "200": {
-            "description": "Ticket actualizado exitosamente."
+            "description": "Ticket actualizado exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "403": {
             "description": "El usuario no tiene el permiso tickets:update o acceso a esa sucursal."
@@ -8591,7 +8657,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Listado de usuarios asignables."
+            "description": "Listado de usuarios asignables.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssignableUserDto"
+                  }
+                }
+              }
+            }
           },
           "403": {
             "description": "El usuario no tiene el permiso tickets:update o acceso a esa sucursal."
@@ -8638,7 +8714,14 @@
         },
         "responses": {
           "200": {
-            "description": "Asignados actualizados."
+            "description": "Asignados actualizados.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Algún usuario está inactivo, no tiene acceso a la sucursal del ticket o es quien lo reportó."
@@ -8688,7 +8771,14 @@
         },
         "responses": {
           "201": {
-            "description": "Comentario creado exitosamente."
+            "description": "Comentario creado exitosamente.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketCommentResponseDto"
+                }
+              }
+            }
           },
           "403": {
             "description": "El ticket es de otro usuario y quien comenta no tiene el permiso tickets:update, intentó crear una nota interna sin ese permiso, o quien tiene tickets:update no tiene acceso a la sucursal del ticket."
@@ -8757,7 +8847,14 @@
         },
         "responses": {
           "200": {
-            "description": "Formulario actualizado."
+            "description": "Formulario actualizado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Datos inválidos, el ticket no tiene formulario o está cerrado/cancelado."
@@ -8823,7 +8920,14 @@
         },
         "responses": {
           "201": {
-            "description": "Solicitud aprobada y aplicada."
+            "description": "Solicitud aprobada y aplicada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "400": {
             "description": "Datos inválidos o ya no válidos (catálogos, tarifarios), formulario informativo, o ticket cerrado/cancelado."
@@ -8889,7 +8993,14 @@
         },
         "responses": {
           "201": {
-            "description": "La aprobación funcionaría."
+            "description": "La aprobación funcionaría.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketFormValidationDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -8930,7 +9041,14 @@
         },
         "responses": {
           "201": {
-            "description": "Solicitud rechazada."
+            "description": "Solicitud rechazada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "409": {
             "description": "El formulario ya fue aprobado o rechazado."
@@ -8964,7 +9082,14 @@
         ],
         "responses": {
           "201": {
-            "description": "Correo enviado."
+            "description": "Correo enviado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketResponseDto"
+                }
+              }
+            }
           },
           "503": {
             "description": "El servidor de correo falló."
@@ -11854,6 +11979,813 @@
           "category"
         ]
       },
+      "TicketStatus": {
+        "type": "string",
+        "enum": [
+          "OPEN",
+          "IN_PROGRESS",
+          "ON_HOLD",
+          "RESOLVED",
+          "CLOSED",
+          "CANCELLED"
+        ]
+      },
+      "TicketPriority": {
+        "type": "string",
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "CRITICAL"
+        ]
+      },
+      "TicketCategory": {
+        "type": "string",
+        "enum": [
+          "HARDWARE",
+          "SOFTWARE",
+          "ACCESS",
+          "COGNITI",
+          "OTHER"
+        ]
+      },
+      "TicketFormType": {
+        "type": "string",
+        "enum": [
+          "SOFTWARE_REMOTE",
+          "ACCESS_REQUEST",
+          "STUDY_CREATE",
+          "STUDY_UPDATE",
+          "CLIENT_CREATE",
+          "REFERENCE_VALUES_UPDATE"
+        ]
+      },
+      "TicketSubcategoryRefDto": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketCategory"
+              }
+            ]
+          },
+          "formType": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketFormType"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "formType",
+          "id",
+          "name"
+        ]
+      },
+      "TicketBranchRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "TicketPersonDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "id",
+          "name"
+        ]
+      },
+      "TicketUserRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "TicketAssigneeDto": {
+        "type": "object",
+        "properties": {
+          "assignedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/TicketPersonDto"
+          },
+          "assignedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketUserRefDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "assignedAt",
+          "user",
+          "assignedBy"
+        ]
+      },
+      "TicketFormDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketFormType"
+              }
+            ]
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "schemaVersion": {
+            "type": "number"
+          },
+          "appliedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "appliedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketUserRefDto"
+              }
+            ]
+          },
+          "rejectedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "rejectedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketUserRefDto"
+              }
+            ]
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "data",
+          "result",
+          "schemaVersion",
+          "appliedAt",
+          "appliedBy",
+          "rejectedAt",
+          "rejectedBy",
+          "rejectionReason",
+          "updatedAt"
+        ]
+      },
+      "TicketResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketStatus"
+              }
+            ]
+          },
+          "priority": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketPriority"
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketCategory"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "subcategory": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketSubcategoryRefDto"
+              }
+            ]
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "branch": {
+            "$ref": "#/components/schemas/TicketBranchRefDto"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/TicketPersonDto"
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketAssigneeDto"
+            }
+          },
+          "form": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketFormDto"
+              }
+            ]
+          },
+          "firstResponseAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "closedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reopenedCount": {
+            "type": "number"
+          },
+          "dueAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "overdueNotifiedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "slaWarnedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "escalatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "onHoldSince": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "slaPausedSeconds": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "priority",
+          "category",
+          "id",
+          "code",
+          "title",
+          "description",
+          "subcategoryId",
+          "subcategory",
+          "branchId",
+          "branch",
+          "createdById",
+          "createdBy",
+          "assignees",
+          "form",
+          "firstResponseAt",
+          "resolvedAt",
+          "closedAt",
+          "reopenedCount",
+          "dueAt",
+          "overdueNotifiedAt",
+          "slaWarnedAt",
+          "escalatedAt",
+          "onHoldSince",
+          "slaPausedSeconds",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PaginatedTicketsResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "totalPages": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "TicketNotificationKind": {
+        "type": "string",
+        "enum": [
+          "COMMENT",
+          "CHANGE",
+          "ASSIGNMENT",
+          "OVERDUE",
+          "FORM",
+          "NEW_TICKET",
+          "SLA_WARNING",
+          "ESCALATION"
+        ]
+      },
+      "TicketNotificationTicketDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketStatus"
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketCategory"
+              }
+            ]
+          },
+          "code": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "branch": {
+            "$ref": "#/components/schemas/TicketBranchRefDto"
+          }
+        },
+        "required": [
+          "status",
+          "category",
+          "code",
+          "title",
+          "branch"
+        ]
+      },
+      "TicketNotificationResponseDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketNotificationKind"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "read": {
+            "type": "boolean"
+          },
+          "ticketId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "actor": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketUserRefDto"
+              }
+            ]
+          },
+          "ticket": {
+            "$ref": "#/components/schemas/TicketNotificationTicketDto"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "message",
+          "read",
+          "ticketId",
+          "userId",
+          "actorId",
+          "actor",
+          "ticket",
+          "createdAt"
+        ]
+      },
+      "PaginatedTicketNotificationsResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketNotificationResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "totalPages": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "TicketFormRoleDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ]
+      },
+      "DeletedCountDto": {
+        "type": "object",
+        "properties": {
+          "deleted": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "deleted"
+        ]
+      },
+      "UpdatedCountDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
+      "TicketCommentResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "ticketId": {
+            "type": "string"
+          },
+          "authorId": {
+            "type": "string",
+            "nullable": true
+          },
+          "author": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketPersonDto"
+              }
+            ]
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "body",
+          "isInternal",
+          "isSystem",
+          "ticketId",
+          "authorId",
+          "author",
+          "createdAt"
+        ]
+      },
+      "TicketDetailResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketStatus"
+              }
+            ]
+          },
+          "priority": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketPriority"
+              }
+            ]
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketCategory"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "number"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "subcategoryId": {
+            "type": "string",
+            "nullable": true
+          },
+          "subcategory": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketSubcategoryRefDto"
+              }
+            ]
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "branch": {
+            "$ref": "#/components/schemas/TicketBranchRefDto"
+          },
+          "createdById": {
+            "type": "string"
+          },
+          "createdBy": {
+            "$ref": "#/components/schemas/TicketPersonDto"
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketAssigneeDto"
+            }
+          },
+          "form": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TicketFormDto"
+              }
+            ]
+          },
+          "firstResponseAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "resolvedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "closedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "reopenedCount": {
+            "type": "number"
+          },
+          "dueAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "overdueNotifiedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "slaWarnedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "escalatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "onHoldSince": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "slaPausedSeconds": {
+            "type": "number"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TicketCommentResponseDto"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "priority",
+          "category",
+          "id",
+          "code",
+          "title",
+          "description",
+          "subcategoryId",
+          "subcategory",
+          "branchId",
+          "branch",
+          "createdById",
+          "createdBy",
+          "assignees",
+          "form",
+          "firstResponseAt",
+          "resolvedAt",
+          "closedAt",
+          "reopenedCount",
+          "dueAt",
+          "overdueNotifiedAt",
+          "slaWarnedAt",
+          "escalatedAt",
+          "onHoldSince",
+          "slaPausedSeconds",
+          "createdAt",
+          "updatedAt",
+          "comments"
+        ]
+      },
       "UpdateTicketDto": {
         "type": "object",
         "properties": {
@@ -11894,6 +12826,41 @@
           }
         }
       },
+      "AssignableUserDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "role": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ]
+          },
+          "isAssigned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "isAssigned"
+        ]
+      },
       "SetTicketAssigneesDto": {
         "type": "object",
         "properties": {
@@ -11924,6 +12891,21 @@
         },
         "required": [
           "body"
+        ]
+      },
+      "TicketFormValidationDto": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid",
+          "summary"
         ]
       },
       "RejectTicketFormDto": {
