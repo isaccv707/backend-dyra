@@ -33,6 +33,20 @@ describe('Study DTOs: catálogos', () => {
   };
 
   describe('CreateStudyDto', () => {
+    it.each(['hemoglobina glicosilada', 'HEMOGLOBINA  GLICOSILADA '])(
+      'guarda name en formato título (%p)',
+      async (name) => {
+        const { value } = await validate(CreateStudyDto, {
+          ...baseStudy,
+          name,
+          sectionId: 1,
+          sampleTypeId: 2,
+        });
+
+        expect(value?.name).toBe('Hemoglobina Glicosilada');
+      },
+    );
+
     it('exige sectionId y sampleTypeId, pero no techniqueId', async () => {
       const { errors } = await validate(CreateStudyDto, baseStudy);
 
@@ -239,6 +253,14 @@ describe('Study DTOs: catálogos', () => {
   });
 
   describe('UpdateStudyDto', () => {
+    it('también normaliza name al editar', async () => {
+      const { value } = await validate(UpdateStudyDto, {
+        name: 'ÁCIDO ÚRICO',
+      });
+
+      expect(value?.name).toBe('Ácido Úrico');
+    });
+
     it('permite omitir los catálogos', async () => {
       const { errors } = await validate(UpdateStudyDto, { name: 'Glucosa' });
 

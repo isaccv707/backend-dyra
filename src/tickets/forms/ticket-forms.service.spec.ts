@@ -215,7 +215,7 @@ describe('TicketFormsService', () => {
         BRANCH_ID,
         prisma,
       );
-      expect(parsed.title).toBe('Alta de perfil: Química sanguínea');
+      expect(parsed.title).toBe('Alta de perfil: Química Sanguínea');
     });
 
     it('STUDY_UPDATE exige al menos un cambio', async () => {
@@ -514,7 +514,7 @@ describe('TicketFormsService', () => {
       expect(studies.create).toHaveBeenCalledTimes(1);
       expect(studies.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          name: 'Química sanguínea',
+          name: 'Química Sanguínea',
           code: 'QS',
           isPanel: true,
         }),

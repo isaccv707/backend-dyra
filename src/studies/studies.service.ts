@@ -17,6 +17,7 @@ import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import * as XLSX from 'xlsx';
 import { generateSlug } from 'src/common/utils/slugger.util';
+import { toTitleCase } from 'src/common/utils/title-case.util';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
 import {
   assertBranchAccess,
@@ -620,11 +621,14 @@ export class StudiesService {
     assertBranchAccess(user, branchId);
     await this.assertCreatableMany(items, branchId, db);
 
-    const rows = items.map(({ dto }) => ({
-      id: randomUUID(),
-      dto,
-      slug: toSlug(dto.slug ?? dto.name),
-    }));
+    const rows = items.map(({ dto }) => {
+      const name = toTitleCase(dto.name);
+      return {
+        id: randomUUID(),
+        dto: { ...dto, name },
+        slug: toSlug(dto.slug ?? name),
+      };
+    });
 
     const repeated = (values: string[]) =>
       values.filter((value, index) => values.indexOf(value) !== index);
@@ -776,7 +780,7 @@ export class StudiesService {
     db: StudyDb = this.prisma,
   ) {
     const {
-      name,
+      name: nameInput,
       title,
       studyPrices,
       serviceId,
@@ -792,6 +796,7 @@ export class StudiesService {
       ...studyData
     } = createStudyDto;
     assertBranchAccess(user, branchId);
+    const name = toTitleCase(nameInput);
     const slug = toSlug(slugInput ?? name);
     const catalogIds = { sectionId, sampleTypeId, techniqueId };
     const isPanel = studyData.isPanel ?? false;
@@ -1361,7 +1366,7 @@ export class StudiesService {
               create: referenceValuesData(referenceValues),
             },
           }),
-          ...(name && { name }),
+          ...(name && { name: toTitleCase(name) }),
           ...(title && { title }),
           ...(slug && { slug }),
           ...(serviceId && { service: { connect: { id: serviceId } } }),
