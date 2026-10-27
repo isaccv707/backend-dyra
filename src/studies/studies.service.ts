@@ -914,6 +914,15 @@ export class StudiesService {
     return this.findStudies(dto, { isActive: true }, true);
   }
 
+  /** Admin list of active studies: keeps the outsourcing data hidden from public routes. */
+  findAdminActive(dto: PaginationDto, user: BranchScopedUser) {
+    return this.findStudies(
+      dto,
+      { isActive: true, ...userBranchFilter(user, dto.branchId) },
+      false,
+    );
+  }
+
   findInactive(dto: PaginationDto, user: BranchScopedUser) {
     return this.findStudies(
       dto,

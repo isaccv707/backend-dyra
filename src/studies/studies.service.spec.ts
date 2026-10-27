@@ -672,6 +672,20 @@ describe('StudiesService', () => {
       );
     });
 
+    it('findAdminActive solo trae activos de las sucursales del usuario', async () => {
+      await service.findAdminActive({ isInternal: false }, user);
+
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+            isInternal: false,
+            branchId: { in: [BRANCH_ID] },
+          }) as unknown,
+        }),
+      );
+    });
+
     it('el listado admin filtra por isInternal y conserva los datos', async () => {
       prisma.study.findMany.mockResolvedValue([
         {

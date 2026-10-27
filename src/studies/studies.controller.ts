@@ -127,6 +127,25 @@ export class StudiesController {
   }
 
   @ApiOperation({
+    summary: 'Listar estudios activos (admin)',
+    description:
+      'Como el listado general, pero limitado a las sucursales del usuario e incluye los datos de maquila (isInternal, providerName, providerCost) y hasConfiguredPrice. Acepta además el filtro isInternal.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Listado paginado de estudios activos.',
+  })
+  @ApiBearerAuth()
+  @Permissions('studies:read')
+  @Get('admin')
+  findAdminActive(
+    @Query() pagination: PaginationDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.studiesService.findAdminActive(pagination, user);
+  }
+
+  @ApiOperation({
     summary: 'Listar estudios inactivos',
     description:
       'Devuelve el listado paginado de estudios desactivados (no se muestran en las rutas públicas ni se pueden cotizar). Acepta los mismos filtros que el listado general.',
