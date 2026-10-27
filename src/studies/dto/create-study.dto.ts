@@ -147,6 +147,28 @@ export class CreateStudyDto {
   @IsOptional()
   decimals?: number;
 
+  /** false = maquilado: se envía a un laboratorio externo. Default true. */
+  @IsOptional()
+  @IsBoolean()
+  isInternal?: boolean;
+
+  /** Laboratorio maquilador; requerido si isInternal = false. */
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(150)
+  @IsOptional()
+  providerName?: string;
+
+  /** Costo que cobra el maquilador; solo si isInternal = false. */
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  providerCost?: number;
+
   @IsOptional()
   @IsObject()
   @ValidateNested()

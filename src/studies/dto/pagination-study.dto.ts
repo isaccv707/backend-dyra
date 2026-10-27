@@ -37,6 +37,12 @@ export class PaginationDto extends PaginatedQueryDto {
   @IsBoolean()
   isPanel?: boolean;
 
+  /** Admin only: ignored by public routes (it would reveal outsourced studies). */
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  isInternal?: boolean;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

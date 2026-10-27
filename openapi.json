@@ -310,6 +310,14 @@
             }
           },
           {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -473,6 +481,14 @@
             }
           },
           {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -627,6 +643,14 @@
           },
           {
             "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isInternal",
             "required": false,
             "in": "query",
             "schema": {
@@ -826,6 +850,14 @@
           },
           {
             "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isInternal",
             "required": false,
             "in": "query",
             "schema": {
@@ -10387,6 +10419,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -10440,6 +10483,11 @@
       "UpdateStudyDto": {
         "type": "object",
         "properties": {
+          "providerCost": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0
+          },
           "sectionId": {
             "type": "number",
             "minimum": 1
@@ -11861,6 +11909,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -11944,6 +12003,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -12002,6 +12072,17 @@
             "type": "number",
             "minimum": 0,
             "maximum": 6
+          },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
           },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"

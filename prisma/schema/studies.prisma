@@ -18,6 +18,12 @@ model Study {
   units           String?
   decimals        Int?
 
+  /// true = se procesa en el laboratorio; false = se envía a un maquilador.
+  isInternal   Boolean  @default(true)
+  /// Solo maquilados (isInternal = false). Nunca se exponen en rutas públicas.
+  providerName String?
+  providerCost Decimal? @db.Decimal(10, 2)
+
   gender    String @default("A")
   ageFormat String @default("AÑOS")
   minAge    Int    @default(0)

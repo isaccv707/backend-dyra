@@ -356,6 +356,8 @@ describe('StudiesService', () => {
       slug: 'glucosa',
       units: 'mg/dL',
       decimals: 2,
+      isInternal: true,
+      providerName: null,
       _count: { referenceValues: 0 },
     };
 
@@ -524,6 +526,172 @@ describe('StudiesService', () => {
       ).rejects.toThrow(
         "Ya existe un estudio con el código 'GLU' en esta sucursal",
       );
+    });
+  });
+
+  describe('maquila (isInternal)', () => {
+    const existing = {
+      id: 'study-1',
+      branchId: BRANCH_ID,
+      isPanel: false,
+      isActive: true,
+      minAge: 0,
+      maxAge: 120,
+      code: 'GLU',
+      slug: 'glucosa',
+      isInternal: true,
+      providerName: null,
+      _count: { referenceValues: 0 },
+    };
+    const externalStudy = {
+      ...existing,
+      isInternal: false,
+      providerName: 'Lab Externo',
+    };
+
+    const updateData = () =>
+      (
+        prisma.study.update.mock.calls[0][0] as {
+          data: Record<string, unknown>;
+        }
+      ).data;
+
+    it('por defecto crea el estudio como interno y sin proveedor', async () => {
+      await service.create(baseDto, user);
+
+      expect(createData()).toMatchObject({
+        providerName: null,
+        providerCost: null,
+      });
+      expect(createData()).not.toHaveProperty('isInternal', false);
+    });
+
+    it('guarda proveedor y costo de un estudio maquilado', async () => {
+      await service.create(
+        {
+          ...baseDto,
+          isInternal: false,
+          providerName: 'Lab Externo',
+          providerCost: 150.5,
+        },
+        user,
+      );
+
+      expect(createData()).toMatchObject({
+        isInternal: false,
+        providerName: 'Lab Externo',
+        providerCost: new Prisma.Decimal(150.5),
+      });
+    });
+
+    it('rechaza un maquilado sin providerName', async () => {
+      await expect(
+        service.create({ ...baseDto, isInternal: false }, user),
+      ).rejects.toThrow('requiere providerName');
+      expect(prisma.study.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ providerName: 'Lab Externo' }, 'providerName'],
+      [{ providerCost: 100 }, 'providerCost'],
+    ])('rechaza %o en un estudio interno', async (extra, field) => {
+      await expect(
+        service.create({ ...baseDto, ...extra }, user),
+      ).rejects.toThrow(`no puede tener ${field}`);
+    });
+
+    it('al volverlo interno limpia proveedor y costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { isInternal: true }, user);
+
+      expect(updateData()).toMatchObject({
+        isInternal: true,
+        providerName: null,
+        providerCost: null,
+      });
+    });
+
+    it('un maquilado existente puede cambiar solo el costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { providerCost: 90 }, user);
+
+      expect(updateData()).toMatchObject({
+        providerCost: new Prisma.Decimal(90),
+      });
+      expect(updateData().providerName).toBeUndefined();
+    });
+
+    it('providerCost: null quita el costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { providerCost: null }, user);
+
+      expect(updateData()).toMatchObject({ providerCost: null });
+    });
+
+    it('rechaza marcar como maquilado sin proveedor', async () => {
+      prisma.study.findUnique.mockResolvedValue(existing);
+
+      await expect(
+        service.update('study-1', { isInternal: false }, user),
+      ).rejects.toThrow('requiere providerName');
+    });
+
+    it('las lecturas públicas no exponen datos de maquila', async () => {
+      const study = {
+        ...externalStudy,
+        title: null,
+        name: 'Glucosa',
+        gender: 'A',
+        ageFormat: 'AÑOS',
+        providerCost: new Prisma.Decimal(90),
+        service: {
+          id: 'svc-1',
+          name: 'Análisis',
+          slug: 'a',
+          priceSheetId: null,
+        },
+      };
+      prisma.study.findFirst.mockResolvedValue(study);
+      prisma.study.findMany.mockResolvedValue([study]);
+
+      const detail = await service.findOne('study-1');
+      const { data } = await service.findAll({ isInternal: false });
+
+      for (const result of [detail, data[0]]) {
+        expect(result).not.toHaveProperty('isInternal');
+        expect(result).not.toHaveProperty('providerName');
+        expect(result).not.toHaveProperty('providerCost');
+      }
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({ isInternal: false }) as unknown,
+        }),
+      );
+    });
+
+    it('el listado admin filtra por isInternal y conserva los datos', async () => {
+      prisma.study.findMany.mockResolvedValue([
+        {
+          ...externalStudy,
+          title: null,
+          name: 'Glucosa',
+          gender: 'A',
+          ageFormat: 'AÑOS',
+          service: { priceSheetId: null },
+        },
+      ]);
+
+      const { data } = await service.findInactive({ isInternal: false }, user);
+
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isInternal: false }) as unknown,
+        }),
+      );
+      expect(data[0]).toMatchObject({ providerName: 'Lab Externo' });
     });
   });
 
