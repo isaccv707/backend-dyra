@@ -318,6 +318,15 @@
             }
           },
           {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -486,6 +495,15 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           },
           {
@@ -658,6 +676,15 @@
             }
           },
           {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -826,6 +853,15 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           },
           {
@@ -1033,6 +1069,15 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           },
           {
@@ -2405,6 +2450,239 @@
         "summary": "Importar catálogos de estudios desde Excel",
         "tags": [
           "study-catalogs"
+        ]
+      }
+    },
+    "/api/study-providers": {
+      "post": {
+        "description": "Crea un laboratorio externo (maquilador) en una sucursal. El nombre es único por sucursal (sin distinguir mayúsculas).",
+        "operationId": "StudyProvidersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudyProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Maquilador creado."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "get": {
+        "description": "Listado paginado con alcance según las sucursales del usuario. Cada registro trae _count.studies (estudios y perfiles que lo usan). Usa isActive=true para llenar selects.",
+        "operationId": "StudyProvidersController_findAll",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar maquiladores",
+        "tags": [
+          "study-providers"
+        ]
+      }
+    },
+    "/api/study-providers/{id}": {
+      "get": {
+        "operationId": "StudyProvidersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Maquilador encontrado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza nombre y/o isActive. La sucursal no se puede cambiar.",
+        "operationId": "StudyProvidersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudyProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Maquilador actualizado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "delete": {
+        "description": "Elimina el maquilador. Si algún estudio o perfil lo usa, se rechaza (409): desactívalo con isActive = false.",
+        "operationId": "StudyProvidersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Maquilador eliminado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          },
+          "409": {
+            "description": "El maquilador está en uso."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eliminar maquilador",
+        "tags": [
+          "study-providers"
         ]
       }
     },
@@ -10593,9 +10871,9 @@
           "isInternal": {
             "type": "boolean"
           },
-          "providerName": {
+          "providerId": {
             "type": "string",
-            "maxLength": 150
+            "format": "uuid"
           },
           "providerCost": {
             "type": "number",
@@ -10716,6 +10994,30 @@
         ]
       },
       "UpdateStudyCatalogDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateStudyProviderDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "branchId"
+        ]
+      },
+      "UpdateStudyProviderDto": {
         "type": "object",
         "properties": {}
       },
@@ -12083,9 +12385,9 @@
           "isInternal": {
             "type": "boolean"
           },
-          "providerName": {
+          "providerId": {
             "type": "string",
-            "maxLength": 150
+            "format": "uuid"
           },
           "providerCost": {
             "type": "number",
@@ -12177,9 +12479,9 @@
           "isInternal": {
             "type": "boolean"
           },
-          "providerName": {
+          "providerId": {
             "type": "string",
-            "maxLength": 150
+            "format": "uuid"
           },
           "providerCost": {
             "type": "number",
@@ -12247,9 +12549,9 @@
           "isInternal": {
             "type": "boolean"
           },
-          "providerName": {
+          "providerId": {
             "type": "string",
-            "maxLength": 150
+            "format": "uuid"
           },
           "providerCost": {
             "type": "number",

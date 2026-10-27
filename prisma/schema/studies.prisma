@@ -19,10 +19,11 @@ model Study {
   decimals        Int?
 
   /// true = se procesa en el laboratorio; false = se envía a un maquilador.
-  isInternal   Boolean  @default(true)
+  isInternal   Boolean        @default(true)
   /// Solo maquilados (isInternal = false). Nunca se exponen en rutas públicas.
-  providerName String?
-  providerCost Decimal? @db.Decimal(10, 2)
+  providerId   String?        @map("provider_id")
+  provider     StudyProvider? @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  providerCost Decimal?       @db.Decimal(10, 2)
 
   gender    String @default("A")
   ageFormat String @default("AÑOS")
@@ -58,6 +59,7 @@ model Study {
   @@index([sectionId])
   @@index([sampleTypeId])
   @@index([techniqueId])
+  @@index([providerId])
   @@map("studies")
 }
 

@@ -47,6 +47,7 @@ describe('StudiesService', () => {
       count: jest.Mock;
     };
     studyPanelItem: { count: jest.Mock; findMany: jest.Mock };
+    studyProvider: { findMany: jest.Mock };
     studyOnPriceSheet: { findMany: jest.Mock; findFirst: jest.Mock };
     studySection: ReturnType<typeof catalogDelegate>;
     sampleType: ReturnType<typeof catalogDelegate>;
@@ -93,6 +94,7 @@ describe('StudiesService', () => {
         count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      studyProvider: { findMany: jest.fn().mockResolvedValue([]) },
       studyOnPriceSheet: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -357,7 +359,7 @@ describe('StudiesService', () => {
       units: 'mg/dL',
       decimals: 2,
       isInternal: true,
-      providerName: null,
+      providerId: null,
       _count: { referenceValues: 0 },
     };
 
@@ -530,6 +532,7 @@ describe('StudiesService', () => {
   });
 
   describe('maquila (isInternal)', () => {
+    const PROVIDER_ID = '33333333-3333-4333-8333-333333333333';
     const existing = {
       id: 'study-1',
       branchId: BRANCH_ID,
@@ -540,14 +543,21 @@ describe('StudiesService', () => {
       code: 'GLU',
       slug: 'glucosa',
       isInternal: true,
-      providerName: null,
+      providerId: null,
       _count: { referenceValues: 0 },
     };
     const externalStudy = {
       ...existing,
       isInternal: false,
-      providerName: 'Lab Externo',
+      providerId: PROVIDER_ID,
     };
+    const provider = (overrides: Record<string, unknown> = {}) => ({
+      id: PROVIDER_ID,
+      name: 'Lab Externo',
+      branchId: BRANCH_ID,
+      isActive: true,
+      ...overrides,
+    });
 
     const updateData = () =>
       (
@@ -556,22 +566,24 @@ describe('StudiesService', () => {
         }
       ).data;
 
-    it('por defecto crea el estudio como interno y sin proveedor', async () => {
-      await service.create(baseDto, user);
-
-      expect(createData()).toMatchObject({
-        providerName: null,
-        providerCost: null,
-      });
-      expect(createData()).not.toHaveProperty('isInternal', false);
+    beforeEach(() => {
+      prisma.studyProvider.findMany.mockResolvedValue([provider()]);
     });
 
-    it('guarda proveedor y costo de un estudio maquilado', async () => {
+    it('por defecto crea el estudio como interno y sin maquilador', async () => {
+      await service.create(baseDto, user);
+
+      expect(createData()).toMatchObject({ providerCost: null });
+      expect(createData()).not.toHaveProperty('provider');
+      expect(prisma.studyProvider.findMany).not.toHaveBeenCalled();
+    });
+
+    it('enlaza el maquilador y guarda el costo de un estudio maquilado', async () => {
       await service.create(
         {
           ...baseDto,
           isInternal: false,
-          providerName: 'Lab Externo',
+          providerId: PROVIDER_ID,
           providerCost: 150.5,
         },
         user,
@@ -579,20 +591,45 @@ describe('StudiesService', () => {
 
       expect(createData()).toMatchObject({
         isInternal: false,
-        providerName: 'Lab Externo',
+        provider: { connect: { id: PROVIDER_ID } },
         providerCost: new Prisma.Decimal(150.5),
       });
     });
 
-    it('rechaza un maquilado sin providerName', async () => {
+    it('rechaza un maquilado sin providerId', async () => {
       await expect(
         service.create({ ...baseDto, isInternal: false }, user),
-      ).rejects.toThrow('requiere providerName');
+      ).rejects.toThrow('requiere providerId');
       expect(prisma.study.create).not.toHaveBeenCalled();
     });
 
     it.each([
-      [{ providerName: 'Lab Externo' }, 'providerName'],
+      [{ branchId: 'other-branch' }, 'pertenece a otra sucursal'],
+      [{ isActive: false }, 'está inactivo'],
+    ])('rechaza un maquilador %o', async (overrides, message) => {
+      prisma.studyProvider.findMany.mockResolvedValue([provider(overrides)]);
+
+      await expect(
+        service.create(
+          { ...baseDto, isInternal: false, providerId: PROVIDER_ID },
+          user,
+        ),
+      ).rejects.toThrow(message);
+    });
+
+    it('responde 404 si el maquilador no existe', async () => {
+      prisma.studyProvider.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.create(
+          { ...baseDto, isInternal: false, providerId: PROVIDER_ID },
+          user,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it.each([
+      [{ providerId: PROVIDER_ID }, 'providerId'],
       [{ providerCost: 100 }, 'providerCost'],
     ])('rechaza %o en un estudio interno', async (extra, field) => {
       await expect(
@@ -600,14 +637,14 @@ describe('StudiesService', () => {
       ).rejects.toThrow(`no puede tener ${field}`);
     });
 
-    it('al volverlo interno limpia proveedor y costo', async () => {
+    it('al volverlo interno desconecta el maquilador y limpia el costo', async () => {
       prisma.study.findUnique.mockResolvedValue(externalStudy);
 
       await service.update('study-1', { isInternal: true }, user);
 
       expect(updateData()).toMatchObject({
         isInternal: true,
-        providerName: null,
+        provider: { disconnect: true },
         providerCost: null,
       });
     });
@@ -620,7 +657,22 @@ describe('StudiesService', () => {
       expect(updateData()).toMatchObject({
         providerCost: new Prisma.Decimal(90),
       });
-      expect(updateData().providerName).toBeUndefined();
+      expect(updateData()).not.toHaveProperty('provider');
+      expect(prisma.studyProvider.findMany).not.toHaveBeenCalled();
+    });
+
+    it('valida el maquilador nuevo al cambiarlo', async () => {
+      const otherId = '44444444-4444-4444-8444-444444444444';
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+      prisma.studyProvider.findMany.mockResolvedValue([
+        provider({ id: otherId }),
+      ]);
+
+      await service.update('study-1', { providerId: otherId }, user);
+
+      expect(updateData()).toMatchObject({
+        provider: { connect: { id: otherId } },
+      });
     });
 
     it('providerCost: null quita el costo', async () => {
@@ -631,17 +683,18 @@ describe('StudiesService', () => {
       expect(updateData()).toMatchObject({ providerCost: null });
     });
 
-    it('rechaza marcar como maquilado sin proveedor', async () => {
+    it('rechaza marcar como maquilado sin maquilador', async () => {
       prisma.study.findUnique.mockResolvedValue(existing);
 
       await expect(
         service.update('study-1', { isInternal: false }, user),
-      ).rejects.toThrow('requiere providerName');
+      ).rejects.toThrow('requiere providerId');
     });
 
     it('las lecturas públicas no exponen datos de maquila', async () => {
       const study = {
         ...externalStudy,
+        provider: { id: PROVIDER_ID, name: 'Lab Externo' },
         title: null,
         name: 'Glucosa',
         gender: 'A',
@@ -658,38 +711,56 @@ describe('StudiesService', () => {
       prisma.study.findMany.mockResolvedValue([study]);
 
       const detail = await service.findOne('study-1');
-      const { data } = await service.findAll({ isInternal: false });
+      const { data } = await service.findAll({
+        isInternal: false,
+        providerId: PROVIDER_ID,
+      });
 
       for (const result of [detail, data[0]]) {
         expect(result).not.toHaveProperty('isInternal');
-        expect(result).not.toHaveProperty('providerName');
+        expect(result).not.toHaveProperty('providerId');
+        expect(result).not.toHaveProperty('provider');
         expect(result).not.toHaveProperty('providerCost');
       }
       expect(prisma.study.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.not.objectContaining({ isInternal: false }) as unknown,
+          where: expect.not.objectContaining({
+            isInternal: false,
+          }) as unknown,
+        }),
+      );
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            providerId: PROVIDER_ID,
+          }) as unknown,
         }),
       );
     });
 
     it('findAdminActive solo trae activos de las sucursales del usuario', async () => {
-      await service.findAdminActive({ isInternal: false }, user);
+      await service.findAdminActive(
+        { isInternal: false, providerId: PROVIDER_ID },
+        user,
+      );
 
       expect(prisma.study.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             isActive: true,
             isInternal: false,
+            providerId: PROVIDER_ID,
             branchId: { in: [BRANCH_ID] },
           }) as unknown,
         }),
       );
     });
 
-    it('el listado admin filtra por isInternal y conserva los datos', async () => {
+    it('el listado admin conserva el maquilador', async () => {
       prisma.study.findMany.mockResolvedValue([
         {
           ...externalStudy,
+          provider: { id: PROVIDER_ID, name: 'Lab Externo' },
           title: null,
           name: 'Glucosa',
           gender: 'A',
@@ -700,12 +771,9 @@ describe('StudiesService', () => {
 
       const { data } = await service.findInactive({ isInternal: false }, user);
 
-      expect(prisma.study.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ isInternal: false }) as unknown,
-        }),
-      );
-      expect(data[0]).toMatchObject({ providerName: 'Lab Externo' });
+      expect(data[0]).toMatchObject({
+        provider: { id: PROVIDER_ID, name: 'Lab Externo' },
+      });
     });
   });
 

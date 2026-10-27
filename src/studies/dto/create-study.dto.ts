@@ -152,15 +152,10 @@ export class CreateStudyDto {
   @IsBoolean()
   isInternal?: boolean;
 
-  /** Laboratorio maquilador; requerido si isInternal = false. */
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(150)
+  /** Maquilador (GET /study-providers) de la misma sucursal; requerido si isInternal = false. */
+  @IsUUID()
   @IsOptional()
-  providerName?: string;
+  providerId?: string;
 
   /** Costo que cobra el maquilador; solo si isInternal = false. */
   @Type(() => Number)

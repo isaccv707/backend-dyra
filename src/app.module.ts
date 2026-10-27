@@ -6,6 +6,7 @@ import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { QuotationsModule } from './quotations/quotations.module';
 import { StudiesModule } from './studies/studies.module';
 import { StudyCatalogsModule } from './study-catalogs/study-catalogs.module';
+import { StudyProvidersModule } from './study-providers/study-providers.module';
 import { BannersModule } from './banners/banners.module';
 import { AuthorsModule } from './authors/authors.module';
 import { PostsModule } from './posts/posts.module';
@@ -43,6 +44,7 @@ import { TicketsModule } from './tickets/tickets.module';
     QuotationsModule,
     StudiesModule,
     StudyCatalogsModule,
+    StudyProvidersModule,
     BannersModule,
     AuthorsModule,
     PostsModule,

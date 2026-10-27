@@ -66,6 +66,8 @@ const CATALOG_INCLUDE = {
   section: { select: { id: true, name: true } },
   sampleType: { select: { id: true, name: true } },
   technique: { select: { id: true, name: true } },
+  // Admin only: public responses drop it with withoutProviderInfo().
+  provider: { select: { id: true, name: true } },
 } satisfies Prisma.StudyInclude;
 
 const REFERENCE_VALUES_INCLUDE = {
@@ -200,36 +202,45 @@ export function toStudyResponse<T extends StudyResponseColumns>(study: T) {
 
 type StudyProviderColumns = {
   isInternal: boolean;
-  providerName: string | null;
+  providerId: string | null;
   providerCost: Prisma.Decimal | null;
+  provider?: unknown;
 };
 
 /** Public responses never reveal that a study is outsourced, to whom or at what cost. */
 function withoutProviderInfo<T extends StudyProviderColumns>(study: T) {
   const {
     isInternal: _isInternal,
-    providerName: _providerName,
+    providerId: _providerId,
     providerCost: _providerCost,
+    provider: _provider,
     ...rest
   } = study;
   return rest;
 }
 
-/** Columns to write: an internal study never keeps provider data. */
-function providerData(
+/** An internal study never keeps provider data. */
+function providerCostData(
   isInternal: boolean,
-  {
-    providerName,
-    providerCost,
-  }: Pick<UpdateStudyDto, 'providerName' | 'providerCost'>,
+  providerCost: number | null | undefined,
 ) {
-  if (isInternal) return { providerName: null, providerCost: null };
+  if (isInternal) return { providerCost: null };
   return {
-    providerName,
     providerCost: isSet(providerCost)
       ? new Prisma.Decimal(providerCost)
       : providerCost,
   };
+}
+
+function providerRelation(
+  isInternal: boolean,
+  providerId: string | undefined,
+  mode: 'create' | 'update',
+) {
+  if (isInternal) {
+    return mode === 'update' ? { provider: { disconnect: true } } : {};
+  }
+  return providerId ? { provider: { connect: { id: providerId } } } : {};
 }
 
 function referenceValuesData(
@@ -457,18 +468,18 @@ export class StudiesService {
     }
   }
 
-  /** `storedProviderName` is the current value when updating. */
+  /** `storedProviderId` is the current value when updating. */
   private assertValidProvider(
     isInternal: boolean,
     {
-      providerName,
+      providerId,
       providerCost,
-    }: { providerName?: string | null; providerCost?: number | null },
-    storedProviderName: string | null = null,
+    }: { providerId?: string | null; providerCost?: number | null },
+    storedProviderId: string | null = null,
   ) {
     if (isInternal) {
       const invalid = [
-        ...(isSet(providerName) ? ['providerName'] : []),
+        ...(isSet(providerId) ? ['providerId'] : []),
         ...(isSet(providerCost) ? ['providerCost'] : []),
       ];
       if (invalid.length) {
@@ -478,10 +489,40 @@ export class StudiesService {
       }
       return;
     }
-    if (!(providerName ?? storedProviderName)) {
+    if (!(providerId ?? storedProviderId)) {
       throw new BadRequestException(
-        'Un estudio maquilado (isInternal = false) requiere providerName (laboratorio maquilador)',
+        'Un estudio maquilado (isInternal = false) requiere providerId (maquilador)',
       );
+    }
+  }
+
+  /** Each provider must exist, be of the study's branch and be active. */
+  async assertProvidersBelongToBranch(
+    providerIds: string[],
+    branchId: string,
+    db: StudyDb = this.prisma,
+  ) {
+    const ids = [...new Set(providerIds)];
+    if (!ids.length) return;
+    const providers = await db.studyProvider.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, branchId: true, isActive: true },
+    });
+    for (const id of ids) {
+      const provider = providers.find((p) => p.id === id);
+      if (!provider) {
+        throw new NotFoundException(`No existe el maquilador con el ID ${id}`);
+      }
+      if (provider.branchId !== branchId) {
+        throw new BadRequestException(
+          'El maquilador seleccionado pertenece a otra sucursal',
+        );
+      }
+      if (!provider.isActive) {
+        throw new BadRequestException(
+          `El maquilador "${provider.name}" está inactivo`,
+        );
+      }
     }
   }
 
@@ -641,6 +682,16 @@ export class StudiesService {
       }
     }
 
+    await this.assertProvidersBelongToBranch(
+      unique(
+        items.map((i) =>
+          i.dto.isInternal === false ? i.dto.providerId : undefined,
+        ),
+      ),
+      branchId,
+      db,
+    );
+
     const sheetIds = unique(
       items.flatMap((i) =>
         (i.dto.studyPrices ?? []).map((p) => p.priceSheetId),
@@ -746,7 +797,8 @@ export class StudiesService {
             units: isPanel ? null : dto.units,
             decimals: isPanel ? null : dto.decimals,
             isInternal: dto.isInternal ?? true,
-            ...providerData(dto.isInternal ?? true, dto),
+            providerId: (dto.isInternal ?? true) ? null : dto.providerId,
+            ...providerCostData(dto.isInternal ?? true, dto.providerCost),
             sectionId: dto.sectionId,
             sampleTypeId: dto.sampleTypeId,
             techniqueId: dto.techniqueId ?? null,
@@ -799,7 +851,7 @@ export class StudiesService {
       | 'units'
       | 'decimals'
       | 'isInternal'
-      | 'providerName'
+      | 'providerId'
       | 'providerCost'
       | 'eligiblePatients'
       | 'referenceValues'
@@ -816,6 +868,9 @@ export class StudiesService {
 
     this.assertPanelHasNoMeasurement(dto.isPanel ?? false, dto);
     this.assertValidProvider(dto.isInternal ?? true, dto);
+    if (dto.isInternal === false && dto.providerId) {
+      await this.assertProvidersBelongToBranch([dto.providerId], branchId, db);
+    }
     this.assertValidAgeRange(
       eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
       eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
@@ -857,7 +912,7 @@ export class StudiesService {
       decimals,
       eligiblePatients,
       referenceValues,
-      providerName,
+      providerId,
       providerCost,
       slug: slugInput,
       ...studyData
@@ -878,7 +933,8 @@ export class StudiesService {
           ...catalogRelations(catalogIds, 'create'),
           units: isPanel ? null : units,
           decimals: isPanel ? null : decimals,
-          ...providerData(isInternal, { providerName, providerCost }),
+          ...providerRelation(isInternal, providerId, 'create'),
+          ...providerCostData(isInternal, providerCost),
           service: {
             connect: { id: serviceId },
           },
@@ -1008,6 +1064,7 @@ export class StudiesService {
       branchId,
       isPanel,
       isInternal,
+      providerId,
       sectionId,
       sampleTypeId,
       techniqueId,
@@ -1030,7 +1087,10 @@ export class StudiesService {
       ...(where as Prisma.StudyWhereInput),
       ...(branchId && { branchId }),
       ...(isPanel !== undefined && { isPanel }),
-      ...(isInternal !== undefined && !publicOnly && { isInternal }),
+      ...(!publicOnly && {
+        ...(isInternal !== undefined && { isInternal }),
+        ...(providerId && { providerId }),
+      }),
       ...(sectionId && { sectionId }),
       ...(sampleTypeId && { sampleTypeId }),
       ...(techniqueId && { techniqueId }),
@@ -1355,8 +1415,19 @@ export class StudiesService {
     this.assertValidProvider(
       updateStudyDto.isInternal ?? existingStudy.isInternal,
       updateStudyDto,
-      existingStudy.providerName,
+      existingStudy.providerId,
     );
+    if (
+      updateStudyDto.providerId &&
+      !(updateStudyDto.isInternal ?? existingStudy.isInternal) &&
+      updateStudyDto.providerId !== existingStudy.providerId
+    ) {
+      await this.assertProvidersBelongToBranch(
+        [updateStudyDto.providerId],
+        existingStudy.branchId,
+        db,
+      );
+    }
     const storedReferenceValues = existingStudy._count.referenceValues;
     if (isPanel && referenceValues === undefined && storedReferenceValues) {
       throw new BadRequestException(
@@ -1424,7 +1495,7 @@ export class StudiesService {
       decimals,
       eligiblePatients,
       referenceValues,
-      providerName,
+      providerId,
       providerCost,
       slug: slugInput,
       ...studyData
@@ -1449,7 +1520,8 @@ export class StudiesService {
           ...eligiblePatientsData(eligiblePatients),
           ...catalogRelations(catalogIds, 'update'),
           ...(isPanel ? { units: null, decimals: null } : { units, decimals }),
-          ...providerData(isInternal, { providerName, providerCost }),
+          ...providerRelation(isInternal, providerId, 'update'),
+          ...providerCostData(isInternal, providerCost),
           ...(referenceValues && {
             referenceValues: {
               deleteMany: {},
@@ -1590,7 +1662,7 @@ export class StudiesService {
           units: true,
           decimals: true,
           isInternal: true,
-          providerName: true,
+          provider: { select: { name: true } },
           providerCost: true,
           deliveryTime: true,
           createdAt: true,
@@ -1654,7 +1726,7 @@ export class StudiesService {
       { header: 'Unidades', value: (s) => s.units ?? '' },
       { header: 'Decimales', value: (s) => s.decimals ?? '' },
       { header: 'Interno', value: (s) => (s.isInternal ? 'Sí' : 'No') },
-      { header: 'Maquilador', value: (s) => s.providerName ?? '' },
+      { header: 'Maquilador', value: (s) => s.provider?.name ?? '' },
       {
         header: 'Costo maquilador',
         value: (s) => (s.providerCost !== null ? Number(s.providerCost) : ''),

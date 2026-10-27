@@ -39,6 +39,7 @@ model Branch {
   studySections   StudySection[]
   sampleTypes     SampleType[]
   studyTechniques StudyTechnique[]
+  studyProviders  StudyProvider[]
   schedules       BranchSchedule[]
   users           User[]
   quotations      Quotation[]

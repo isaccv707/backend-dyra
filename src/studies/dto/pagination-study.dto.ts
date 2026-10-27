@@ -43,6 +43,11 @@ export class PaginationDto extends PaginatedQueryDto {
   @IsBoolean()
   isInternal?: boolean;
 
+  /** Admin only: studies and panels sent to this provider. */
+  @IsOptional()
+  @IsUUID()
+  providerId?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
