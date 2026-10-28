@@ -7,6 +7,7 @@ import { AppModule } from 'src/app.module';
 import { configureApp } from 'src/app.setup';
 import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
+import { toTitleCase } from 'src/common/utils/title-case.util';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { seedRolesAndPermissions } from 'prisma/seeds/roles-permissions.seed';
 import { seedStates } from 'prisma/seeds/states.seed';
@@ -233,7 +234,10 @@ describe('Formularios de tickets (e2e)', () => {
 
     expect(first.body.code).toBe(1);
     expect(second.body.code).toBe(2);
-    expect(first.body.title).toBe(`Alta de perfil: Perfil ${tag}`);
+    // Study names are stored in title case ("Perfil E2e-…").
+    expect(first.body.title).toBe(
+      `Alta de perfil: ${toTitleCase(`Perfil ${tag}`)}`,
+    );
     expect(first.body.form).toMatchObject({
       type: 'STUDY_CREATE',
       schemaVersion: 1,

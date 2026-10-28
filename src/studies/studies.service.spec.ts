@@ -148,6 +148,19 @@ describe('StudiesService', () => {
       });
     });
 
+    it('guarda name en formato título y genera title y slug desde él', async () => {
+      await service.create(
+        { ...baseDto, name: 'HEMOGLOBINA glicosilada' },
+        user,
+      );
+
+      expect(createData()).toMatchObject({
+        name: 'Hemoglobina Glicosilada',
+        title: 'Hemoglobina Glicosilada',
+        slug: 'hemoglobina-glicosilada',
+      });
+    });
+
     it('usa name como title si no se envía', async () => {
       await service.create(baseDto, user);
 
@@ -499,7 +512,7 @@ describe('StudiesService', () => {
 
       await service.update('study-1', { name: 'Glucosa en ayuno' }, user);
 
-      expect(updateData()).toMatchObject({ name: 'Glucosa en ayuno' });
+      expect(updateData()).toMatchObject({ name: 'Glucosa En Ayuno' });
       expect(updateData()).not.toHaveProperty('slug');
     });
 

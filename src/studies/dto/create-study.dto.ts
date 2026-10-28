@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { titleCaseTransform } from 'src/common/utils/title-case.util';
 import { STUDY_MAX_DECIMALS } from '../constants/study-fields.const';
 import { EligiblePatientsDto } from './eligible-patients.dto';
 import { CreateReferenceValueDto } from './reference-value.dto';
@@ -36,6 +37,8 @@ export class StudyPriceDto {
 }
 
 export class CreateStudyDto {
+  /** Se guarda en formato título: "hemoglobina glicosilada" -> "Hemoglobina Glicosilada". */
+  @Transform(titleCaseTransform)
   @IsString()
   @IsNotEmpty()
   @MinLength(1)

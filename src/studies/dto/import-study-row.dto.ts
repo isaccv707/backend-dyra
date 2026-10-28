@@ -12,7 +12,8 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { titleCaseTransform } from 'src/common/utils/title-case.util';
 import {
   STUDY_AGE_FORMATS,
   STUDY_GENDERS,
@@ -27,6 +28,8 @@ export class ImportStudyRowDto {
   @MaxLength(20)
   code!: string;
 
+  /** Mismo formato título que CreateStudyDto.name. */
+  @Transform(titleCaseTransform)
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
