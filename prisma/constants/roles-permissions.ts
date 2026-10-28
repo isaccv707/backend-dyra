@@ -126,6 +126,16 @@ export const PERMISSIONS = [
     action: 'study-techniques:delete',
     description: 'Eliminar técnicas de estudio',
   },
+  {
+    action: 'study-providers:create',
+    description: 'Crear maquiladores (laboratorios externos)',
+  },
+  { action: 'study-providers:read', description: 'Leer maquiladores' },
+  {
+    action: 'study-providers:update',
+    description: 'Actualizar maquiladores',
+  },
+  { action: 'study-providers:delete', description: 'Eliminar maquiladores' },
 
   {
     action: 'tickets:create',

@@ -16,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
+import { titleCaseTransform } from 'src/common/utils/title-case.util';
 import { STUDY_MAX_DECIMALS } from '../constants/study-fields.const';
 import { EligiblePatientsDto } from './eligible-patients.dto';
 import { CreateReferenceValueDto } from './reference-value.dto';
@@ -36,6 +37,8 @@ export class StudyPriceDto {
 }
 
 export class CreateStudyDto {
+  /** Se guarda en formato título: "hemoglobina glicosilada" -> "Hemoglobina Glicosilada". */
+  @Transform(titleCaseTransform)
   @IsString()
   @IsNotEmpty()
   @MinLength(1)
@@ -146,6 +149,23 @@ export class CreateStudyDto {
   @Max(STUDY_MAX_DECIMALS)
   @IsOptional()
   decimals?: number;
+
+  /** false = maquilado: se envía a un laboratorio externo. Default true. */
+  @IsOptional()
+  @IsBoolean()
+  isInternal?: boolean;
+
+  /** Maquilador (GET /study-providers) de la misma sucursal; requerido si isInternal = false. */
+  @IsUUID()
+  @IsOptional()
+  providerId?: string;
+
+  /** Costo que cobra el maquilador; solo si isInternal = false. */
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  providerCost?: number;
 
   @IsOptional()
   @IsObject()

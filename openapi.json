@@ -310,6 +310,23 @@
             }
           },
           {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -473,6 +490,23 @@
             }
           },
           {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
             "name": "sectionId",
             "required": false,
             "in": "query",
@@ -603,6 +637,186 @@
         ]
       }
     },
+    "/api/studies/admin": {
+      "get": {
+        "description": "Como el listado general, pero limitado a las sucursales del usuario e incluye los datos de maquila (isInternal, providerName, providerCost) y hasConfiguredPrice. Acepta además el filtro isInternal.",
+        "operationId": "StudiesController_findAdminActive",
+        "parameters": [
+          {
+            "name": "priceSheetId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "sampleTypeId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "techniqueId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "gender",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "M",
+                "F",
+                "A"
+              ]
+            }
+          },
+          {
+            "name": "ageFormat",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "DIAS",
+                "AÑOS"
+              ]
+            }
+          },
+          {
+            "name": "minAge",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "maxAge",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado de estudios activos."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar estudios activos (admin)",
+        "tags": [
+          "studies"
+        ]
+      }
+    },
     "/api/studies/inactive": {
       "get": {
         "description": "Devuelve el listado paginado de estudios desactivados (no se muestran en las rutas públicas ni se pueden cotizar). Acepta los mismos filtros que el listado general.",
@@ -631,6 +845,23 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           },
           {
@@ -830,6 +1061,23 @@
             "in": "query",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "isInternal",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "providerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
             }
           },
           {
@@ -2202,6 +2450,239 @@
         "summary": "Importar catálogos de estudios desde Excel",
         "tags": [
           "study-catalogs"
+        ]
+      }
+    },
+    "/api/study-providers": {
+      "post": {
+        "description": "Crea un laboratorio externo (maquilador) en una sucursal. El nombre es único por sucursal (sin distinguir mayúsculas).",
+        "operationId": "StudyProvidersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudyProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Maquilador creado."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "get": {
+        "description": "Listado paginado con alcance según las sucursales del usuario. Cada registro trae _count.studies (estudios y perfiles que lo usan). Usa isActive=true para llenar selects.",
+        "operationId": "StudyProvidersController_findAll",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Listado paginado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar maquiladores",
+        "tags": [
+          "study-providers"
+        ]
+      }
+    },
+    "/api/study-providers/{id}": {
+      "get": {
+        "operationId": "StudyProvidersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Maquilador encontrado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "patch": {
+        "description": "Actualiza nombre y/o isActive. La sucursal no se puede cambiar.",
+        "operationId": "StudyProvidersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudyProviderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Maquilador actualizado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar maquilador",
+        "tags": [
+          "study-providers"
+        ]
+      },
+      "delete": {
+        "description": "Elimina el maquilador. Si algún estudio o perfil lo usa, se rechaza (409): desactívalo con isActive = false.",
+        "operationId": "StudyProvidersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Maquilador eliminado."
+          },
+          "404": {
+            "description": "Maquilador no encontrado."
+          },
+          "409": {
+            "description": "El maquilador está en uso."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eliminar maquilador",
+        "tags": [
+          "study-providers"
         ]
       }
     },
@@ -10387,6 +10868,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -10440,6 +10932,11 @@
       "UpdateStudyDto": {
         "type": "object",
         "properties": {
+          "providerCost": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0
+          },
           "sectionId": {
             "type": "number",
             "minimum": 1
@@ -10497,6 +10994,30 @@
         ]
       },
       "UpdateStudyCatalogDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateStudyProviderDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "branchId"
+        ]
+      },
+      "UpdateStudyProviderDto": {
         "type": "object",
         "properties": {}
       },
@@ -11861,6 +12382,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -11944,6 +12476,17 @@
             "minimum": 0,
             "maximum": 6
           },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
+          },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
           },
@@ -12002,6 +12545,17 @@
             "type": "number",
             "minimum": 0,
             "maximum": 6
+          },
+          "isInternal": {
+            "type": "boolean"
+          },
+          "providerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "providerCost": {
+            "type": "number",
+            "minimum": 0
           },
           "eligiblePatients": {
             "$ref": "#/components/schemas/EligiblePatientsDto"
