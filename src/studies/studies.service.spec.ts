@@ -47,6 +47,7 @@ describe('StudiesService', () => {
       count: jest.Mock;
     };
     studyPanelItem: { count: jest.Mock; findMany: jest.Mock };
+    studyProvider: { findMany: jest.Mock };
     studyOnPriceSheet: { findMany: jest.Mock; findFirst: jest.Mock };
     studySection: ReturnType<typeof catalogDelegate>;
     sampleType: ReturnType<typeof catalogDelegate>;
@@ -93,6 +94,7 @@ describe('StudiesService', () => {
         count: jest.fn().mockResolvedValue(0),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      studyProvider: { findMany: jest.fn().mockResolvedValue([]) },
       studyOnPriceSheet: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -356,6 +358,8 @@ describe('StudiesService', () => {
       slug: 'glucosa',
       units: 'mg/dL',
       decimals: 2,
+      isInternal: true,
+      providerId: null,
       _count: { referenceValues: 0 },
     };
 
@@ -524,6 +528,252 @@ describe('StudiesService', () => {
       ).rejects.toThrow(
         "Ya existe un estudio con el código 'GLU' en esta sucursal",
       );
+    });
+  });
+
+  describe('maquila (isInternal)', () => {
+    const PROVIDER_ID = '33333333-3333-4333-8333-333333333333';
+    const existing = {
+      id: 'study-1',
+      branchId: BRANCH_ID,
+      isPanel: false,
+      isActive: true,
+      minAge: 0,
+      maxAge: 120,
+      code: 'GLU',
+      slug: 'glucosa',
+      isInternal: true,
+      providerId: null,
+      _count: { referenceValues: 0 },
+    };
+    const externalStudy = {
+      ...existing,
+      isInternal: false,
+      providerId: PROVIDER_ID,
+    };
+    const provider = (overrides: Record<string, unknown> = {}) => ({
+      id: PROVIDER_ID,
+      name: 'Lab Externo',
+      branchId: BRANCH_ID,
+      isActive: true,
+      ...overrides,
+    });
+
+    const updateData = () =>
+      (
+        prisma.study.update.mock.calls[0][0] as {
+          data: Record<string, unknown>;
+        }
+      ).data;
+
+    beforeEach(() => {
+      prisma.studyProvider.findMany.mockResolvedValue([provider()]);
+    });
+
+    it('por defecto crea el estudio como interno y sin maquilador', async () => {
+      await service.create(baseDto, user);
+
+      expect(createData()).toMatchObject({ providerCost: null });
+      expect(createData()).not.toHaveProperty('provider');
+      expect(prisma.studyProvider.findMany).not.toHaveBeenCalled();
+    });
+
+    it('enlaza el maquilador y guarda el costo de un estudio maquilado', async () => {
+      await service.create(
+        {
+          ...baseDto,
+          isInternal: false,
+          providerId: PROVIDER_ID,
+          providerCost: 150.5,
+        },
+        user,
+      );
+
+      expect(createData()).toMatchObject({
+        isInternal: false,
+        provider: { connect: { id: PROVIDER_ID } },
+        providerCost: new Prisma.Decimal(150.5),
+      });
+    });
+
+    it('rechaza un maquilado sin providerId', async () => {
+      await expect(
+        service.create({ ...baseDto, isInternal: false }, user),
+      ).rejects.toThrow('requiere providerId');
+      expect(prisma.study.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [{ branchId: 'other-branch' }, 'pertenece a otra sucursal'],
+      [{ isActive: false }, 'está inactivo'],
+    ])('rechaza un maquilador %o', async (overrides, message) => {
+      prisma.studyProvider.findMany.mockResolvedValue([provider(overrides)]);
+
+      await expect(
+        service.create(
+          { ...baseDto, isInternal: false, providerId: PROVIDER_ID },
+          user,
+        ),
+      ).rejects.toThrow(message);
+    });
+
+    it('responde 404 si el maquilador no existe', async () => {
+      prisma.studyProvider.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.create(
+          { ...baseDto, isInternal: false, providerId: PROVIDER_ID },
+          user,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it.each([
+      [{ providerId: PROVIDER_ID }, 'providerId'],
+      [{ providerCost: 100 }, 'providerCost'],
+    ])('rechaza %o en un estudio interno', async (extra, field) => {
+      await expect(
+        service.create({ ...baseDto, ...extra }, user),
+      ).rejects.toThrow(`no puede tener ${field}`);
+    });
+
+    it('al volverlo interno desconecta el maquilador y limpia el costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { isInternal: true }, user);
+
+      expect(updateData()).toMatchObject({
+        isInternal: true,
+        provider: { disconnect: true },
+        providerCost: null,
+      });
+    });
+
+    it('un maquilado existente puede cambiar solo el costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { providerCost: 90 }, user);
+
+      expect(updateData()).toMatchObject({
+        providerCost: new Prisma.Decimal(90),
+      });
+      expect(updateData()).not.toHaveProperty('provider');
+      expect(prisma.studyProvider.findMany).not.toHaveBeenCalled();
+    });
+
+    it('valida el maquilador nuevo al cambiarlo', async () => {
+      const otherId = '44444444-4444-4444-8444-444444444444';
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+      prisma.studyProvider.findMany.mockResolvedValue([
+        provider({ id: otherId }),
+      ]);
+
+      await service.update('study-1', { providerId: otherId }, user);
+
+      expect(updateData()).toMatchObject({
+        provider: { connect: { id: otherId } },
+      });
+    });
+
+    it('providerCost: null quita el costo', async () => {
+      prisma.study.findUnique.mockResolvedValue(externalStudy);
+
+      await service.update('study-1', { providerCost: null }, user);
+
+      expect(updateData()).toMatchObject({ providerCost: null });
+    });
+
+    it('rechaza marcar como maquilado sin maquilador', async () => {
+      prisma.study.findUnique.mockResolvedValue(existing);
+
+      await expect(
+        service.update('study-1', { isInternal: false }, user),
+      ).rejects.toThrow('requiere providerId');
+    });
+
+    it('las lecturas públicas no exponen datos de maquila', async () => {
+      const study = {
+        ...externalStudy,
+        provider: { id: PROVIDER_ID, name: 'Lab Externo' },
+        title: null,
+        name: 'Glucosa',
+        gender: 'A',
+        ageFormat: 'AÑOS',
+        providerCost: new Prisma.Decimal(90),
+        service: {
+          id: 'svc-1',
+          name: 'Análisis',
+          slug: 'a',
+          priceSheetId: null,
+        },
+      };
+      prisma.study.findFirst.mockResolvedValue(study);
+      prisma.study.findMany.mockResolvedValue([study]);
+
+      const detail = await service.findOne('study-1');
+      const { data } = await service.findAll({
+        isInternal: false,
+        providerId: PROVIDER_ID,
+      });
+
+      for (const result of [detail, data[0]]) {
+        expect(result).not.toHaveProperty('isInternal');
+        expect(result).not.toHaveProperty('providerId');
+        expect(result).not.toHaveProperty('provider');
+        expect(result).not.toHaveProperty('providerCost');
+      }
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            isInternal: false,
+          }) as unknown,
+        }),
+      );
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.not.objectContaining({
+            providerId: PROVIDER_ID,
+          }) as unknown,
+        }),
+      );
+    });
+
+    it('findAdminActive solo trae activos de las sucursales del usuario', async () => {
+      await service.findAdminActive(
+        { isInternal: false, providerId: PROVIDER_ID },
+        user,
+      );
+
+      expect(prisma.study.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            isActive: true,
+            isInternal: false,
+            providerId: PROVIDER_ID,
+            branchId: { in: [BRANCH_ID] },
+          }) as unknown,
+        }),
+      );
+    });
+
+    it('el listado admin conserva el maquilador', async () => {
+      prisma.study.findMany.mockResolvedValue([
+        {
+          ...externalStudy,
+          provider: { id: PROVIDER_ID, name: 'Lab Externo' },
+          title: null,
+          name: 'Glucosa',
+          gender: 'A',
+          ageFormat: 'AÑOS',
+          service: { priceSheetId: null },
+        },
+      ]);
+
+      const { data } = await service.findInactive({ isInternal: false }, user);
+
+      expect(data[0]).toMatchObject({
+        provider: { id: PROVIDER_ID, name: 'Lab Externo' },
+      });
     });
   });
 

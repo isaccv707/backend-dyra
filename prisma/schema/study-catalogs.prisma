@@ -51,3 +51,22 @@ model StudyTechnique {
   @@index([branchId])
   @@map("study_techniques")
 }
+
+/// Laboratorio externo (maquilador) al que se envían estudios con isInternal = false.
+model StudyProvider {
+  id       String  @id @default(uuid())
+  name     String
+  isActive Boolean @default(true)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  studies Study[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@map("study_providers")
+}

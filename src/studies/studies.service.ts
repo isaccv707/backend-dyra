@@ -66,6 +66,8 @@ const CATALOG_INCLUDE = {
   section: { select: { id: true, name: true } },
   sampleType: { select: { id: true, name: true } },
   technique: { select: { id: true, name: true } },
+  // Admin only: public responses drop it with withoutProviderInfo().
+  provider: { select: { id: true, name: true } },
 } satisfies Prisma.StudyInclude;
 
 const REFERENCE_VALUES_INCLUDE = {
@@ -196,6 +198,49 @@ export function toStudyResponse<T extends StudyResponseColumns>(study: T) {
     title: studyTitle(study),
     eligiblePatients: { gender, ageFormat, minAge, maxAge },
   };
+}
+
+type StudyProviderColumns = {
+  isInternal: boolean;
+  providerId: string | null;
+  providerCost: Prisma.Decimal | null;
+  provider?: unknown;
+};
+
+/** Public responses never reveal that a study is outsourced, to whom or at what cost. */
+function withoutProviderInfo<T extends StudyProviderColumns>(study: T) {
+  const {
+    isInternal: _isInternal,
+    providerId: _providerId,
+    providerCost: _providerCost,
+    provider: _provider,
+    ...rest
+  } = study;
+  return rest;
+}
+
+/** An internal study never keeps provider data. */
+function providerCostData(
+  isInternal: boolean,
+  providerCost: number | null | undefined,
+) {
+  if (isInternal) return { providerCost: null };
+  return {
+    providerCost: isSet(providerCost)
+      ? new Prisma.Decimal(providerCost)
+      : providerCost,
+  };
+}
+
+function providerRelation(
+  isInternal: boolean,
+  providerId: string | undefined,
+  mode: 'create' | 'update',
+) {
+  if (isInternal) {
+    return mode === 'update' ? { provider: { disconnect: true } } : {};
+  }
+  return providerId ? { provider: { connect: { id: providerId } } } : {};
 }
 
 function referenceValuesData(
@@ -423,6 +468,64 @@ export class StudiesService {
     }
   }
 
+  /** `storedProviderId` is the current value when updating. */
+  private assertValidProvider(
+    isInternal: boolean,
+    {
+      providerId,
+      providerCost,
+    }: { providerId?: string | null; providerCost?: number | null },
+    storedProviderId: string | null = null,
+  ) {
+    if (isInternal) {
+      const invalid = [
+        ...(isSet(providerId) ? ['providerId'] : []),
+        ...(isSet(providerCost) ? ['providerCost'] : []),
+      ];
+      if (invalid.length) {
+        throw new BadRequestException(
+          `Un estudio interno (isInternal = true) no puede tener ${invalid.join(' ni ')}: solo aplican a estudios maquilados`,
+        );
+      }
+      return;
+    }
+    if (!(providerId ?? storedProviderId)) {
+      throw new BadRequestException(
+        'Un estudio maquilado (isInternal = false) requiere providerId (maquilador)',
+      );
+    }
+  }
+
+  /** Each provider must exist, be of the study's branch and be active. */
+  async assertProvidersBelongToBranch(
+    providerIds: string[],
+    branchId: string,
+    db: StudyDb = this.prisma,
+  ) {
+    const ids = [...new Set(providerIds)];
+    if (!ids.length) return;
+    const providers = await db.studyProvider.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, branchId: true, isActive: true },
+    });
+    for (const id of ids) {
+      const provider = providers.find((p) => p.id === id);
+      if (!provider) {
+        throw new NotFoundException(`No existe el maquilador con el ID ${id}`);
+      }
+      if (provider.branchId !== branchId) {
+        throw new BadRequestException(
+          'El maquilador seleccionado pertenece a otra sucursal',
+        );
+      }
+      if (!provider.isActive) {
+        throw new BadRequestException(
+          `El maquilador "${provider.name}" está inactivo`,
+        );
+      }
+    }
+  }
+
   private assertValidReferenceValues(values: CreateReferenceValueDto[]) {
     values.forEach((value, index) => {
       const label = `referenceValues[${index}]`;
@@ -504,6 +607,7 @@ export class StudiesService {
     for (const { label, dto } of items) {
       try {
         this.assertPanelHasNoMeasurement(dto.isPanel ?? false, dto);
+        this.assertValidProvider(dto.isInternal ?? true, dto);
         this.assertValidAgeRange(
           dto.eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
           dto.eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
@@ -577,6 +681,16 @@ export class StudiesService {
         }
       }
     }
+
+    await this.assertProvidersBelongToBranch(
+      unique(
+        items.map((i) =>
+          i.dto.isInternal === false ? i.dto.providerId : undefined,
+        ),
+      ),
+      branchId,
+      db,
+    );
 
     const sheetIds = unique(
       items.flatMap((i) =>
@@ -682,6 +796,9 @@ export class StudiesService {
             isPanel,
             units: isPanel ? null : dto.units,
             decimals: isPanel ? null : dto.decimals,
+            isInternal: dto.isInternal ?? true,
+            providerId: (dto.isInternal ?? true) ? null : dto.providerId,
+            ...providerCostData(dto.isInternal ?? true, dto.providerCost),
             sectionId: dto.sectionId,
             sampleTypeId: dto.sampleTypeId,
             techniqueId: dto.techniqueId ?? null,
@@ -733,6 +850,9 @@ export class StudiesService {
       | 'isPanel'
       | 'units'
       | 'decimals'
+      | 'isInternal'
+      | 'providerId'
+      | 'providerCost'
       | 'eligiblePatients'
       | 'referenceValues'
       | 'studyPrices'
@@ -747,6 +867,10 @@ export class StudiesService {
     };
 
     this.assertPanelHasNoMeasurement(dto.isPanel ?? false, dto);
+    this.assertValidProvider(dto.isInternal ?? true, dto);
+    if (dto.isInternal === false && dto.providerId) {
+      await this.assertProvidersBelongToBranch([dto.providerId], branchId, db);
+    }
     this.assertValidAgeRange(
       eligiblePatients?.minAge ?? STUDY_DEFAULT_MIN_AGE,
       eligiblePatients?.maxAge ?? STUDY_DEFAULT_MAX_AGE,
@@ -788,6 +912,8 @@ export class StudiesService {
       decimals,
       eligiblePatients,
       referenceValues,
+      providerId,
+      providerCost,
       slug: slugInput,
       ...studyData
     } = createStudyDto;
@@ -795,6 +921,7 @@ export class StudiesService {
     const slug = toSlug(slugInput ?? name);
     const catalogIds = { sectionId, sampleTypeId, techniqueId };
     const isPanel = studyData.isPanel ?? false;
+    const isInternal = studyData.isInternal ?? true;
 
     await this.assertCreatable(createStudyDto, db);
 
@@ -806,6 +933,8 @@ export class StudiesService {
           ...catalogRelations(catalogIds, 'create'),
           units: isPanel ? null : units,
           decimals: isPanel ? null : decimals,
+          ...providerRelation(isInternal, providerId, 'create'),
+          ...providerCostData(isInternal, providerCost),
           service: {
             connect: { id: serviceId },
           },
@@ -839,6 +968,15 @@ export class StudiesService {
   async findAll(dto: PaginationDto) {
     await this.assertPublicPriceSheet(dto.priceSheetId);
     return this.findStudies(dto, { isActive: true }, true);
+  }
+
+  /** Admin list of active studies: keeps the outsourcing data hidden from public routes. */
+  findAdminActive(dto: PaginationDto, user: BranchScopedUser) {
+    return this.findStudies(
+      dto,
+      { isActive: true, ...userBranchFilter(user, dto.branchId) },
+      false,
+    );
   }
 
   findInactive(dto: PaginationDto, user: BranchScopedUser) {
@@ -925,6 +1063,8 @@ export class StudiesService {
       priceSheetId,
       branchId,
       isPanel,
+      isInternal,
+      providerId,
       sectionId,
       sampleTypeId,
       techniqueId,
@@ -947,6 +1087,10 @@ export class StudiesService {
       ...(where as Prisma.StudyWhereInput),
       ...(branchId && { branchId }),
       ...(isPanel !== undefined && { isPanel }),
+      ...(!publicOnly && {
+        ...(isInternal !== undefined && { isInternal }),
+        ...(providerId && { providerId }),
+      }),
       ...(sectionId && { sectionId }),
       ...(sampleTypeId && { sampleTypeId }),
       ...(techniqueId && { techniqueId }),
@@ -1011,7 +1155,9 @@ export class StudiesService {
         : undefined;
 
       return {
-        ...toStudyResponse(rest),
+        ...(publicOnly
+          ? toStudyResponse(withoutProviderInfo(rest))
+          : toStudyResponse(rest)),
         priceInfo: {
           ...toPriceInfo(regionalPrice),
           ...(!publicOnly && { hasConfiguredPrice: !!regionalPrice }),
@@ -1055,7 +1201,7 @@ export class StudiesService {
       : null;
 
     return {
-      ...toStudyResponse({ ...study, service }),
+      ...toStudyResponse(withoutProviderInfo({ ...study, service })),
       priceInfo: toPriceInfo(entry),
     };
   }
@@ -1266,6 +1412,22 @@ export class StudiesService {
       decimals,
       referenceValues,
     });
+    this.assertValidProvider(
+      updateStudyDto.isInternal ?? existingStudy.isInternal,
+      updateStudyDto,
+      existingStudy.providerId,
+    );
+    if (
+      updateStudyDto.providerId &&
+      !(updateStudyDto.isInternal ?? existingStudy.isInternal) &&
+      updateStudyDto.providerId !== existingStudy.providerId
+    ) {
+      await this.assertProvidersBelongToBranch(
+        [updateStudyDto.providerId],
+        existingStudy.branchId,
+        db,
+      );
+    }
     const storedReferenceValues = existingStudy._count.referenceValues;
     if (isPanel && referenceValues === undefined && storedReferenceValues) {
       throw new BadRequestException(
@@ -1333,6 +1495,8 @@ export class StudiesService {
       decimals,
       eligiblePatients,
       referenceValues,
+      providerId,
+      providerCost,
       slug: slugInput,
       ...studyData
     } = updateStudyDto;
@@ -1346,6 +1510,7 @@ export class StudiesService {
       db,
     );
     const isPanel = studyData.isPanel ?? existingStudy.isPanel;
+    const isInternal = studyData.isInternal ?? existingStudy.isInternal;
 
     try {
       const study = await db.study.update({
@@ -1355,6 +1520,8 @@ export class StudiesService {
           ...eligiblePatientsData(eligiblePatients),
           ...catalogRelations(catalogIds, 'update'),
           ...(isPanel ? { units: null, decimals: null } : { units, decimals }),
+          ...providerRelation(isInternal, providerId, 'update'),
+          ...providerCostData(isInternal, providerCost),
           ...(referenceValues && {
             referenceValues: {
               deleteMany: {},
@@ -1494,6 +1661,9 @@ export class StudiesService {
           maxAge: true,
           units: true,
           decimals: true,
+          isInternal: true,
+          provider: { select: { name: true } },
+          providerCost: true,
           deliveryTime: true,
           createdAt: true,
           updatedAt: true,
@@ -1555,6 +1725,12 @@ export class StudiesService {
       { header: 'Edad máxima', value: (s) => s.maxAge },
       { header: 'Unidades', value: (s) => s.units ?? '' },
       { header: 'Decimales', value: (s) => s.decimals ?? '' },
+      { header: 'Interno', value: (s) => (s.isInternal ? 'Sí' : 'No') },
+      { header: 'Maquilador', value: (s) => s.provider?.name ?? '' },
+      {
+        header: 'Costo maquilador',
+        value: (s) => (s.providerCost !== null ? Number(s.providerCost) : ''),
+      },
       {
         header: 'Tiempo de entrega (días)',
         value: (s) => s.deliveryTime ?? '',

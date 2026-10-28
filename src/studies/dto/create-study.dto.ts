@@ -147,6 +147,23 @@ export class CreateStudyDto {
   @IsOptional()
   decimals?: number;
 
+  /** false = maquilado: se envía a un laboratorio externo. Default true. */
+  @IsOptional()
+  @IsBoolean()
+  isInternal?: boolean;
+
+  /** Maquilador (GET /study-providers) de la misma sucursal; requerido si isInternal = false. */
+  @IsUUID()
+  @IsOptional()
+  providerId?: string;
+
+  /** Costo que cobra el maquilador; solo si isInternal = false. */
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @IsOptional()
+  providerCost?: number;
+
   @IsOptional()
   @IsObject()
   @ValidateNested()
