@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -11,6 +11,10 @@ import {
   TICKET_PRIORITY_LABELS,
   TICKET_STATUS_LABELS,
 } from '../tickets.shared';
+import {
+  BUSINESS_TIMEZONE,
+  startOfLocalDay,
+} from '../constants/business-hours';
 import { FindTicketAnalyticsDto } from './dto/find-ticket-analytics.dto';
 import { FindTicketTrendDto } from './dto/find-ticket-trend.dto';
 import { ExportTicketAnalyticsDto } from './dto/export-ticket-analytics.dto';
@@ -23,22 +27,36 @@ import {
 } from './tickets-analytics.types';
 import { TicketAnalyticsPdfRenderer } from './ticket-analytics-pdf.renderer';
 
+// AVG() de Postgres es numeric: Prisma lo entrega como Decimal (string en JSON).
+type RawAvg = Prisma.Decimal | number | null;
+
 interface SummaryDurationRow {
-  avg_first_response_seconds: number | null;
-  avg_resolution_seconds: number | null;
+  avg_first_response_seconds: RawAvg;
+  avg_resolution_seconds: RawAvg;
   reopened: bigint;
   overdue: bigint;
 }
 
 interface GroupDurationRow {
   group_key: string | null;
-  avg_resolution_seconds: number | null;
+  avg_resolution_seconds: RawAvg;
 }
 
 interface TrendRow {
-  bucket: Date;
+  bucket: string;
   count: bigint;
 }
+
+interface CreatedAtRange {
+  gte?: Date;
+  lt?: Date;
+  lte?: Date;
+}
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+const toSeconds = (value: RawAvg): number | null =>
+  value === null || value === undefined ? null : Number(value);
 
 @Injectable()
 export class TicketsAnalyticsService {
@@ -100,8 +118,12 @@ export class TicketsAnalyticsService {
         category: c.category,
         count: c._count._all,
       })),
-      avgFirstResponseSeconds: durationRow?.avg_first_response_seconds ?? null,
-      avgResolutionSeconds: durationRow?.avg_resolution_seconds ?? null,
+      avgFirstResponseSeconds: toSeconds(
+        durationRow?.avg_first_response_seconds ?? null,
+      ),
+      avgResolutionSeconds: toSeconds(
+        durationRow?.avg_resolution_seconds ?? null,
+      ),
       reopenedCount,
       reopenedRate: total > 0 ? reopenedCount / total : 0,
       overdueCount: Number(durationRow?.overdue ?? 0),
@@ -284,16 +306,21 @@ export class TicketsAnalyticsService {
       Prisma.sql`resolved_at IS NOT NULL`,
     ]);
 
+    // Las columnas guardan UTC sin zona; se agrupa por el día/semana/mes local
+    // del laboratorio y se devuelve como fecha calendario "YYYY-MM-DD".
+    const bucketOf = (column: Prisma.Sql) =>
+      Prisma.sql`to_char(date_trunc(${interval}, (${column} AT TIME ZONE 'UTC') AT TIME ZONE ${BUSINESS_TIMEZONE}), 'YYYY-MM-DD')`;
+
     const [createdRows, resolvedRows] = await Promise.all([
       this.prisma.$queryRaw<TrendRow[]>(Prisma.sql`
-        SELECT date_trunc(${interval}, "createdAt") AS bucket, COUNT(*) AS count
+        SELECT ${bucketOf(Prisma.sql`"createdAt"`)} AS bucket, COUNT(*) AS count
         FROM tickets
         ${whereSql}
         GROUP BY bucket
         ORDER BY bucket ASC
       `),
       this.prisma.$queryRaw<TrendRow[]>(Prisma.sql`
-        SELECT date_trunc(${interval}, resolved_at) AS bucket, COUNT(*) AS count
+        SELECT ${bucketOf(Prisma.sql`resolved_at`)} AS bucket, COUNT(*) AS count
         FROM tickets
         ${resolvedWhereSql}
         GROUP BY bucket
@@ -366,11 +393,14 @@ export class TicketsAnalyticsService {
     const parts: string[] = [];
 
     if (dto.from || dto.to) {
-      const from = dto.from
-        ? new Date(dto.from).toLocaleDateString('es-MX')
-        : '…';
-      const to = dto.to ? new Date(dto.to).toLocaleDateString('es-MX') : '…';
-      parts.push(`Periodo: ${from} – ${to}`);
+      const format = (value?: string) =>
+        value
+          ? (DATE_ONLY_RE.test(value)
+              ? startOfLocalDay(value)
+              : new Date(value)
+            ).toLocaleDateString('es-MX', { timeZone: BUSINESS_TIMEZONE })
+          : '…';
+      parts.push(`Periodo: ${format(dto.from)} – ${format(dto.to)}`);
     }
     if (branchName) parts.push(`Sucursal: ${branchName}`);
     if (dto.category) parts.push(`Categoría: ${CATEGORY_LABELS[dto.category]}`);
@@ -494,14 +524,11 @@ export class TicketsAnalyticsService {
     dto: FindTicketAnalyticsDto,
     user: RequestUser,
   ): Prisma.TicketWhereInput {
+    const createdAt = this.resolveCreatedAtRange(dto);
+
     return {
       ...userBranchFilter(user, dto.branchId),
-      ...((dto.from || dto.to) && {
-        createdAt: {
-          ...(dto.from && { gte: new Date(dto.from) }),
-          ...(dto.to && { lte: new Date(dto.to) }),
-        },
-      }),
+      ...(createdAt && { createdAt }),
       ...(dto.category && { category: dto.category }),
       ...(dto.priority && { priority: dto.priority }),
     };
@@ -530,11 +557,15 @@ export class TicketsAnalyticsService {
     if (branchIds) {
       fragments.push(Prisma.sql`branch_id = ANY(${branchIds})`);
     }
-    if (dto.from) {
-      fragments.push(Prisma.sql`"createdAt" >= ${new Date(dto.from)}`);
+    const createdAt = this.resolveCreatedAtRange(dto);
+    if (createdAt?.gte) {
+      fragments.push(Prisma.sql`"createdAt" >= ${createdAt.gte}`);
     }
-    if (dto.to) {
-      fragments.push(Prisma.sql`"createdAt" <= ${new Date(dto.to)}`);
+    if (createdAt?.lt) {
+      fragments.push(Prisma.sql`"createdAt" < ${createdAt.lt}`);
+    }
+    if (createdAt?.lte) {
+      fragments.push(Prisma.sql`"createdAt" <= ${createdAt.lte}`);
     }
     if (dto.category) {
       fragments.push(Prisma.sql`category = ${dto.category}::"Category"`);
@@ -544,6 +575,39 @@ export class TicketsAnalyticsService {
     }
 
     return fragments;
+  }
+
+  /**
+   * Rango de `createdAt` para from/to. Una fecha sola ("YYYY-MM-DD") es un día
+   * calendario del laboratorio (BUSINESS_TIMEZONE) y `to` incluye el día
+   * completo; un ISO con hora se usa tal cual.
+   */
+  private resolveCreatedAtRange(
+    dto: FindTicketAnalyticsDto,
+  ): CreatedAtRange | null {
+    if (!dto.from && !dto.to) return null;
+
+    const range: CreatedAtRange = {};
+    if (dto.from) {
+      range.gte = DATE_ONLY_RE.test(dto.from)
+        ? startOfLocalDay(dto.from)
+        : new Date(dto.from);
+    }
+    if (dto.to) {
+      if (DATE_ONLY_RE.test(dto.to)) range.lt = startOfLocalDay(dto.to, 1);
+      else range.lte = new Date(dto.to);
+    }
+
+    const isEmpty = range.lt
+      ? range.gte && range.gte >= range.lt
+      : range.gte && range.lte && range.gte > range.lte;
+    if (isEmpty) {
+      throw new BadRequestException(
+        'La fecha inicial no puede ser posterior a la fecha final',
+      );
+    }
+
+    return range;
   }
 
   private whereSql(fragments: Prisma.Sql[]): Prisma.Sql {
@@ -570,7 +634,7 @@ export class TicketsAnalyticsService {
 
     return rows.map((r) => ({
       groupKey: r.group_key,
-      avgResolutionSeconds: r.avg_resolution_seconds,
+      avgResolutionSeconds: toSeconds(r.avg_resolution_seconds),
     }));
   }
 
@@ -593,7 +657,7 @@ export class TicketsAnalyticsService {
 
     return rows.map((r) => ({
       groupKey: r.group_key,
-      avgResolutionSeconds: r.avg_resolution_seconds,
+      avgResolutionSeconds: toSeconds(r.avg_resolution_seconds),
     }));
   }
 }
