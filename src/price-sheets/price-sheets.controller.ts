@@ -123,9 +123,9 @@ export class PriceSheetsController {
   }
 
   @ApiOperation({
-    summary: 'Descargar plantilla de importación de un tarifario',
+    summary: 'Descargar plantilla de importación de precios de un tarifario',
     description:
-      'Genera y descarga la plantilla Excel para cargar de forma masiva los estudios y precios de este tarifario específico.',
+      'Genera y descarga una plantilla Excel vacía (con una fila de ejemplo) con las columnas code, name y price para cargar precios de estudios existentes en este tarifario. name es solo de referencia.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del tabulador.' })
   @ApiProduces(
@@ -134,7 +134,7 @@ export class PriceSheetsController {
   @ApiResponse({ status: 200, description: 'Archivo Excel de plantilla.' })
   @ApiResponse({ status: 404, description: 'Tabulador no encontrado.' })
   @ApiBearerAuth()
-  @Permissions('studies:create')
+  @Permissions('price-sheets:update')
   @Get(':id/import-template')
   async downloadImportTemplate(
     @Param('id') id: string,
@@ -159,9 +159,9 @@ export class PriceSheetsController {
   }
 
   @ApiOperation({
-    summary: 'Importar estudios y precios a un tarifario',
+    summary: 'Importar precios a un tarifario',
     description:
-      'Procesa un archivo .xlsx/.xls para crear o actualizar los estudios de este tarifario junto con su precio, sin afectar los precios que esos estudios tengan en otros tarifarios.',
+      'Procesa un archivo .xlsx/.xls con las columnas code y price (name opcional, se ignora) y crea o actualiza el precio de cada estudio en este tarifario. Nunca crea ni modifica estudios: un code inexistente o inactivo en la sucursal del tarifario se reporta en invalid. Un price vacío deja la fila sin cambios (skipped). No modifica showPrice ni los precios de otros tarifarios.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del tabulador.' })
   @ApiConsumes('multipart/form-data')
@@ -173,7 +173,7 @@ export class PriceSheetsController {
           type: 'string',
           format: 'binary',
           description:
-            'Archivo Excel (.xlsx o .xls) con los estudios y precios de este tarifario.',
+            'Archivo Excel (.xlsx o .xls) con las columnas code y price.',
         },
       },
     },
@@ -181,7 +181,7 @@ export class PriceSheetsController {
   @ApiResponse({
     status: 201,
     description:
-      'Resultado de la importación con el detalle de éxitos y errores por fila.',
+      'Resultado: { totalRows, created, updated, skipped, invalid }. created = precios nuevos en el tarifario, updated = precios existentes actualizados, invalid = filas rechazadas con sus errores.',
   })
   @ApiResponse({
     status: 400,
@@ -189,7 +189,7 @@ export class PriceSheetsController {
   })
   @ApiResponse({ status: 404, description: 'Tabulador no encontrado.' })
   @ApiBearerAuth()
-  @Permissions('studies:create')
+  @Permissions('price-sheets:update')
   @Post(':id/import-excel')
   @UseInterceptors(FileInterceptor('file'))
   async importExcel(
@@ -198,10 +198,6 @@ export class PriceSheetsController {
     @CurrentUser() user: BranchScopedUser,
   ) {
     assertExcelFile(file);
-    return this.priceSheetsService.importStudiesFromExcel(
-      id,
-      file.buffer,
-      user,
-    );
+    return this.priceSheetsService.importPricesFromExcel(id, file.buffer, user);
   }
 }

@@ -3,7 +3,6 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsPositive,
   IsString,
@@ -75,15 +74,6 @@ export class ImportStudyRowDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
-
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  @IsOptional()
-  price?: number;
-
-  @IsBoolean()
-  @IsOptional()
-  showPrice?: boolean = true;
 
   @IsString()
   @IsOptional()

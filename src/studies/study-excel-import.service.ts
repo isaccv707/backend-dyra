@@ -19,7 +19,6 @@ import {
   ExcelCellValue,
   toOptionalBool,
   toOptionalInt,
-  toRequiredNumber,
 } from 'src/common/utils/excel-normalizers';
 import {
   normalizeAgeFormat,
@@ -58,11 +57,6 @@ const STUDY_COLUMNS = [
 
 const PRICE_COLUMNS = ['price', 'showPrice'];
 
-type ImportOptions = {
-  /** When set, each row's `price`/`showPrice` is saved in this price sheet. */
-  priceSheetId?: string;
-};
-
 type ValidRow = {
   row: number;
   code: string;
@@ -73,8 +67,6 @@ type ValidRow = {
   preparation?: string;
   deliveryTime?: number;
   isActive?: boolean;
-  price?: number;
-  showPrice?: boolean;
   serviceId: string;
   abbreviation?: string;
   section?: string;
@@ -91,8 +83,8 @@ type ValidRow = {
 
 /**
  * Bulk create/update of a branch's studies from an Excel file, keyed by
- * `code`. Shared by `POST /studies/import` (no prices) and the price-sheet
- * import (`priceSheetId` set), so both apply the same row rules.
+ * `code` (`POST /studies/import`). Never assigns prices: those are loaded per
+ * price sheet with `PriceSheetPriceImportService`.
  */
 @Injectable()
 export class StudyExcelImportService {
@@ -111,22 +103,11 @@ export class StudyExcelImportService {
     }
   }
 
-  async generateTemplate(
-    branchId: string,
-    { withPrice }: { withPrice: boolean },
-  ): Promise<Buffer> {
+  async generateTemplate(branchId: string): Promise<Buffer> {
     const services = await this.prisma.service.findMany({
       where: { branchId, isActive: true },
       orderBy: { name: 'asc' },
     });
-
-    const headers = withPrice
-      ? [
-          ...STUDY_COLUMNS.slice(0, STUDY_COLUMNS.indexOf('abbreviation')),
-          ...PRICE_COLUMNS,
-          ...STUDY_COLUMNS.slice(STUDY_COLUMNS.indexOf('abbreviation')),
-        ]
-      : STUDY_COLUMNS;
 
     const exampleRow: Record<string, string | number> = {
       code: 'BH001',
@@ -138,7 +119,6 @@ export class StudyExcelImportService {
       serviceName: services[0]?.name ?? 'PEGAR-AQUI-EL-NOMBRE-DEL-SERVICIO',
       deliveryTime: 1,
       isActive: 'true',
-      ...(withPrice && { price: 150, showPrice: 'true' }),
       abbreviation: 'BH',
       section: 'Hematología',
       technique: 'Citometría de flujo',
@@ -153,7 +133,7 @@ export class StudyExcelImportService {
     };
 
     const studiesSheet = XLSX.utils.json_to_sheet([exampleRow], {
-      header: headers,
+      header: STUDY_COLUMNS,
     });
 
     const servicesSheet = XLSX.utils.json_to_sheet(
@@ -171,13 +151,7 @@ export class StudyExcelImportService {
     return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
   }
 
-  async importStudies(
-    branchId: string,
-    buffer: Buffer,
-    { priceSheetId }: ImportOptions = {},
-  ) {
-    const withPrice = priceSheetId !== undefined;
-
+  async importStudies(branchId: string, buffer: Buffer) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName)
@@ -197,9 +171,7 @@ export class StudyExcelImportService {
       throw new BadRequestException('El Excel no contiene filas de datos');
 
     const headerKeys = new Set(rows.flatMap((row) => Object.keys(row)));
-    const requiredHeaders = withPrice
-      ? ['code', 'name', 'serviceName', 'price']
-      : ['code', 'name', 'serviceName'];
+    const requiredHeaders = ['code', 'name', 'serviceName'];
     const missingHeaders = requiredHeaders.filter((h) => !headerKeys.has(h));
     if (missingHeaders.length) {
       throw new BadRequestException(
@@ -228,12 +200,6 @@ export class StudyExcelImportService {
       return messages;
     };
 
-    const getPriceValue = (val: ExcelCellValue): number | undefined => {
-      if (val === null || val === undefined) return undefined;
-      const cleaned = String(val).trim();
-      return cleaned === '' ? undefined : toRequiredNumber(cleaned);
-    };
-
     const cellToString = (val: ExcelCellValue): string | undefined =>
       val === null || val === undefined ? undefined : String(val).trim();
 
@@ -259,13 +225,11 @@ export class StudyExcelImportService {
         seenCodes.add(code);
       }
 
-      if (!withPrice) {
-        const priceColumns = PRICE_COLUMNS.filter((c) => cellToString(row[c]));
-        if (priceColumns.length) {
-          rowErrors.push(
-            `Esta importación no asigna precios: deja vacía(s) la(s) columna(s) ${priceColumns.join(', ')} o usa la importación del tarifario`,
-          );
-        }
+      const priceColumns = PRICE_COLUMNS.filter((c) => cellToString(row[c]));
+      if (priceColumns.length) {
+        rowErrors.push(
+          `Esta importación no asigna precios: deja vacía(s) la(s) columna(s) ${priceColumns.join(', ')} o usa la importación del tarifario`,
+        );
       }
 
       const panelCodes = (cellToString(row.parametros) ?? '')
@@ -307,10 +271,6 @@ export class StudyExcelImportService {
         serviceName,
         deliveryTime: toOptionalInt(row.deliveryTime),
         isActive: toOptionalBool(row.isActive) ?? true,
-        ...(withPrice && {
-          price: getPriceValue(row.price),
-          showPrice: toOptionalBool(row.showPrice) ?? true,
-        }),
         abbreviation: cellToString(row.abbreviation),
         section: cellToString(row.section),
         technique: cellToString(row.technique),
@@ -355,8 +315,6 @@ export class StudyExcelImportService {
           preparation: dto.preparation,
           deliveryTime: dto.deliveryTime,
           isActive: dto.isActive,
-          price: dto.price,
-          showPrice: dto.showPrice,
           serviceId,
           abbreviation: dto.abbreviation,
           section: dto.section || undefined,
@@ -507,7 +465,7 @@ export class StudyExcelImportService {
       try {
         // Renaming never changes the slug: it's only set when the study is created.
         // A blank `title` cell keeps the current title (or defaults to `name` on create).
-        const study = await this.prisma.study.upsert({
+        await this.prisma.study.upsert({
           where: { branchId_code: { branchId, code: item.code } },
           update: {
             name: item.name,
@@ -557,24 +515,6 @@ export class StudyExcelImportService {
             branch: { connect: { id: branchId } },
           },
         });
-
-        if (priceSheetId && item.price !== undefined) {
-          await this.prisma.studyOnPriceSheet.upsert({
-            where: {
-              studyId_priceSheetId: { studyId: study.id, priceSheetId },
-            },
-            update: {
-              price: new Prisma.Decimal(item.price),
-              showPrice: item.showPrice ?? true,
-            },
-            create: {
-              studyId: study.id,
-              priceSheetId,
-              price: new Prisma.Decimal(item.price),
-              showPrice: item.showPrice ?? true,
-            },
-          });
-        }
 
         processed++;
         if (existingByCode.has(item.code)) updated++;
