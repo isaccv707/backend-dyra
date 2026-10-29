@@ -72,6 +72,15 @@ function localToInstant(
   return guess - offsetAt(guess - offsetAt(guess));
 }
 
+/**
+ * Instant where the local calendar day `YYYY-MM-DD` starts (00:00 in
+ * BUSINESS_TIMEZONE); `dayOffset` shifts to a following/previous day.
+ */
+export function startOfLocalDay(dateOnly: string, dayOffset = 0): Date {
+  const [year, month, day] = dateOnly.slice(0, 10).split('-').map(Number);
+  return new Date(localToInstant(year, month, day + dayOffset, 0));
+}
+
 /** Business window [start, end) of the local day that contains `instant`. */
 function windowOfDay(instant: number) {
   const { year, month, day } = localParts(new Date(instant));
