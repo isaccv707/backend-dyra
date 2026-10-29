@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
 import { PriceSheetsService } from './price-sheets.service';
 import { PriceSheetsController } from './price-sheets.controller';
-import { StudiesModule } from 'src/studies/studies.module';
+import { PriceSheetPriceImportService } from './price-sheet-price-import.service';
 
 @Module({
-  imports: [StudiesModule],
   controllers: [PriceSheetsController],
-  providers: [PriceSheetsService],
+  providers: [PriceSheetsService, PriceSheetPriceImportService],
 })
 export class PriceSheetsModule {}

@@ -15,7 +15,7 @@ import {
   BranchScopedUser,
   userBranchFilter,
 } from 'src/common/utils/branch-access.util';
-import { StudyExcelImportService } from 'src/studies/study-excel-import.service';
+import { PriceSheetPriceImportService } from './price-sheet-price-import.service';
 
 const STUDY_ON_PRICE_SHEET_ALLOWED_FIELDS = [
   'study.name',
@@ -37,7 +37,7 @@ const PRICE_SHEET_ALLOWED_FIELDS = [
 export class PriceSheetsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly studyExcelImport: StudyExcelImportService,
+    private readonly priceImport: PriceSheetPriceImportService,
   ) {}
 
   async create(createPriceSheetDto: CreatePriceSheetDto) {
@@ -179,20 +179,16 @@ export class PriceSheetsService {
     id: string,
     user: BranchScopedUser,
   ): Promise<Buffer> {
-    const priceSheet = await this.getPriceSheetOrThrow(id, user);
-    return this.studyExcelImport.generateTemplate(priceSheet.branchId, {
-      withPrice: true,
-    });
+    await this.getPriceSheetOrThrow(id, user);
+    return this.priceImport.generateTemplate();
   }
 
-  async importStudiesFromExcel(
+  async importPricesFromExcel(
     id: string,
     buffer: Buffer,
     user: BranchScopedUser,
   ) {
     const priceSheet = await this.getPriceSheetOrThrow(id, user);
-    return this.studyExcelImport.importStudies(priceSheet.branchId, buffer, {
-      priceSheetId: id,
-    });
+    return this.priceImport.importPrices(priceSheet, buffer);
   }
 }

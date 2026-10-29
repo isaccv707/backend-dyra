@@ -4662,7 +4662,7 @@
     },
     "/api/price-sheets/{id}/import-template": {
       "get": {
-        "description": "Genera y descarga la plantilla Excel para cargar de forma masiva los estudios y precios de este tarifario específico.",
+        "description": "Genera y descarga una plantilla Excel vacía (con una fila de ejemplo) con las columnas code, name y price para cargar precios de estudios existentes en este tarifario. name es solo de referencia.",
         "operationId": "PriceSheetsController_downloadImportTemplate",
         "parameters": [
           {
@@ -4688,7 +4688,7 @@
             "bearer": []
           }
         ],
-        "summary": "Descargar plantilla de importación de un tarifario",
+        "summary": "Descargar plantilla de importación de precios de un tarifario",
         "tags": [
           "price-sheets"
         ]
@@ -4696,7 +4696,7 @@
     },
     "/api/price-sheets/{id}/import-excel": {
       "post": {
-        "description": "Procesa un archivo .xlsx/.xls para crear o actualizar los estudios de este tarifario junto con su precio, sin afectar los precios que esos estudios tengan en otros tarifarios.",
+        "description": "Procesa un archivo .xlsx/.xls con las columnas code y price (name opcional, se ignora) y crea o actualiza el precio de cada estudio en este tarifario. Nunca crea ni modifica estudios: un code inexistente o inactivo en la sucursal del tarifario se reporta en invalid. Un price vacío deja la fila sin cambios (skipped). No modifica showPrice ni los precios de otros tarifarios.",
         "operationId": "PriceSheetsController_importExcel",
         "parameters": [
           {
@@ -4719,7 +4719,7 @@
                   "file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "Archivo Excel (.xlsx o .xls) con los estudios y precios de este tarifario."
+                    "description": "Archivo Excel (.xlsx o .xls) con las columnas code y price."
                   }
                 }
               }
@@ -4728,7 +4728,7 @@
         },
         "responses": {
           "201": {
-            "description": "Resultado de la importación con el detalle de éxitos y errores por fila."
+            "description": "Resultado: { totalRows, created, updated, skipped, invalid }. created = precios nuevos en el tarifario, updated = precios existentes actualizados, invalid = filas rechazadas con sus errores."
           },
           "400": {
             "description": "Archivo no proporcionado o de tipo inválido."
@@ -4742,7 +4742,7 @@
             "bearer": []
           }
         ],
-        "summary": "Importar estudios y precios a un tarifario",
+        "summary": "Importar precios a un tarifario",
         "tags": [
           "price-sheets"
         ]

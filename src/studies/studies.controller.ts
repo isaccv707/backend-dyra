@@ -325,9 +325,7 @@ export class StudiesController {
     @Res() res: Response,
   ) {
     await this.studyExcelImport.assertImportableBranch(branchId, user);
-    const buffer = await this.studyExcelImport.generateTemplate(branchId, {
-      withPrice: false,
-    });
+    const buffer = await this.studyExcelImport.generateTemplate(branchId);
 
     res.setHeader(
       'Content-Type',
