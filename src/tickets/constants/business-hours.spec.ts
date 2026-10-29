@@ -2,6 +2,7 @@ import {
   addBusinessDays,
   addBusinessTime,
   businessTimeBetween,
+  startOfLocalDay,
 } from './business-hours';
 import { computeDueAt } from './ticket-sla.const';
 
@@ -69,6 +70,18 @@ describe('business hours (L–V 9–17, sáb 9–14, dom cerrado)', () => {
     it('conserva la hora local', () => {
       expect(addBusinessDays(mx('2026-10-22T16:45:30'), 1)).toEqual(
         mx('2026-10-23T16:45:30'),
+      );
+    });
+  });
+
+  describe('startOfLocalDay', () => {
+    it('devuelve la medianoche local del día calendario', () => {
+      expect(startOfLocalDay('2026-10-29')).toEqual(mx('2026-10-29T00:00:00'));
+    });
+
+    it('desplaza días y cruza fin de mes', () => {
+      expect(startOfLocalDay('2026-10-31', 1)).toEqual(
+        mx('2026-11-01T00:00:00'),
       );
     });
   });

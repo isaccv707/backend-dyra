@@ -41,7 +41,8 @@ export interface TicketsByCategoryRow {
 }
 
 export interface TicketTrendPoint {
-  date: Date;
+  /** Inicio del periodo como fecha calendario local "YYYY-MM-DD". */
+  date: string;
   count: number;
 }
 
