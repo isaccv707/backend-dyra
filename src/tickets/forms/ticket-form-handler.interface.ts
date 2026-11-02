@@ -39,6 +39,8 @@ export interface TicketFormHandler<
   readonly dataDto: ClassConstructor<TData>;
   /** Data IT captures when approving; absent = the form is informative only. */
   readonly applyDto?: ClassConstructor<TApply>;
+  /** Field stored encrypted, outside `data`; it's never returned with the form. */
+  readonly secretField?: string;
 
   validate(
     data: TData,

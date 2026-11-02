@@ -11,7 +11,10 @@ import { ReferenceValuesUpdateFormHandler } from './handlers/reference-values-up
 import { SoftwareRemoteFormHandler } from './handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './handlers/study-create-form.handler';
 import { StudyUpdateFormHandler } from './handlers/study-update-form.handler';
+import { TicketFormSecretService } from './ticket-form-secret.service';
 import { TicketFormsService } from './ticket-forms.service';
+
+process.env.TICKET_SECRET_KEY = Buffer.alloc(32, 1).toString('base64');
 
 const BRANCH_ID = '11111111-1111-4111-8111-111111111111';
 const SERVICE_ID = '22222222-2222-4222-8222-222222222222';
@@ -120,6 +123,7 @@ describe('TicketFormsService', () => {
         StudyUpdateFormHandler,
         ClientCreateFormHandler,
         ReferenceValuesUpdateFormHandler,
+        TicketFormSecretService,
         { provide: PrismaService, useValue: prisma },
         { provide: StudiesService, useValue: studies },
         { provide: UsersService, useValue: users },
@@ -135,22 +139,38 @@ describe('TicketFormsService', () => {
       await expect(
         service.parse(
           'SOFTWARE_REMOTE',
-          { teamViewerId: '123', password: 'x' },
+          { teamViewerId: '123', teamViewerPassword: 'abc', password: 'x' },
           context,
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    it('SOFTWARE_REMOTE no genera título (lo escribe el usuario)', async () => {
+    it('SOFTWARE_REMOTE no genera título y guarda la contraseña cifrada, fuera de data', async () => {
       const parsed = await service.parse(
         'SOFTWARE_REMOTE',
-        { teamViewerId: '123 456 789' },
+        { teamViewerId: '123 456 789', teamViewerPassword: 'abc123' },
         context,
       );
       expect(parsed).toEqual({
         data: { teamViewerId: '123 456 789' },
         title: undefined,
+        secretColumns: {
+          encryptedSecret: expect.stringMatching(/^v1:/),
+          hasSecret: true,
+          secretPurgedAt: null,
+        },
       });
+      expect(parsed.secretColumns?.encryptedSecret).not.toContain('abc123');
+    });
+
+    it('SOFTWARE_REMOTE exige la contraseña de TeamViewer', async () => {
+      await expect(
+        service.parse(
+          'SOFTWARE_REMOTE',
+          { teamViewerId: '123 456 789' },
+          context,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
     });
 
     it('STUDY_CREATE valida con las reglas de estudios y genera el título', async () => {
@@ -317,7 +337,11 @@ describe('TicketFormsService', () => {
         },
       });
       await expect(
-        service.parse('SOFTWARE_REMOTE', { teamViewerId: '1', x: 1 }, context),
+        service.parse(
+          'SOFTWARE_REMOTE',
+          { teamViewerId: '1', teamViewerPassword: 'abc', x: 1 },
+          context,
+        ),
       ).rejects.toMatchObject({
         response: { message: ['form.x no es un campo permitido'] },
       });
@@ -470,7 +494,7 @@ describe('TicketFormsService', () => {
       await expect(
         service.apply(
           'SOFTWARE_REMOTE',
-          { teamViewerId: '1' },
+          { teamViewerId: '1', teamViewerPassword: 'abc' },
           {},
           context,
           tx,

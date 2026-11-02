@@ -7,6 +7,7 @@ import { TicketAssigneesService } from '../assignees/ticket-assignees.service';
 import { TicketCommentsService } from '../comments/ticket-comments.service';
 import { CreateTicketDto } from '../dto/create-ticket.dto';
 import { TicketFormWorkflowService } from '../forms/ticket-form-workflow.service';
+import { TicketFormSecretService } from '../forms/ticket-form-secret.service';
 import { TicketFormsService } from '../forms/ticket-forms.service';
 import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
 import { TicketSlaService } from '../sla/ticket-sla.service';
@@ -102,6 +103,7 @@ const createPrismaMock = () => {
  * form-handler mocks, so a spec can assert on any side effect of a flow.
  */
 export async function createTicketsTestContext() {
+  process.env.TICKET_SECRET_KEY = Buffer.alloc(32, 1).toString('base64');
   const prisma = createPrismaMock();
   const ticketForms = {
     parse: jest.fn(),
@@ -129,6 +131,7 @@ export async function createTicketsTestContext() {
       TicketAssigneesService,
       TicketFormWorkflowService,
       TicketSlaService,
+      TicketFormSecretService,
       { provide: PrismaService, useValue: prisma },
       { provide: TicketsGateway, useValue: gateway },
       { provide: MailService, useValue: mailService },
@@ -149,6 +152,7 @@ export async function createTicketsTestContext() {
     assigneesService: module.get(TicketAssigneesService),
     formWorkflowService: module.get(TicketFormWorkflowService),
     slaService: module.get(TicketSlaService),
+    secrets: module.get(TicketFormSecretService),
   };
 }
 

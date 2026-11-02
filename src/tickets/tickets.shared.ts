@@ -30,6 +30,15 @@ export const REOPENABLE_STATUSES: TicketStatus[] = ['RESOLVED', 'CLOSED'];
 
 export const FORM_LOCKED_STATUSES: TicketStatus[] = ['CLOSED', 'CANCELLED'];
 
+/**
+ * A form's secret (TeamViewer password, new on every session) only exists while
+ * the ticket waits for attention or is being attended; any other status deletes it.
+ */
+export const FORM_SECRET_STATUSES: TicketStatus[] = ['OPEN', 'IN_PROGRESS'];
+
+/** It can only be read while the ticket is being attended. */
+export const FORM_SECRET_VISIBLE_STATUS: TicketStatus = 'IN_PROGRESS';
+
 export const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()(
   {
     include: {
@@ -52,6 +61,8 @@ export const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()(
           schemaVersion: true,
           data: true,
           result: true,
+          hasSecret: true,
+          secretPurgedAt: true,
           appliedAt: true,
           appliedBy: { select: { id: true, name: true } },
           rejectedAt: true,

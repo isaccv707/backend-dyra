@@ -10,6 +10,7 @@ import {
 export class SoftwareRemoteFormHandler implements TicketFormHandler<SoftwareRemoteFormDto> {
   readonly type = 'SOFTWARE_REMOTE' as const;
   readonly dataDto = SoftwareRemoteFormDto;
+  readonly secretField = 'teamViewerPassword';
 
   validate(): Promise<TicketFormValidation> {
     return Promise.resolve({});

@@ -6,4 +6,10 @@ export class SoftwareRemoteFormDto {
   @IsNotEmpty()
   @MaxLength(50)
   teamViewerId!: string;
+
+  /** Contraseña de TeamViewer del equipo a atender. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  teamViewerPassword!: string;
 }

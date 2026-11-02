@@ -9479,6 +9479,53 @@
         ]
       }
     },
+    "/api/tickets/{id}/form/secret": {
+      "get": {
+        "description": "Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve y solo con el ticket en progreso; se borra si el ticket pasa a en espera, resuelto, cerrado o cancelado. Requiere tickets:update en la sucursal del ticket o estar asignado.",
+        "operationId": "TicketsController_revealFormSecret",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador del ticket.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secreto descifrado.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TicketFormSecretDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "El usuario no está asignado ni tiene tickets:update en esa sucursal."
+          },
+          "404": {
+            "description": "Ticket no encontrado o sin contraseña guardada."
+          },
+          "409": {
+            "description": "El ticket no está en progreso."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ver la contraseña del formulario del ticket",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/tickets/{id}/form/apply": {
       "post": {
         "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. REFERENCE_VALUES_UPDATE reemplaza los valores de referencia de un parámetro (sin datos de TI). ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update o users:create.",
@@ -12298,10 +12345,15 @@
           "teamViewerId": {
             "type": "string",
             "maxLength": 50
+          },
+          "teamViewerPassword": {
+            "type": "string",
+            "maxLength": 100
           }
         },
         "required": [
-          "teamViewerId"
+          "teamViewerId",
+          "teamViewerPassword"
         ]
       },
       "AccessRequestFormDto": {
@@ -12980,6 +13032,14 @@
           "schemaVersion": {
             "type": "number"
           },
+          "hasSecret": {
+            "type": "boolean"
+          },
+          "secretPurgedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
           "appliedAt": {
             "format": "date-time",
             "type": "string",
@@ -13022,6 +13082,8 @@
           "data",
           "result",
           "schemaVersion",
+          "hasSecret",
+          "secretPurgedAt",
           "appliedAt",
           "appliedBy",
           "rejectedAt",
@@ -13787,6 +13849,17 @@
         },
         "required": [
           "body"
+        ]
+      },
+      "TicketFormSecretDto": {
+        "type": "object",
+        "properties": {
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
         ]
       },
       "TicketFormValidationDto": {
