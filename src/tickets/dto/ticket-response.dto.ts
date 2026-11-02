@@ -60,6 +60,10 @@ export class TicketFormDto {
   /** Outcome of the approval (created ids, before/after); null while pending. */
   @ApiProperty({ ...JSON_OBJECT, nullable: true })
   result!: Record<string, unknown> | null;
+  /** A secret (TeamViewer password) is on file: GET /tickets/:id/form/secret. */
+  hasSecret!: boolean;
+  /** When the secret was deleted because the ticket was closed or cancelled. */
+  secretPurgedAt!: Date | null;
   appliedAt!: Date | null;
   appliedBy!: TicketUserRefDto | null;
   rejectedAt!: Date | null;
@@ -177,6 +181,10 @@ export class TicketFormRoleDto {
   id!: string;
   name!: string;
   description!: string | null;
+}
+
+export class TicketFormSecretDto {
+  secret!: string;
 }
 
 export class TicketFormValidationDto {

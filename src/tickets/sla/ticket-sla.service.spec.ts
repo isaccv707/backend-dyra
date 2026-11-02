@@ -256,6 +256,12 @@ describe('TicketSlaService', () => {
           closedAt: expect.any(Date),
         }),
       });
+      expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { ticketId: 'ticket-1', hasSecret: true },
+          data: expect.objectContaining({ encryptedSecret: null }),
+        }),
+      );
       expect(prisma.ticketComment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

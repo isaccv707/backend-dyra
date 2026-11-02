@@ -52,6 +52,8 @@ export const ticketWithRelations = Prisma.validator<Prisma.TicketDefaultArgs>()(
           schemaVersion: true,
           data: true,
           result: true,
+          hasSecret: true,
+          secretPurgedAt: true,
           appliedAt: true,
           appliedBy: { select: { id: true, name: true } },
           rejectedAt: true,

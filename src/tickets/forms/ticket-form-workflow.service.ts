@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -27,6 +28,10 @@ import {
   PRIVILEGED_PERMISSION_MODULES,
   TICKET_FORM_DEFINITIONS,
 } from './ticket-forms.const';
+import {
+  purgeFormSecret,
+  TicketFormSecretService,
+} from './ticket-form-secret.service';
 import { TicketFormsService } from './ticket-forms.service';
 
 /** Thrown inside a dry-run transaction to roll it back with its result. */
@@ -53,6 +58,7 @@ export class TicketFormWorkflowService {
     private readonly mailService: MailService,
     private readonly ticketForms: TicketFormsService,
     private readonly comments: TicketCommentsService,
+    private readonly secrets: TicketFormSecretService,
   ) {}
 
   async updateForm(id: string, payload: unknown, user: RequestUser) {
@@ -67,26 +73,35 @@ export class TicketFormWorkflowService {
     }
 
     const form = this.assertFormIsPending(ticket);
-    const { data, title } = await this.ticketForms.parse(form.type, payload, {
-      branchId: ticket.branchId,
-      actor: user,
-      phase: 'request',
-    });
+    const { data, title, secretColumns } = await this.ticketForms.parse(
+      form.type,
+      payload,
+      {
+        branchId: ticket.branchId,
+        actor: user,
+        phase: 'request',
+      },
+    );
 
     await this.prisma.$transaction(async (tx) => {
-      // Only while pending: an approval may have committed since the read above.
+      // Only while pending: an approval or a close may have committed since the
+      // read above, and a closed ticket must not get its secret back.
       const { count } = await tx.ticketForm.updateMany({
-        where: { ticketId: id, appliedAt: null, rejectedAt: null },
+        where: {
+          ticketId: id,
+          appliedAt: null,
+          rejectedAt: null,
+          ticket: { status: { notIn: FORM_LOCKED_STATUSES } },
+        },
         // Saved by the current DTOs: it's now data of the current version.
         data: {
           data,
           schemaVersion: TICKET_FORM_DEFINITIONS[form.type].version,
+          ...secretColumns,
         },
       });
       if (count === 0) {
-        throw new ConflictException(
-          'El formulario ya fue aprobado o rechazado',
-        );
+        throw new ConflictException('El formulario ya no se puede modificar');
       }
       // Forms that generate the title keep it in sync with their data.
       if (title && title !== ticket.title) {
@@ -106,6 +121,51 @@ export class TicketFormWorkflowService {
       ],
       user,
     );
+  }
+
+  /**
+   * Decrypts the form's secret for whoever attends the ticket: IT of its branch
+   * or an assignee. Not the requester, who already knows it and can replace it.
+   */
+  async revealSecret(id: string, user: RequestUser) {
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { id },
+      select: {
+        branchId: true,
+        assignees: { select: { userId: true } },
+        form: { select: { encryptedSecret: true } },
+      },
+    });
+    if (!ticket) {
+      throw new NotFoundException(`Ticket with ID '${id}' not found`);
+    }
+
+    if (hasTicketUpdatePermission(user)) {
+      assertBranchAccess(user, ticket.branchId);
+    } else if (!ticket.assignees.some((a) => a.userId === user.id)) {
+      throw new ForbiddenException(
+        'Solo TI o quien atiende el ticket pueden ver la contraseña',
+      );
+    }
+
+    if (!ticket.form?.encryptedSecret) {
+      throw new NotFoundException(
+        'Este ticket no tiene una contraseña guardada',
+      );
+    }
+
+    this.logger.log(`Usuario ${user.id} consultó el secreto del ticket ${id}`);
+    try {
+      return { secret: this.secrets.decrypt(ticket.form.encryptedSecret) };
+    } catch (error) {
+      // Only the message: never what was being decrypted.
+      this.logger.error(
+        `No se pudo descifrar el secreto del ticket ${id}: ${(error as Error).message}`,
+      );
+      throw new InternalServerErrorException(
+        'No se pudo descifrar la contraseña: pide que la registren de nuevo',
+      );
+    }
   }
 
   /** Checks shared by approving and validating a form. */
@@ -265,6 +325,7 @@ export class TicketFormWorkflowService {
           'El formulario ya fue aprobado o rechazado',
         );
       }
+      await purgeFormSecret(tx, id);
       if (cancels) {
         await tx.ticket.update({
           where: { id },

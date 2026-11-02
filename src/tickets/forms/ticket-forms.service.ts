@@ -18,6 +18,7 @@ import {
   TicketFormDb,
   TicketFormHandler,
 } from './ticket-form-handler.interface';
+import { TicketFormSecretService } from './ticket-form-secret.service';
 import { validateFormPayload } from './validate-form-payload.util';
 import {
   TICKET_FORM_DEFINITIONS,
@@ -30,6 +31,7 @@ export class TicketFormsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly secrets: TicketFormSecretService,
     softwareRemote: SoftwareRemoteFormHandler,
     accessRequest: AccessRequestFormHandler,
     studyCreate: StudyCreateFormHandler,
@@ -74,7 +76,10 @@ export class TicketFormsService {
     return upgraded as Prisma.JsonValue;
   }
 
-  /** Validates a requester's payload; returns the JSON to store and the generated title. */
+  /**
+   * Validates a requester's payload; returns the JSON to store, the generated
+   * title and, for forms with a secret, the columns that hold it encrypted.
+   */
   async parse(
     type: TicketFormType,
     payload: unknown,
@@ -84,12 +89,29 @@ export class TicketFormsService {
     const handler = this.handlers[type];
     const data = await validateFormPayload(handler.dataDto, payload, 'form');
     const validation = await handler.validate(data, context, db);
+    const plain = instanceToPlain(data) as Record<
+      string,
+      Prisma.InputJsonValue
+    >;
+
+    let secretColumns:
+      | { encryptedSecret: string; hasSecret: true; secretPurgedAt: null }
+      | undefined;
+    if (handler.secretField) {
+      secretColumns = {
+        encryptedSecret: this.secrets.encrypt(
+          plain[handler.secretField] as string,
+        ),
+        hasSecret: true,
+        secretPurgedAt: null,
+      };
+      delete plain[handler.secretField];
+    }
+
     return {
-      data: {
-        ...(instanceToPlain(data) as Prisma.InputJsonObject),
-        ...validation.data,
-      },
+      data: { ...plain, ...validation.data } as Prisma.InputJsonObject,
       title: validation.title,
+      secretColumns,
     };
   }
 

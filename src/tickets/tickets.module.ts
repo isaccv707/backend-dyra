@@ -24,6 +24,7 @@ import { TicketsAnalyticsController } from './analytics/tickets-analytics.contro
 import { TicketsAnalyticsService } from './analytics/tickets-analytics.service';
 import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.renderer';
 import { TicketFormsService } from './forms/ticket-forms.service';
+import { TicketFormSecretService } from './forms/ticket-form-secret.service';
 import { AccessRequestFormHandler } from './forms/handlers/access-request-form.handler';
 import { ClientCreateFormHandler } from './forms/handlers/client-create-form.handler';
 import { ReferenceValuesUpdateFormHandler } from './forms/handlers/reference-values-update-form.handler';
@@ -73,6 +74,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     TicketsAnalyticsService,
     TicketAnalyticsPdfRenderer,
     TicketFormsService,
+    TicketFormSecretService,
     SoftwareRemoteFormHandler,
     AccessRequestFormHandler,
     StudyCreateFormHandler,

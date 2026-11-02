@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -56,6 +57,7 @@ import {
   TicketCommentResponseDto,
   TicketDetailResponseDto,
   TicketFormRoleDto,
+  TicketFormSecretDto,
   TicketFormValidationDto,
   TicketResponseDto,
   TicketUserRefDto,
@@ -481,6 +483,36 @@ export class TicketsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.formWorkflow.updateForm(id, body, user);
+  }
+
+  @ApiOperation({
+    summary: 'Ver la contraseña del formulario del ticket',
+    description:
+      'Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve; se borra al ' +
+      'cerrar o cancelar el ticket. Requiere tickets:update en la sucursal del ticket o estar asignado.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
+  @ApiResponse({
+    status: 200,
+    description: 'Secreto descifrado.',
+    type: TicketFormSecretDto,
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El usuario no está asignado ni tiene tickets:update en esa sucursal.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Ticket no encontrado o sin contraseña guardada.',
+  })
+  @Header('Cache-Control', 'no-store')
+  @Get(':id/form/secret')
+  revealFormSecret(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.formWorkflow.revealSecret(id, user);
   }
 
   @ApiOperation({
