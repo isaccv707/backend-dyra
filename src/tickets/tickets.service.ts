@@ -31,6 +31,7 @@ import { FindTicketsDto, TicketFormStatus } from './dto/find-tickets.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { TicketNotificationsService } from './notifications/ticket-notifications.service';
 import { TicketsGateway } from './tickets.gateway';
+import { purgeFormSecret } from './forms/ticket-form-secret.service';
 import { TicketFormsService } from './forms/ticket-forms.service';
 import {
   resolveFormType,
@@ -42,6 +43,7 @@ import {
   CATEGORY_LABELS,
   ChangeEntry,
   FORM_LOCKED_STATUSES,
+  FORM_SECRET_STATUSES,
   REOPENABLE_STATUSES,
   TICKET_PRIORITY_LABELS,
   TICKET_STATUS_LABELS,
@@ -186,6 +188,7 @@ export class TicketsService {
                     type: formType,
                     schemaVersion: TICKET_FORM_DEFINITIONS[formType].version,
                     data: parsedForm.data,
+                    ...parsedForm.secretColumns,
                   },
                 },
               }),
@@ -352,22 +355,31 @@ export class TicketsService {
     const traceabilityData = computeTraceabilityFields(ticket, updateTicketDto);
 
     try {
-      const updated = await this.prisma.ticket.update({
-        where: { id },
-        data: {
-          ...(updateTicketDto.status && { status: updateTicketDto.status }),
-          ...(updateTicketDto.priority && {
-            priority: updateTicketDto.priority,
-          }),
-          ...(updateTicketDto.category && {
-            category: updateTicketDto.category,
-          }),
-          ...(updateTicketDto.subcategoryId !== undefined && {
-            subcategoryId: updateTicketDto.subcategoryId,
-          }),
-          ...traceabilityData,
-        },
-        ...ticketWithRelations,
+      const updated = await this.prisma.$transaction(async (tx) => {
+        // Before the update, so the returned form already shows it's gone.
+        if (
+          updateTicketDto.status &&
+          !FORM_SECRET_STATUSES.includes(updateTicketDto.status)
+        ) {
+          await purgeFormSecret(tx, id);
+        }
+        return tx.ticket.update({
+          where: { id },
+          data: {
+            ...(updateTicketDto.status && { status: updateTicketDto.status }),
+            ...(updateTicketDto.priority && {
+              priority: updateTicketDto.priority,
+            }),
+            ...(updateTicketDto.category && {
+              category: updateTicketDto.category,
+            }),
+            ...(updateTicketDto.subcategoryId !== undefined && {
+              subcategoryId: updateTicketDto.subcategoryId,
+            }),
+            ...traceabilityData,
+          },
+          ...ticketWithRelations,
+        });
       });
 
       await this.recordChangeAndNotify(ticket, updated, updateTicketDto, user);

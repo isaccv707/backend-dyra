@@ -14,6 +14,7 @@ import {
 import { SLA_HOURS_BY_PRIORITY } from '../constants/ticket-sla.const';
 import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
 import { TicketsGateway } from '../tickets.gateway';
+import { purgeFormSecret } from '../forms/ticket-form-secret.service';
 import { TICKET_STATUS_LABELS, ticketWithRelations } from '../tickets.shared';
 import { computeTraceabilityFields } from '../utils/ticket-traceability.util';
 
@@ -178,12 +179,16 @@ export class TicketSlaService {
         continue;
       }
 
-      const { count } = await this.prisma.ticket.updateMany({
-        where: { id: ticket.id, status: 'RESOLVED' },
-        data: {
-          status: 'CLOSED',
-          ...computeTraceabilityFields(ticket, { status: 'CLOSED' }),
-        },
+      const count = await this.prisma.$transaction(async (tx) => {
+        const claimed = await tx.ticket.updateMany({
+          where: { id: ticket.id, status: 'RESOLVED' },
+          data: {
+            status: 'CLOSED',
+            ...computeTraceabilityFields(ticket, { status: 'CLOSED' }),
+          },
+        });
+        if (claimed.count > 0) await purgeFormSecret(tx, ticket.id);
+        return claimed.count;
       });
       if (count === 0) continue;
       closed++;

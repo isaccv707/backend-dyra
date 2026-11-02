@@ -238,7 +238,15 @@ model TicketForm {
   data          Json
   result        Json?
 
-  rejectedAt      DateTime? @map("rejected_at")
+  /// Secret typed in the form (TeamViewer password), AES-256-GCM. Omitted globally
+  /// in PrismaService: it's read only to reveal it (TicketFormWorkflowService.revealSecret).
+  encryptedSecret String?   @map("encrypted_secret") @db.Text
+  /// A secret is on file. Lets responses tell it without touching the ciphertext.
+  hasSecret       Boolean   @default(false) @map("has_secret")
+  /// The secret was deleted because the ticket left attention (see FORM_SECRET_STATUSES).
+  secretPurgedAt  DateTime? @map("secret_purged_at")
+
+  rejectedAt     DateTime? @map("rejected_at")
   rejectedById    String?   @map("rejected_by_id")
   rejectedBy      User?     @relation("TicketFormRejectedBy", fields: [rejectedById], references: [id], onDelete: SetNull)
   rejectionReason String?   @map("rejection_reason") @db.Text

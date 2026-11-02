@@ -29,6 +29,7 @@ export class PrismaService
           legacySampleType: true,
           legacyTechnique: true,
         },
+        ticketForm: { encryptedSecret: true },
       },
     });
   }
