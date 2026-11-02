@@ -33,7 +33,7 @@ npx prisma studio
 yarn openapi:export             # nest build + escribe openapi.json (contrato para los frontends)
 ```
 
-- `test:e2e` (`test/jest-e2e.json`) no tiene specs hoy (`--passWithNoTests`).
+- `yarn test:e2e` (`test/jest-e2e.json`): flujo de formularios de tickets contra BD real, Redis y `TICKET_SECRET_KEY` (crea y borra sus datos; solo BD local o de CI).
 - Seed: siempre roles/permisos, usuario admin (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`; se le asignan todas las sucursales existentes) y subcategorías de tickets. Solo si `SEED_DEV_BRANCH=true` y `NODE_ENV!=production`: estados + sucursal por defecto `a1b2c3d4-0001-4000-8000-000000000001` (debe ir antes del admin). **Nunca** activar `SEED_DEV_BRANCH` contra producción: `seedBranches` actualiza la fila si existe.
 
 ## Estructura
