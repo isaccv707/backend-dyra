@@ -9481,7 +9481,7 @@
     },
     "/api/tickets/{id}/form/secret": {
       "get": {
-        "description": "Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve; se borra al cerrar o cancelar el ticket. Requiere tickets:update en la sucursal del ticket o estar asignado.",
+        "description": "Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve y solo con el ticket en progreso; se borra si el ticket pasa a en espera, resuelto, cerrado o cancelado. Requiere tickets:update en la sucursal del ticket o estar asignado.",
         "operationId": "TicketsController_revealFormSecret",
         "parameters": [
           {
@@ -9510,6 +9510,9 @@
           },
           "404": {
             "description": "Ticket no encontrado o sin contraseña guardada."
+          },
+          "409": {
+            "description": "El ticket no está en progreso."
           }
         },
         "security": [

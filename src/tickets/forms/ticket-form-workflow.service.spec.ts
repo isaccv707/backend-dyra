@@ -162,8 +162,12 @@ describe('TicketFormWorkflowService', () => {
         id: 'assignee-1',
         role: { ...scopedStaffUser.role, permissions: ['tickets:create'] },
       };
-      const secretTicket = (encryptedSecret: string | null) => ({
+      const secretTicket = (
+        encryptedSecret: string | null,
+        status = 'IN_PROGRESS',
+      ) => ({
         branchId,
+        status,
         assignees: [{ userId: 'assignee-1' }],
         form: { encryptedSecret },
       });
@@ -207,6 +211,16 @@ describe('TicketFormWorkflowService', () => {
         ).rejects.toBeInstanceOf(ForbiddenException);
       });
 
+      it('no se muestra si el ticket no está en progreso', async () => {
+        prisma.ticket.findUnique.mockResolvedValue(
+          secretTicket(secrets.encrypt('abc123'), 'OPEN'),
+        );
+
+        await expect(
+          formWorkflowService.revealSecret('ticket-1', assignee),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+
       it('sin contraseña guardada responde 404', async () => {
         prisma.ticket.findUnique.mockResolvedValue(secretTicket(null));
 
@@ -223,41 +237,43 @@ describe('TicketFormWorkflowService', () => {
         ).rejects.toBeInstanceOf(InternalServerErrorException);
       });
 
-      it.each(['CLOSED', 'CANCELLED'])(
-        'se borra al pasar el ticket a %s',
-        async (status) => {
-          prisma.ticket.findUnique.mockResolvedValue({
-            id: 'ticket-1',
-            branchId,
-            status: status === 'CLOSED' ? 'RESOLVED' : 'OPEN',
-            priority: 'MEDIUM',
-            createdById: 'reporter-1',
-            assignees: [],
-          });
-          prisma.ticket.update.mockResolvedValue({
-            id: 'ticket-1',
-            status,
-            assignees: [],
-          });
+      it.each([
+        ['IN_PROGRESS', 'ON_HOLD'],
+        ['IN_PROGRESS', 'RESOLVED'],
+        ['RESOLVED', 'CLOSED'],
+        ['OPEN', 'CANCELLED'],
+      ])('se borra al pasar el ticket de %s a %s', async (from, status) => {
+        prisma.ticket.findUnique.mockResolvedValue({
+          id: 'ticket-1',
+          branchId,
+          status: from,
+          priority: 'MEDIUM',
+          createdById: 'reporter-1',
+          assignees: [],
+        });
+        prisma.ticket.update.mockResolvedValue({
+          id: 'ticket-1',
+          status,
+          assignees: [],
+        });
 
-          await service.update(
-            'ticket-1',
-            { status } as UpdateTicketDto,
-            globalUser,
-          );
+        await service.update(
+          'ticket-1',
+          { status } as UpdateTicketDto,
+          globalUser,
+        );
 
-          expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith({
-            where: { ticketId: 'ticket-1', hasSecret: true },
-            data: {
-              encryptedSecret: null,
-              hasSecret: false,
-              secretPurgedAt: expect.any(Date),
-            },
-          });
-        },
-      );
+        expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith({
+          where: { ticketId: 'ticket-1', hasSecret: true },
+          data: {
+            encryptedSecret: null,
+            hasSecret: false,
+            secretPurgedAt: expect.any(Date),
+          },
+        });
+      });
 
-      it('no se borra al resolver: el ticket aún puede atenderse', async () => {
+      it('no se borra al empezar a atender el ticket', async () => {
         prisma.ticket.findUnique.mockResolvedValue({
           id: 'ticket-1',
           branchId,
@@ -268,13 +284,13 @@ describe('TicketFormWorkflowService', () => {
         });
         prisma.ticket.update.mockResolvedValue({
           id: 'ticket-1',
-          status: 'RESOLVED',
+          status: 'IN_PROGRESS',
           assignees: [],
         });
 
         await service.update(
           'ticket-1',
-          { status: 'RESOLVED' } as UpdateTicketDto,
+          { status: 'IN_PROGRESS' } as UpdateTicketDto,
           globalUser,
         );
 
@@ -306,7 +322,30 @@ describe('TicketFormWorkflowService', () => {
         );
       });
 
-      it('editar el formulario guarda la nueva y no revive la de un ticket cerrado', async () => {
+      it.each(['ON_HOLD', 'RESOLVED'])(
+        'no registra una contraseña con el ticket en %s',
+        async (status) => {
+          prisma.ticket.findUnique.mockResolvedValue({
+            id: 'ticket-1',
+            branchId,
+            status,
+            createdById: 'user-1',
+            assignees: [],
+            form: { type: 'SOFTWARE_REMOTE', data: {}, appliedAt: null },
+          });
+          ticketForms.parse.mockResolvedValue({
+            data: { teamViewerId: '123' },
+            secretColumns: { encryptedSecret: 'v1:x:y:z', hasSecret: true },
+          });
+
+          await expect(
+            formWorkflowService.updateForm('ticket-1', {}, globalUser),
+          ).rejects.toBeInstanceOf(BadRequestException);
+          expect(prisma.ticketForm.updateMany).not.toHaveBeenCalled();
+        },
+      );
+
+      it('editar guarda la nueva solo si el ticket sigue abierto o en progreso', async () => {
         prisma.ticket.findUnique.mockResolvedValue({
           id: 'ticket-1',
           branchId,
@@ -331,7 +370,7 @@ describe('TicketFormWorkflowService', () => {
 
         expect(prisma.ticketForm.updateMany).toHaveBeenCalledWith({
           where: expect.objectContaining({
-            ticket: { status: { notIn: ['CLOSED', 'CANCELLED'] } },
+            ticket: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
           }),
           data: expect.objectContaining(secretColumns),
         });

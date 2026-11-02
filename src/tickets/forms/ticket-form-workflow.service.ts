@@ -18,6 +18,8 @@ import { TicketsGateway } from '../tickets.gateway';
 import {
   ChangeEntry,
   FORM_LOCKED_STATUSES,
+  FORM_SECRET_STATUSES,
+  FORM_SECRET_VISIBLE_STATUS,
   TICKET_STATUS_LABELS,
   ticketWithRelations,
 } from '../tickets.shared';
@@ -82,16 +84,26 @@ export class TicketFormWorkflowService {
         phase: 'request',
       },
     );
+    if (secretColumns && !FORM_SECRET_STATUSES.includes(ticket.status)) {
+      throw new BadRequestException(
+        'La contraseña solo se registra con el ticket abierto o en progreso',
+      );
+    }
 
     await this.prisma.$transaction(async (tx) => {
-      // Only while pending: an approval or a close may have committed since the
-      // read above, and a closed ticket must not get its secret back.
+      // Only while pending: an approval or a status change may have committed
+      // since the read above, and a ticket out of attention must not get its
+      // secret back.
       const { count } = await tx.ticketForm.updateMany({
         where: {
           ticketId: id,
           appliedAt: null,
           rejectedAt: null,
-          ticket: { status: { notIn: FORM_LOCKED_STATUSES } },
+          ticket: {
+            status: secretColumns
+              ? { in: FORM_SECRET_STATUSES }
+              : { notIn: FORM_LOCKED_STATUSES },
+          },
         },
         // Saved by the current DTOs: it's now data of the current version.
         data: {
@@ -125,13 +137,15 @@ export class TicketFormWorkflowService {
 
   /**
    * Decrypts the form's secret for whoever attends the ticket: IT of its branch
-   * or an assignee. Not the requester, who already knows it and can replace it.
+   * or an assignee, only while it's in progress. Not the requester, who already
+   * knows it and can replace it.
    */
   async revealSecret(id: string, user: RequestUser) {
     const ticket = await this.prisma.ticket.findUnique({
       where: { id },
       select: {
         branchId: true,
+        status: true,
         assignees: { select: { userId: true } },
         form: { select: { encryptedSecret: true } },
       },
@@ -148,6 +162,11 @@ export class TicketFormWorkflowService {
       );
     }
 
+    if (ticket.status !== FORM_SECRET_VISIBLE_STATUS) {
+      throw new ConflictException(
+        'La contraseña solo se muestra con el ticket en progreso',
+      );
+    }
     if (!ticket.form?.encryptedSecret) {
       throw new NotFoundException(
         'Este ticket no tiene una contraseña guardada',

@@ -243,7 +243,7 @@ model TicketForm {
   encryptedSecret String?   @map("encrypted_secret") @db.Text
   /// A secret is on file. Lets responses tell it without touching the ciphertext.
   hasSecret       Boolean   @default(false) @map("has_secret")
-  /// The secret was deleted because the ticket was closed or cancelled.
+  /// The secret was deleted because the ticket left attention (see FORM_SECRET_STATUSES).
   secretPurgedAt  DateTime? @map("secret_purged_at")
 
   rejectedAt     DateTime? @map("rejected_at")

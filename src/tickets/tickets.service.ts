@@ -43,6 +43,7 @@ import {
   CATEGORY_LABELS,
   ChangeEntry,
   FORM_LOCKED_STATUSES,
+  FORM_SECRET_STATUSES,
   REOPENABLE_STATUSES,
   TICKET_PRIORITY_LABELS,
   TICKET_STATUS_LABELS,
@@ -358,7 +359,7 @@ export class TicketsService {
         // Before the update, so the returned form already shows it's gone.
         if (
           updateTicketDto.status &&
-          FORM_LOCKED_STATUSES.includes(updateTicketDto.status)
+          !FORM_SECRET_STATUSES.includes(updateTicketDto.status)
         ) {
           await purgeFormSecret(tx, id);
         }

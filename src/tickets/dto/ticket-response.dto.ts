@@ -62,7 +62,7 @@ export class TicketFormDto {
   result!: Record<string, unknown> | null;
   /** A secret (TeamViewer password) is on file: GET /tickets/:id/form/secret. */
   hasSecret!: boolean;
-  /** When the secret was deleted because the ticket was closed or cancelled. */
+  /** When the secret was deleted because the ticket left attention. */
   secretPurgedAt!: Date | null;
   appliedAt!: Date | null;
   appliedBy!: TicketUserRefDto | null;

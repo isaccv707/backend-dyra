@@ -488,8 +488,9 @@ export class TicketsController {
   @ApiOperation({
     summary: 'Ver la contraseña del formulario del ticket',
     description:
-      'Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve; se borra al ' +
-      'cerrar o cancelar el ticket. Requiere tickets:update en la sucursal del ticket o estar asignado.',
+      'Descifra el secreto del formulario (contraseña de TeamViewer). Es la única ruta que lo devuelve y solo con el ' +
+      'ticket en progreso; se borra si el ticket pasa a en espera, resuelto, cerrado o cancelado. Requiere ' +
+      'tickets:update en la sucursal del ticket o estar asignado.',
   })
   @ApiParam({ name: 'id', description: 'Identificador del ticket.' })
   @ApiResponse({
@@ -506,6 +507,7 @@ export class TicketsController {
     status: 404,
     description: 'Ticket no encontrado o sin contraseña guardada.',
   })
+  @ApiResponse({ status: 409, description: 'El ticket no está en progreso.' })
   @Header('Cache-Control', 'no-store')
   @Get(':id/form/secret')
   revealFormSecret(

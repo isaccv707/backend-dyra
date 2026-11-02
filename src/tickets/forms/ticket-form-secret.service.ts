@@ -61,8 +61,8 @@ export class TicketFormSecretService implements OnModuleInit {
 }
 
 /**
- * Deletes the form's secret. Run in the same transaction that closes or cancels
- * the ticket; a form without a secret is left untouched.
+ * Deletes the form's secret. Run in the same transaction that takes the ticket
+ * out of FORM_SECRET_STATUSES; a form without a secret is left untouched.
  */
 export const purgeFormSecret = (db: TicketFormDb, ticketId: string) =>
   db.ticketForm.updateMany({
