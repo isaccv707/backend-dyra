@@ -111,6 +111,17 @@ describe('ServicesService', () => {
       );
       expect(prisma.service.findMany).not.toHaveBeenCalled();
     });
+
+    it('ordena los estudios de cada servicio por nombre', async () => {
+      await service.findAll({ branchId: BRANCH_ID });
+      expect(prisma.service.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            studies: expect.objectContaining({ orderBy: { name: 'asc' } }),
+          }),
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {

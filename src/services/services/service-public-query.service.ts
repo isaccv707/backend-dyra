@@ -102,6 +102,7 @@ export class ServicePublicQueryService {
               isActive: true,
               ...(isPanel !== undefined && { isPanel }),
             },
+            orderBy: { name: 'asc' },
             select: {
               id: true,
               name: true,
