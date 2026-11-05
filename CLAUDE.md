@@ -47,6 +47,9 @@ src/devices/         DevicesService (façade sin lógica) + services/ device-wri
                      device-assignment, device-transfer, device-validation, device-safeguard
 src/vehicles/        VehiclesService (façade sin lógica) + services/ vehicle-write, vehicle-query,
                      vehicle-assignment, vehicle-transfer, vehicle-validation, vehicle-safeguard
+src/safeguards/      SafeguardsService (façade sin lógica) + services/ safeguard-generation (versiones desde
+                     los equipos asignados), -records, -signature (Cloudinary), -pdf (ADM.F.18);
+                     e2e en test/safeguards.e2e-spec.ts (SAFEGUARDS_E2E_TRACE=<ruta>, Cloudinary simulado)
 src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida, façade sin lógica
                      sobre services/ ticket-create, ticket-query, ticket-update, ticket-classification;
@@ -120,7 +123,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 - **Secretos de formulario** (contraseña de TeamViewer, `secretField` del handler): van cifrados (AES-256-GCM) en `TicketForm.encryptedSecret`, nunca en `data`; la columna está omitida globalmente en `PrismaService` y solo la lee `GET /tickets/:id/form/secret` (TI de la sucursal o asignados, no el creador; solo con el ticket `IN_PROGRESS`). Es de una sesión: solo existe en `FORM_SECRET_STATUSES` (`OPEN`, `IN_PROGRESS`); toda ruta que saque al ticket de ahí debe llamar `purgeFormSecret()` en su transacción. Para volver a atenderlo, se registra de nuevo editando el formulario con el ticket en progreso.
 - **Analítica** (`/tickets/analytics/*`, permiso `tickets:update`, acotada a las sucursales del usuario): `TicketsAnalyticsService` es façade sin lógica sobre `analytics/services/`: `filters` (from/to como día local en `BUSINESS_TIMEZONE`, `where` de Prisma y fragmentos SQL), `summary` (resumen y tendencia), `breakdown` (por usuario, asignado y categoría), `report` (xlsx/pdf). Los desgloses van de mayor a menor `total`/`count`; los empates, por nombre (usuario, asignado, subcategoría) o por etiqueta de categoría (`localeCompare` `es`). Los `byStatus`/`byPriority` del resumen siguen el orden de `groupBy` (no garantizado). E2E: `test/tickets-analytics.e2e-spec.ts` (`TICKETS_ANALYTICS_E2E_TRACE=<ruta>` vuelca las respuestas normalizadas para comparar antes/después de un refactor).
 
-**PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
+**PDF:** pdfkit en servidor (cotizaciones, resguardos de equipo `ADM.F.18` con secciones cómputo/móvil y de vehículo `ADM.F.01`; checklist en `src/vehicle-safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 
 ## Variables de entorno (ver `.env.example`)
 
