@@ -39,11 +39,10 @@ describe('Servicios (e2e)', () => {
 
   const trace: unknown[] = [];
   const labels = new Map<string, string>();
-  const unordered = new Set(['benefits', 'details', 'studies']);
+  const unordered = new Set(['benefits', 'details']);
   /**
-   * Benefits, details and the studies nested in the public list have no
-   * orderBy, so Postgres picks their order: the trace sorts them. Paginated
-   * studies (`studies.data`, ordered by name) keep their order.
+   * Benefits and details have no orderBy, so Postgres picks their order: the
+   * trace sorts them. Studies keep the API order (by name).
    */
   const canonical = (value: unknown, key = ''): unknown => {
     if (Array.isArray(value)) {
@@ -365,7 +364,7 @@ describe('Servicios (e2e)', () => {
       undefined,
       null,
     );
-    await call(
+    const byBranch = await call(
       'lista por sucursal',
       200,
       'get',
@@ -373,6 +372,16 @@ describe('Servicios (e2e)', () => {
       undefined,
       null,
     );
+    // The site lists each service's studies alphabetically.
+    for (const listed of byBranch.data as { studies: { name: string }[] }[]) {
+      const names = listed.studies.map((s) => s.name);
+      expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
+    }
+    expect(
+      (byBranch.data as { studies: unknown[] }[]).some(
+        (s) => s.studies.length > 1,
+      ),
+    ).toBe(true);
     await call(
       'lista con tarifario público',
       200,
