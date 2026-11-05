@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { RequestUser } from 'src/auth/interfaces/request-user.interface';
+import { CATEGORY_LABELS } from '../../tickets.shared';
 import { FindTicketAnalyticsDto } from '../dto/find-ticket-analytics.dto';
 import {
   TicketsByAssigneeRow,
@@ -13,6 +14,12 @@ import {
   toSeconds,
 } from '../utils/ticket-analytics-raw.util';
 import { TicketAnalyticsFiltersService } from './ticket-analytics-filters.service';
+
+/** Highest first; ties by label (Spanish collation), so the order is stable. */
+const byRankThenLabel =
+  <T>(rank: (row: T) => number, label: (row: T) => string) =>
+  (a: T, b: T) =>
+    rank(b) - rank(a) || label(a).localeCompare(label(b), 'es');
 
 /** Tickets grouped by reporter, assignee and category. */
 @Injectable()
@@ -67,7 +74,12 @@ export class TicketAnalyticsBreakdownService {
           avgResolutionSeconds: duration?.avgResolutionSeconds ?? null,
         };
       })
-      .sort((a, b) => b.total - a.total);
+      .sort(
+        byRankThenLabel(
+          (r) => r.total,
+          (r) => r.name,
+        ),
+      );
   }
 
   async getByAssignee(
@@ -129,7 +141,12 @@ export class TicketAnalyticsBreakdownService {
       });
     }
 
-    return rows.sort((a, b) => b.total - a.total);
+    return rows.sort(
+      byRankThenLabel(
+        (r) => r.total,
+        (r) => r.name,
+      ),
+    );
   }
 
   async getByCategory(
@@ -181,9 +198,19 @@ export class TicketAnalyticsBreakdownService {
               'Desconocida',
             count: s._count._all,
           }))
-          .sort((a, b) => b.count - a.count),
+          .sort(
+            byRankThenLabel(
+              (s) => s.count,
+              (s) => s.name,
+            ),
+          ),
       }))
-      .sort((a, b) => b.count - a.count);
+      .sort(
+        byRankThenLabel(
+          (c) => c.count,
+          (c) => CATEGORY_LABELS[c.category],
+        ),
+      );
   }
 
   private async getAvgResolutionByGroup(
