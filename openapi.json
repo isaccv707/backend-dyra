@@ -3337,7 +3337,7 @@
     },
     "/api/services": {
       "post": {
-        "description": "Crea un nuevo servicio de laboratorio.",
+        "description": "Crea un nuevo servicio de laboratorio en una sucursal asignada al usuario.",
         "operationId": "ServicesController_create",
         "parameters": [],
         "requestBody": {
@@ -3353,6 +3353,9 @@
         "responses": {
           "201": {
             "description": "Servicio creado exitosamente."
+          },
+          "403": {
+            "description": "branchId no está asignada al usuario."
           }
         },
         "security": [
@@ -3756,7 +3759,7 @@
         ]
       },
       "patch": {
-        "description": "Actualiza los datos de un servicio existente.",
+        "description": "Actualiza los datos de un servicio de una sucursal asignada al usuario. Moverlo a otra sucursal (branchId) requiere acceso también a esa.",
         "operationId": "ServicesController_update",
         "parameters": [
           {
@@ -3782,6 +3785,9 @@
         "responses": {
           "200": {
             "description": "Servicio actualizado exitosamente."
+          },
+          "403": {
+            "description": "El servicio, o la sucursal destino (branchId), no está asignada al usuario."
           },
           "404": {
             "description": "Servicio no encontrado."
@@ -3814,6 +3820,9 @@
         "responses": {
           "200": {
             "description": "Servicio eliminado exitosamente."
+          },
+          "403": {
+            "description": "El servicio es de una sucursal no asignada al usuario."
           },
           "404": {
             "description": "Servicio no encontrado."

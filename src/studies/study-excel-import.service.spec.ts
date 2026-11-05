@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { StudyExcelImportService } from './study-excel-import.service';
+import { STUDY_IMPORT_PROVIDERS } from './services/study-import.providers';
 
 type Row = Record<string, string | number>;
 
@@ -50,6 +51,8 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
     _count?: { referenceValues: number; parentPanels: number };
   }>;
   let existingSlugs: string[];
+  /** Current panels of the branch, by study id (`id-<code>`). */
+  let existingLinks: Array<{ panelId: string; childId: string }>;
   const upsertedCodes: string[] = [];
 
   const branchId = 'branch-1';
@@ -67,6 +70,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
   beforeEach(async () => {
     existingStudies = [];
     existingSlugs = [];
+    existingLinks = [];
     upsertedCodes.length = 0;
     prisma = {
       service: {
@@ -80,10 +84,19 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
             where,
             select,
           }: {
-            where: { panelItems?: unknown; code?: unknown };
+            where: {
+              panelItems?: unknown;
+              code?: unknown;
+              id?: { in: string[] };
+            };
             select: { id?: boolean; slug?: boolean; isPanel?: boolean };
           }) => {
             if (where.panelItems) return Promise.resolve([]);
+            if (where.id) {
+              return Promise.resolve(
+                where.id.in.map((id) => ({ id, code: id.slice(3) })),
+              );
+            }
             if (select.isPanel) return Promise.resolve(existingStudies);
             if (select.slug) {
               return Promise.resolve(existingSlugs.map((slug) => ({ slug })));
@@ -109,7 +122,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
       },
       studyOnPriceSheet: { upsert: jest.fn() },
       studyPanelItem: {
-        findMany: jest.fn().mockResolvedValue([]),
+        findMany: jest.fn(() => Promise.resolve(existingLinks)),
         deleteMany: jest.fn(),
         createMany: jest.fn(),
       },
@@ -122,6 +135,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
     const module = await Test.createTestingModule({
       providers: [
         StudyExcelImportService,
+        ...STUDY_IMPORT_PROVIDERS,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
@@ -254,6 +268,43 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
         { panelId: 'study-P1', childId: 'study-C2', order: 1 },
       ],
     });
+  });
+
+  const CYCLE_ERROR =
+    'Los parámetros forman un ciclo: algún perfil hijo contiene (directa o indirectamente) a este perfil';
+
+  it('rechaza sin guardar los perfiles del archivo que forman un ciclo', async () => {
+    const result = await service.importStudies(
+      branchId,
+      toExcel([
+        row('P1', { isPanel: 'true', parametros: 'P2' }),
+        row('P2', { isPanel: 'true', parametros: 'P1' }),
+        row('C1'),
+      ]),
+    );
+
+    expect(result.invalid).toEqual([
+      { row: 2, code: 'P1', errors: [CYCLE_ERROR] },
+      { row: 3, code: 'P2', errors: [CYCLE_ERROR] },
+    ]);
+    expect(upsertedCodes).toEqual(['C1']);
+    expect(result).toMatchObject({ processed: 1, panelsUpdated: 0 });
+    expect(result.panelErrors).toBeUndefined();
+  });
+
+  it('rechaza sin guardar un perfil que cierra un ciclo con los perfiles de la sucursal', async () => {
+    // P9 already contains P1 in the branch: making P1 contain P9 closes it.
+    existingLinks = [{ panelId: 'id-P9', childId: 'id-P1' }];
+
+    const result = await service.importStudies(
+      branchId,
+      toExcel([row('P1', { isPanel: 'true', parametros: 'P9' })]),
+    );
+
+    expect(result.invalid).toEqual([
+      { row: 2, code: 'P1', errors: [CYCLE_ERROR] },
+    ]);
+    expect(prisma.study.upsert).not.toHaveBeenCalled();
   });
 
   it('reporta parámetros que no existen en la sucursal', async () => {

@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { StudyExcelImportService } from './study-excel-import.service';
+import { STUDY_IMPORT_PROVIDERS } from './services/study-import.providers';
 
 type Row = Record<string, string | number>;
 
@@ -77,6 +78,7 @@ describe('StudyExcelImportService.importStudies: reglas de estudio', () => {
     const module = await Test.createTestingModule({
       providers: [
         StudyExcelImportService,
+        ...STUDY_IMPORT_PROVIDERS,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();

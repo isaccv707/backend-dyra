@@ -10,10 +10,13 @@ import { UsersModule } from 'src/users/users.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
+import { TICKET_NOTIFICATION_PROVIDERS } from './notifications/services/ticket-notification.providers';
+import { TICKET_LIFECYCLE_PROVIDERS } from './services/ticket-lifecycle.providers';
 import { TicketNotificationsService } from './notifications/ticket-notifications.service';
 import { TicketCommentsService } from './comments/ticket-comments.service';
 import { TicketAssigneesService } from './assignees/ticket-assignees.service';
 import { TicketFormWorkflowService } from './forms/ticket-form-workflow.service';
+import { TICKET_FORM_WORKFLOW_PROVIDERS } from './forms/workflow/ticket-form-workflow.providers';
 import { TicketSlaService } from './sla/ticket-sla.service';
 import { TicketReplyTemplatesController } from './reply-templates/ticket-reply-templates.controller';
 import { TicketReplyTemplatesService } from './reply-templates/ticket-reply-templates.service';
@@ -23,6 +26,10 @@ import { TicketSubcategoriesService } from './subcategories/ticket-subcategories
 import { TicketsAnalyticsController } from './analytics/tickets-analytics.controller';
 import { TicketsAnalyticsService } from './analytics/tickets-analytics.service';
 import { TicketAnalyticsPdfRenderer } from './analytics/ticket-analytics-pdf.renderer';
+import { TicketAnalyticsBreakdownService } from './analytics/services/ticket-analytics-breakdown.service';
+import { TicketAnalyticsFiltersService } from './analytics/services/ticket-analytics-filters.service';
+import { TicketAnalyticsReportService } from './analytics/services/ticket-analytics-report.service';
+import { TicketAnalyticsSummaryService } from './analytics/services/ticket-analytics-summary.service';
 import { TicketFormsService } from './forms/ticket-forms.service';
 import { TicketFormSecretService } from './forms/ticket-form-secret.service';
 import { AccessRequestFormHandler } from './forms/handlers/access-request-form.handler';
@@ -63,16 +70,23 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
   providers: [
     TicketsGateway,
     TicketsService,
+    ...TICKET_LIFECYCLE_PROVIDERS,
     TicketNotificationsService,
+    ...TICKET_NOTIFICATION_PROVIDERS,
     TicketCommentsService,
     TicketAssigneesService,
     TicketFormWorkflowService,
+    ...TICKET_FORM_WORKFLOW_PROVIDERS,
     TicketSlaService,
     TicketReplyTemplatesService,
     TicketsSlaCron,
     TicketSubcategoriesService,
     TicketsAnalyticsService,
     TicketAnalyticsPdfRenderer,
+    TicketAnalyticsFiltersService,
+    TicketAnalyticsSummaryService,
+    TicketAnalyticsBreakdownService,
+    TicketAnalyticsReportService,
     TicketFormsService,
     TicketFormSecretService,
     SoftwareRemoteFormHandler,

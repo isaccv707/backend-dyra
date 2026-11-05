@@ -10,6 +10,12 @@ import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { StudiesService } from './studies.service';
 import { CreateStudyDto } from './dto/create-study.dto';
+import { StudyExportService } from './services/study-export.service';
+import { StudyPanelService } from './services/study-panel.service';
+import { StudyPriceService } from './services/study-price.service';
+import { StudyQueryService } from './services/study-query.service';
+import { StudyValidationService } from './services/study-validation.service';
+import { StudyWriteService } from './services/study-write.service';
 
 const BRANCH_ID = 'branch-1';
 const user = { branches: [{ id: BRANCH_ID }] };
@@ -108,7 +114,16 @@ describe('StudiesService', () => {
     };
 
     const module = await Test.createTestingModule({
-      providers: [StudiesService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        StudiesService,
+        StudyValidationService,
+        StudyWriteService,
+        StudyQueryService,
+        StudyPanelService,
+        StudyPriceService,
+        StudyExportService,
+        { provide: PrismaService, useValue: prisma },
+      ],
     }).compile();
 
     service = module.get(StudiesService);
