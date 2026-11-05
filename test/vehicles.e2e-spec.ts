@@ -10,6 +10,7 @@ import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
 import { VehiclesService } from 'src/vehicles/vehicles.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Vehicles and vehicle transfers end to end against a real database. Creates
@@ -102,6 +103,8 @@ describe('Vehículos y traspasos (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string) => {
