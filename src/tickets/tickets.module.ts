@@ -10,6 +10,7 @@ import { UsersModule } from 'src/users/users.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
 import { TicketsService } from './tickets.service';
+import { TICKET_NOTIFICATION_PROVIDERS } from './notifications/services/ticket-notification.providers';
 import { TICKET_LIFECYCLE_PROVIDERS } from './services/ticket-lifecycle.providers';
 import { TicketNotificationsService } from './notifications/ticket-notifications.service';
 import { TicketCommentsService } from './comments/ticket-comments.service';
@@ -71,6 +72,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     TicketsService,
     ...TICKET_LIFECYCLE_PROVIDERS,
     TicketNotificationsService,
+    ...TICKET_NOTIFICATION_PROVIDERS,
     TicketCommentsService,
     TicketAssigneesService,
     TicketFormWorkflowService,

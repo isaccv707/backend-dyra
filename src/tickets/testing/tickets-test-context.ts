@@ -14,6 +14,7 @@ import { TicketNotificationsService } from '../notifications/ticket-notification
 import { TicketSlaService } from '../sla/ticket-sla.service';
 import { TicketsGateway } from '../tickets.gateway';
 import { TicketsService } from '../tickets.service';
+import { TICKET_NOTIFICATION_PROVIDERS } from '../notifications/services/ticket-notification.providers';
 import { TICKET_LIFECYCLE_PROVIDERS } from '../services/ticket-lifecycle.providers';
 
 export const branchId = 'branch-1';
@@ -130,6 +131,7 @@ export async function createTicketsTestContext() {
       TicketsService,
       ...TICKET_LIFECYCLE_PROVIDERS,
       TicketNotificationsService,
+      ...TICKET_NOTIFICATION_PROVIDERS,
       TicketCommentsService,
       TicketAssigneesService,
       TicketFormWorkflowService,
