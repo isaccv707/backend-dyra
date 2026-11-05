@@ -47,6 +47,9 @@ src/devices/         DevicesService (façade sin lógica) + services/ device-wri
                      device-assignment, device-transfer, device-validation, device-safeguard
 src/vehicles/        VehiclesService (façade sin lógica) + services/ vehicle-write, vehicle-query,
                      vehicle-assignment, vehicle-transfer, vehicle-validation, vehicle-safeguard
+src/safeguards/      SafeguardsService (façade sin lógica) + services/ safeguard-generation (versiones desde
+                     los equipos asignados), -records, -signature (Cloudinary), -pdf (ADM.F.18);
+                     e2e en test/safeguards.e2e-spec.ts (SAFEGUARDS_E2E_TRACE=<ruta>, Cloudinary simulado)
 src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;
@@ -102,7 +105,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 - **Ciclo de vida por tiempo** (`TicketSlaService`, cron cada 10 min en `tickets-sla.cron.ts`): aviso al 75% del SLA (asignados o TI), aviso de vencido (creador + asignados; correo a asignados), escalamiento a rol `Administrador` si sigue vencido y sin asignar `TICKET_ESCALATION_HOURS` h hábiles, y cierre automático de RESOLVED tras `TICKET_AUTO_CLOSE_DAYS` días hábiles. Cada paso reclama el ticket con un `updateMany` condicional (`slaWarnedAt`, `overdueNotifiedAt`, `escalatedAt`); cambiar prioridad/reabrir los limpia. Si el creador comenta un ticket RESOLVED, se reabre a IN_PROGRESS. Acciones del sistema: `TicketComment.authorId`/`TicketEvent.actorId` = null.
 - **Secretos de formulario** (contraseña de TeamViewer, `secretField` del handler): van cifrados (AES-256-GCM) en `TicketForm.encryptedSecret`, nunca en `data`; la columna está omitida globalmente en `PrismaService` y solo la lee `GET /tickets/:id/form/secret` (TI de la sucursal o asignados, no el creador; solo con el ticket `IN_PROGRESS`). Es de una sesión: solo existe en `FORM_SECRET_STATUSES` (`OPEN`, `IN_PROGRESS`); toda ruta que saque al ticket de ahí debe llamar `purgeFormSecret()` en su transacción. Para volver a atenderlo, se registra de nuevo editando el formulario con el ticket en progreso.
 
-**PDF:** pdfkit en servidor (cotizaciones, resguardos `ADM.F.00` con secciones cómputo/móvil/vehículo; checklist en `src/safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
+**PDF:** pdfkit en servidor (cotizaciones, resguardos de equipo `ADM.F.18` con secciones cómputo/móvil y de vehículo `ADM.F.01`; checklist en `src/vehicle-safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
 
 ## Variables de entorno (ver `.env.example`)
 
