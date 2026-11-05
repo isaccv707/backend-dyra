@@ -50,6 +50,8 @@ src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsS
 src/studies/         StudiesService (façade sin lógica: controllers y otros módulos solo usan esta)
                      + services/ study-validation, study-write, study-query, study-panel, study-price, study-export;
                      includes en constants/study-includes.const, helpers en utils/study-mappers.util
+src/services/        ServicesService (façade sin lógica) + services/ service-write, service-public-query,
+                     service-admin-query; e2e en test/services.e2e-spec.ts (SERVICES_E2E_TRACE=<ruta>)
 src/swagger.ts       createOpenApiDocument(): usado por main.ts y src/scripts/export-openapi.ts
 openapi.json         contrato generado (versionado; CI falla si está desactualizado)
 prisma/schema/       un .prisma por módulo; generator/datasource en schema.prisma
