@@ -10,6 +10,7 @@ import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
 import { VehicleSafeguardsService } from 'src/vehicle-safeguards/vehicle-safeguards.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Vehicle safeguards (`/vehicle-safeguards`, ADM.F.01) end to end against a
@@ -159,6 +160,8 @@ describe('Resguardos de vehículo (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string) => {

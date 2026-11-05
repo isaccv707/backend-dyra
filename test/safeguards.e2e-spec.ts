@@ -11,6 +11,7 @@ import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
 import { SafeguardsService } from 'src/safeguards/safeguards.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Device safeguards (`/safeguards`, ADM.F.18) end to end against a real
@@ -147,6 +148,8 @@ describe('Resguardos de equipo (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string) => {
