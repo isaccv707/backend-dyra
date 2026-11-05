@@ -44,7 +44,9 @@ src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Per
 src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
 src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
-src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
+src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida, façade sin lógica
+                     sobre services/ ticket-create, ticket-query, ticket-update, ticket-classification;
+                     e2e en test/tickets.e2e-spec.ts con TICKETS_E2E_TRACE=<ruta>)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;
                      tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
 src/studies/         StudiesService (façade sin lógica: controllers y otros módulos solo usan esta)
