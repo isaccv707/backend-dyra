@@ -391,17 +391,48 @@ describe('Resguardos de vehículo (e2e)', () => {
     await call('documento firmado', 200, 'get', `${url}/${v4}/signed-document`);
     await call('firmar sin documento', 201, 'post', `${url}/${v4}/sign`, {});
 
+    // The employee is flagged for the vehicle only: the device flag is separate.
+    const flags = () =>
+      prisma.employee.findUniqueOrThrow({
+        where: { id: employees.ana },
+        select: {
+          hasSignedResponsibility: true,
+          hasSignedVehicleResponsibility: true,
+        },
+      });
+    expect(await flags()).toEqual({
+      hasSignedResponsibility: false,
+      hasSignedVehicleResponsibility: true,
+    });
+    const v5 = await call('nueva versión tras firmar', 201, 'post', url, {
+      employeeId: employees.ana,
+    });
+    labels.set(v5.id, '<safeguard:v5>');
+    expect(await flags()).toEqual({
+      hasSignedResponsibility: false,
+      hasSignedVehicleResponsibility: false,
+    });
+    await call(
+      'firmar la nueva versión',
+      201,
+      'post',
+      `${url}/${v5.id}/sign`,
+      {},
+    );
+    expect((await flags()).hasSignedVehicleResponsibility).toBe(true);
+
     // Baja
     await call('borrar histórico', 400, 'delete', `${url}/${v3.id}`);
     await call(
       'borrar sin acceso',
       403,
       'delete',
-      `${url}/${v4}`,
+      `${url}/${v5.id}`,
       undefined,
       outsiderToken,
     );
-    await call('borrar vigente', 200, 'delete', `${url}/${v4}`);
+    await call('borrar versión anterior', 400, 'delete', `${url}/${v4}`);
+    await call('borrar vigente', 200, 'delete', `${url}/${v5.id}`);
     await call(
       'vigentes tras borrar',
       200,

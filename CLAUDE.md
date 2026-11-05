@@ -103,6 +103,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 - Excepciones: `Review.branchId` es nullable; `User` ↔ `Branch[]` es many-to-many real — escritura y lectura admin se acotan con `assertBranchAccess`/`userBranchFilter` (`src/common/utils/branch-access.util.ts`).
 - Validado en servicio, no en BD: `Post.authorId` misma sucursal; `Study.branchId` = la de su `service` (`assertServiceBelongsToBranch`); `StudyOnPriceSheet` solo con tarifarios de la misma sucursal; `Safeguard.branchId` se deriva del empleado.
 - Escrituras de `Service` acotadas con `assertBranchAccess`: crear valida `dto.branchId`; editar/borrar, la sucursal del servicio (404 antes que 403), y mover (`branchId` en PATCH) también la de destino.
+- Responsivas firmadas: `Employee.hasSignedResponsibility` es solo la de equipo (`Safeguard`, ADM.F.18) y `Employee.hasSignedVehicleResponsibility` la de vehículo (`VehicleSafeguard`, ADM.F.01); son independientes (hay empleados con equipo y sin vehículo, y al revés). Firmar la versión vigente pone su marca en `true`; generar una versión nueva la regresa a `false`.
 - `Banner.order` es una cola por `(branchId, placement)`.
 
 **Estudios:**

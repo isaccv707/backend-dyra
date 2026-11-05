@@ -70,7 +70,7 @@ export class VehicleSafeguardGenerationService {
       });
     }
 
-    return tx.vehicleSafeguard.create({
+    const safeguard = await tx.vehicleSafeguard.create({
       data: {
         employeeId,
         vehicleId: vehicle.id,
@@ -95,6 +95,14 @@ export class VehicleSafeguardGenerationService {
       },
       include: VEHICLE_SAFEGUARD_INCLUDE,
     });
+
+    // A new version has to be signed again (the device flag is separate).
+    await tx.employee.update({
+      where: { id: employeeId },
+      data: { hasSignedVehicleResponsibility: false },
+    });
+
+    return safeguard;
   }
 
   async closeCurrentForEmployee(

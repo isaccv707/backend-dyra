@@ -24,7 +24,13 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   branchId!: string;
 
+  /** Firmó la responsiva vigente de equipo (cómputo/celular). */
   @IsOptional()
   @IsBoolean()
   hasSignedResponsibility?: boolean;
+
+  /** Firmó la responsiva vigente de vehículo. */
+  @IsOptional()
+  @IsBoolean()
+  hasSignedVehicleResponsibility?: boolean;
 }
