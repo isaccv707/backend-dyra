@@ -8,6 +8,7 @@ import { configureApp } from 'src/app.setup';
 import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Ticket lifecycle (`POST/GET/PATCH /tickets`) end to end against a real
@@ -93,6 +94,8 @@ describe('Tickets: ciclo de vida (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string) => {

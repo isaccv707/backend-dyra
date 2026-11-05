@@ -8,6 +8,7 @@ import { configureApp } from 'src/app.setup';
 import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Quotations end to end against a real database: the public PDF route of the
@@ -174,6 +175,8 @@ describe('Cotizaciones (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string, intNumber: string | null) => {
