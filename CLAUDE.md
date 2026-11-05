@@ -57,6 +57,9 @@ src/studies/         StudiesService (façade sin lógica: controllers y otros m�
                      includes en constants/study-includes.const, helpers en utils/study-mappers.util
 src/services/        ServicesService (façade sin lógica) + services/ service-write, service-public-query,
                      service-admin-query; e2e en test/services.e2e-spec.ts (SERVICES_E2E_TRACE=<ruta>)
+src/quotations/      QuotationsService (façade sin lógica) + services/ quotation-create (precios del tarifario,
+                     snapshot de perfiles, totales con IVA incluido), -records, -pdf; e2e en
+                     test/quotations.e2e-spec.ts (QUOTATIONS_E2E_TRACE=<ruta>, incluye POST /quotations/pdf del sitio)
 src/swagger.ts       createOpenApiDocument(): usado por main.ts y src/scripts/export-openapi.ts
 openapi.json         contrato generado (versionado; CI falla si está desactualizado)
 prisma/schema/       un .prisma por módulo; generator/datasource en schema.prisma
