@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 import * as XLSX from 'xlsx';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { StudyExcelImportService } from './study-excel-import.service';
+import { STUDY_IMPORT_PROVIDERS } from './services/study-import.providers';
 
 type Row = Record<string, string | number>;
 
@@ -122,6 +123,7 @@ describe('StudyExcelImportService.importStudies sin tarifario', () => {
     const module = await Test.createTestingModule({
       providers: [
         StudyExcelImportService,
+        ...STUDY_IMPORT_PROVIDERS,
         { provide: PrismaService, useValue: prisma },
       ],
     }).compile();
