@@ -303,12 +303,20 @@ describe('Servicios (e2e)', () => {
       service('Archivado', { isActive: false }),
     );
     labels.set(inactive.id, '<service:archivado>');
+    await call(
+      'alta en sucursal B sin acceso',
+      403,
+      'post',
+      '/services',
+      service('Norte', { branchId: branchB, priceSheetId: sheets.publicB }),
+    );
     const foreign = await call(
       'alta en sucursal B',
       201,
       'post',
       '/services',
       service('Norte', { branchId: branchB, priceSheetId: sheets.publicB }),
+      outsiderToken,
     );
     labels.set(foreign.id, '<service:norte>');
 
@@ -619,6 +627,61 @@ describe('Servicios (e2e)', () => {
       `/services?branchId=${branchA}`,
       undefined,
       null,
+    );
+
+    // Escrituras acotadas a las sucursales del usuario
+    await call(
+      'alta en sucursal ajena',
+      403,
+      'post',
+      '/services',
+      service('X6'),
+      outsiderToken,
+    );
+    await call(
+      'editar de sucursal ajena',
+      403,
+      'patch',
+      `/services/${lab.id}`,
+      { description: 'hackeado' },
+      outsiderToken,
+    );
+    await call(
+      'mover a sucursal sin acceso',
+      403,
+      'patch',
+      `/services/${plain.id}`,
+      { branchId: branchB },
+    );
+    await call(
+      'borrar de sucursal ajena',
+      403,
+      'delete',
+      `/services/${inactive.id}`,
+      undefined,
+      outsiderToken,
+    );
+    await call(
+      'editar inexistente sin acceso',
+      404,
+      'patch',
+      `/services/${branchA}`,
+      { description: 'x' },
+      outsiderToken,
+    );
+    await call(
+      'editar desde su sucursal',
+      200,
+      'patch',
+      `/services/${foreign.id}`,
+      { description: 'Norte actualizado' },
+      outsiderToken,
+    );
+    await call(
+      'detalle tras intentos ajenos',
+      200,
+      'get',
+      `/services/admin/${lab.id}`,
     );
 
     // Baja

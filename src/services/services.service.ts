@@ -23,16 +23,20 @@ export class ServicesService {
     private readonly adminQuery: ServiceAdminQueryService,
   ) {}
 
-  create(createServiceDto: CreateServiceDto) {
-    return this.write.create(createServiceDto);
+  create(createServiceDto: CreateServiceDto, user: BranchScopedUser) {
+    return this.write.create(createServiceDto, user);
   }
 
-  update(id: string, updateServiceDto: UpdateServiceDto) {
-    return this.write.update(id, updateServiceDto);
+  update(
+    id: string,
+    updateServiceDto: UpdateServiceDto,
+    user: BranchScopedUser,
+  ) {
+    return this.write.update(id, updateServiceDto, user);
   }
 
-  remove(id: string) {
-    return this.write.remove(id);
+  remove(id: string, user: BranchScopedUser) {
+    return this.write.remove(id, user);
   }
 
   findAll(dto: FindServicesDto) {

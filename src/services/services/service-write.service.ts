@@ -6,11 +6,18 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { handleDatabaseErrors } from 'src/common/handle-db-errors';
+import {
+  assertBranchAccess,
+  type BranchScopedUser,
+} from 'src/common/utils/branch-access.util';
 import { generateSlug } from 'src/common/utils/slugger.util';
 import { CreateServiceDto } from '../dto/create-service.dto';
 import { UpdateServiceDto } from '../dto/update-service.dto';
 
-/** Creates, edits and deletes services, and checks their price sheet. */
+/**
+ * Creates, edits and deletes services of the user's branches, and checks
+ * their price sheet.
+ */
 @Injectable()
 export class ServiceWriteService {
   constructor(private readonly prisma: PrismaService) {}
@@ -40,9 +47,10 @@ export class ServiceWriteService {
     }
   }
 
-  async create(createServiceDto: CreateServiceDto) {
+  async create(createServiceDto: CreateServiceDto, user: BranchScopedUser) {
     const { benefits, details, branchId, priceSheetId, ...serviceData } =
       createServiceDto;
+    assertBranchAccess(user, branchId);
     const slug = generateSlug(serviceData.name);
 
     if (priceSheetId) {
@@ -71,7 +79,11 @@ export class ServiceWriteService {
     }
   }
 
-  async update(id: string, updateServiceDto: UpdateServiceDto) {
+  async update(
+    id: string,
+    updateServiceDto: UpdateServiceDto,
+    user: BranchScopedUser,
+  ) {
     if (!updateServiceDto) return;
 
     const { benefits, details, branchId, priceSheetId, ...serviceData } =
@@ -81,6 +93,11 @@ export class ServiceWriteService {
       where: { id },
     });
     if (!existingService) throw new NotFoundException('Servicio no encontrado');
+    assertBranchAccess(user, existingService.branchId);
+    // Moving it to another branch also needs access to that one.
+    if (branchId !== undefined && branchId !== existingService.branchId) {
+      assertBranchAccess(user, branchId);
+    }
 
     if (serviceData.name) {
       serviceData['slug'] = generateSlug(serviceData.name);
@@ -132,13 +149,14 @@ export class ServiceWriteService {
     }
   }
 
-  async remove(id: string) {
+  async remove(id: string, user: BranchScopedUser) {
     const service = await this.prisma.service.findUnique({
       where: { id },
       include: { _count: { select: { studies: true } } },
     });
     if (!service)
       throw new NotFoundException(`The service with id: ${id} not found`);
+    assertBranchAccess(user, service.branchId);
 
     // Study.service has no cascade: a service with studies (active or not,
     // priced or not) can't be deleted.
