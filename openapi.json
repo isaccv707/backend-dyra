@@ -11745,6 +11745,9 @@
           },
           "hasSignedResponsibility": {
             "type": "boolean"
+          },
+          "hasSignedVehicleResponsibility": {
+            "type": "boolean"
           }
         },
         "required": [

@@ -34,14 +34,23 @@ export class VehicleSafeguardSignatureService {
     }
 
     try {
-      return await this.prisma.vehicleSafeguard.update({
-        where: { id },
-        data: {
-          signedAt: new Date(),
-          signedByUserId: user.id,
-          signedDocumentPublicId: dto.signedDocumentPublicId ?? null,
-        },
-        include: VEHICLE_SAFEGUARD_INCLUDE,
+      return await this.prisma.$transaction(async (tx) => {
+        const signed = await tx.vehicleSafeguard.update({
+          where: { id },
+          data: {
+            signedAt: new Date(),
+            signedByUserId: user.id,
+            signedDocumentPublicId: dto.signedDocumentPublicId ?? null,
+          },
+          include: VEHICLE_SAFEGUARD_INCLUDE,
+        });
+
+        await tx.employee.update({
+          where: { id: safeguard.employeeId },
+          data: { hasSignedVehicleResponsibility: true },
+        });
+
+        return signed;
       });
     } catch (error) {
       handleDatabaseErrors(error, 'VehicleSafeguard');
