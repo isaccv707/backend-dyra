@@ -7,6 +7,7 @@ import { TicketAssigneesService } from '../assignees/ticket-assignees.service';
 import { TicketCommentsService } from '../comments/ticket-comments.service';
 import { CreateTicketDto } from '../dto/create-ticket.dto';
 import { TicketFormWorkflowService } from '../forms/ticket-form-workflow.service';
+import { TICKET_FORM_WORKFLOW_PROVIDERS } from '../forms/workflow/ticket-form-workflow.providers';
 import { TicketFormSecretService } from '../forms/ticket-form-secret.service';
 import { TicketFormsService } from '../forms/ticket-forms.service';
 import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
@@ -132,6 +133,7 @@ export async function createTicketsTestContext() {
       TicketCommentsService,
       TicketAssigneesService,
       TicketFormWorkflowService,
+      ...TICKET_FORM_WORKFLOW_PROVIDERS,
       TicketSlaService,
       TicketFormSecretService,
       { provide: PrismaService, useValue: prisma },

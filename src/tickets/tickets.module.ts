@@ -15,6 +15,7 @@ import { TicketNotificationsService } from './notifications/ticket-notifications
 import { TicketCommentsService } from './comments/ticket-comments.service';
 import { TicketAssigneesService } from './assignees/ticket-assignees.service';
 import { TicketFormWorkflowService } from './forms/ticket-form-workflow.service';
+import { TICKET_FORM_WORKFLOW_PROVIDERS } from './forms/workflow/ticket-form-workflow.providers';
 import { TicketSlaService } from './sla/ticket-sla.service';
 import { TicketReplyTemplatesController } from './reply-templates/ticket-reply-templates.controller';
 import { TicketReplyTemplatesService } from './reply-templates/ticket-reply-templates.service';
@@ -73,6 +74,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     TicketCommentsService,
     TicketAssigneesService,
     TicketFormWorkflowService,
+    ...TICKET_FORM_WORKFLOW_PROVIDERS,
     TicketSlaService,
     TicketReplyTemplatesService,
     TicketsSlaCron,

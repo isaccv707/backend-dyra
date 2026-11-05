@@ -47,7 +47,10 @@ src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida, façade sin lógica
                      sobre services/ ticket-create, ticket-query, ticket-update, ticket-classification;
                      e2e en test/tickets.e2e-spec.ts con TICKETS_E2E_TRACE=<ruta>)
-                     + notifications/, comments/, assignees/, forms/ticket-form-workflow;
+                     + notifications/, comments/, assignees/, forms/ticket-form-workflow (façade sobre
+                     forms/workflow/ ticket-form-edit, -decision, -access, -state; logs con contexto
+                     TicketFormWorkflowService; e2e en test/ticket-form-workflow.e2e-spec.ts con
+                     TICKET_FORM_WORKFLOW_E2E_TRACE=<ruta>);
                      tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
 src/studies/         StudiesService (façade sin lógica: controllers y otros módulos solo usan esta)
                      + services/ study-validation, study-write, study-query, study-panel, study-price, study-export;
