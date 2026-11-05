@@ -33,7 +33,7 @@ npx prisma studio
 yarn openapi:export             # nest build + escribe openapi.json (contrato para los frontends)
 ```
 
-- `yarn test:e2e` (`test/jest-e2e.json`): flujo de formularios de tickets contra BD real, Redis y `TICKET_SECRET_KEY` (crea y borra sus datos; solo BD local o de CI).
+- `yarn test:e2e` (`test/jest-e2e.json`): formularios de tickets y equipos/traspasos (`DEVICES_E2E_TRACE=<ruta>` vuelca las respuestas normalizadas para comparar antes/después de un refactor) contra BD real, Redis y `TICKET_SECRET_KEY` (crea y borra sus datos; solo BD local o de CI).
 - Seed: siempre roles/permisos, usuario admin (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`; se le asignan todas las sucursales existentes) y subcategorías de tickets. Solo si `SEED_DEV_BRANCH=true` y `NODE_ENV!=production`: estados + sucursal por defecto `a1b2c3d4-0001-4000-8000-000000000001` (debe ir antes del admin). **Nunca** activar `SEED_DEV_BRANCH` contra producción: `seedBranches` actualiza la fila si existe.
 
 ## Estructura
@@ -43,6 +43,8 @@ src/<módulo>/        controller, service, dto/, *.spec.ts  (un módulo Nest por
 src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Permissions/@CurrentUser
 src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
+src/devices/         DevicesService (façade sin lógica) + services/ device-write, device-query,
+                     device-assignment, device-transfer, device-validation, device-safeguard
 src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;
