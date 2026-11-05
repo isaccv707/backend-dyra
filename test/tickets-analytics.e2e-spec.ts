@@ -4,8 +4,9 @@ import * as bcrypt from 'bcrypt';
 import { writeFileSync } from 'fs';
 import request from 'supertest';
 import * as XLSX from 'xlsx';
-import { Prisma } from '@prisma/client';
+import { Category, Prisma } from '@prisma/client';
 import { AppModule } from 'src/app.module';
+import { CATEGORY_LABELS } from 'src/tickets/tickets.shared';
 import { configureApp } from 'src/app.setup';
 import { MailService } from 'src/mail/mail.service';
 import { MailQueueService } from 'src/mail/mail-queue.service';
@@ -77,11 +78,27 @@ describe('Analítica de tickets (e2e)', () => {
           .join('<tag>'),
       ),
     );
-  /** The API sorts every breakdown by total/count, highest first. */
+  /**
+   * The API sorts every breakdown by total/count, highest first, and ties by
+   * name (users, assignees, subcategories) or category label.
+   */
+  const labelOf = (row: unknown) => {
+    const { name, category } = row as { name?: string; category?: Category };
+    return name ?? (category ? CATEGORY_LABELS[category] : '');
+  };
+  const expectRanked = (rows: unknown[]) => {
+    const expected = [...rows].sort(
+      (a, b) =>
+        byRank(b) - byRank(a) || labelOf(a).localeCompare(labelOf(b), 'es'),
+    );
+    expect(rows.map(labelOf)).toEqual(expected.map(labelOf));
+  };
   const expectDescending = (rows: unknown) => {
     if (!Array.isArray(rows)) return;
-    const ranks = rows.map(byRank);
-    expect(ranks).toEqual([...ranks].sort((a, b) => b - a));
+    expectRanked(rows);
+    for (const row of rows as { subcategories?: unknown[] }[]) {
+      if (row.subcategories) expectRanked(row.subcategories);
+    }
   };
 
   const get = async (
