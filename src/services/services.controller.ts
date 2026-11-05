@@ -36,14 +36,22 @@ export class ServicesController {
 
   @ApiOperation({
     summary: 'Crear servicio',
-    description: 'Crea un nuevo servicio de laboratorio.',
+    description:
+      'Crea un nuevo servicio de laboratorio en una sucursal asignada al usuario.',
   })
   @ApiResponse({ status: 201, description: 'Servicio creado exitosamente.' })
+  @ApiResponse({
+    status: 403,
+    description: 'branchId no está asignada al usuario.',
+  })
   @ApiBearerAuth()
   @Permissions('services:create')
   @Post()
-  create(@Body() createServiceDto: CreateServiceDto) {
-    return this.servicesService.create(createServiceDto);
+  create(
+    @Body() createServiceDto: CreateServiceDto,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.servicesService.create(createServiceDto, user);
   }
 
   @ApiOperation({
@@ -122,12 +130,18 @@ export class ServicesController {
 
   @ApiOperation({
     summary: 'Actualizar servicio',
-    description: 'Actualiza los datos de un servicio existente.',
+    description:
+      'Actualiza los datos de un servicio de una sucursal asignada al usuario. Moverlo a otra sucursal (branchId) requiere acceso también a esa.',
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del servicio.' })
   @ApiResponse({
     status: 200,
     description: 'Servicio actualizado exitosamente.',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'El servicio, o la sucursal destino (branchId), no está asignada al usuario.',
   })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
   @ApiBearerAuth()
@@ -136,8 +150,9 @@ export class ServicesController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateServiceDto: UpdateServiceDto,
+    @CurrentUser() user: BranchScopedUser,
   ) {
-    return this.servicesService.update(id, updateServiceDto);
+    return this.servicesService.update(id, updateServiceDto, user);
   }
 
   @ApiOperation({
@@ -147,6 +162,10 @@ export class ServicesController {
   })
   @ApiParam({ name: 'id', description: 'Identificador (UUID) del servicio.' })
   @ApiResponse({ status: 200, description: 'Servicio eliminado exitosamente.' })
+  @ApiResponse({
+    status: 403,
+    description: 'El servicio es de una sucursal no asignada al usuario.',
+  })
   @ApiResponse({ status: 404, description: 'Servicio no encontrado.' })
   @ApiResponse({
     status: 409,
@@ -155,7 +174,10 @@ export class ServicesController {
   @ApiBearerAuth()
   @Permissions('services:delete')
   @Delete(':id')
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.servicesService.remove(id);
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: BranchScopedUser,
+  ) {
+    return this.servicesService.remove(id, user);
   }
 }

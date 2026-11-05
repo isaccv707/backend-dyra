@@ -82,6 +82,7 @@ Módulos: auth, users, roles-permissions, branches, states, services, studies, s
 **Sucursal (`branchId`):** no existe contenido "global". `Service`, `Author`, `Post`, `Banner`, `PriceSheets`, `Study` tienen un único `branchId` requerido (nunca `Branch[]`); DTOs reciben `branchId`, no `branchIds`; listas filtran con `where.branchId` opcional. Unicidad (`name`/`nameKey`, `slug`, `code`) es por sucursal (`@@unique([branchId, …])`).
 - Excepciones: `Review.branchId` es nullable; `User` ↔ `Branch[]` es many-to-many real — escritura y lectura admin se acotan con `assertBranchAccess`/`userBranchFilter` (`src/common/utils/branch-access.util.ts`).
 - Validado en servicio, no en BD: `Post.authorId` misma sucursal; `Study.branchId` = la de su `service` (`assertServiceBelongsToBranch`); `StudyOnPriceSheet` solo con tarifarios de la misma sucursal; `Safeguard.branchId` se deriva del empleado.
+- Escrituras de `Service` acotadas con `assertBranchAccess`: crear valida `dto.branchId`; editar/borrar, la sucursal del servicio (404 antes que 403), y mover (`branchId` en PATCH) también la de destino.
 - `Banner.order` es una cola por `(branchId, placement)`.
 
 **Estudios:**
