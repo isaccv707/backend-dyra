@@ -1,435 +1,87 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
-import {
-  DeviceStatus,
-  Prisma,
-  SafeguardConditionState,
-  SafeguardUsageType,
-} from '@prisma/client';
-import { PrismaService } from 'prisma/prisma/prisma.service';
-import { handleDatabaseErrors } from 'src/common/handle-db-errors';
-import {
-  buildPaginatedQuery,
-  paginatedResponse,
-} from 'src/common/utils/paginate.util';
-import {
-  assertBranchAccess,
-  BranchScopedUser,
-  userBranchFilter,
-} from 'src/common/utils/branch-access.util';
-import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
+import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { BranchScopedUser } from 'src/common/utils/branch-access.util';
 import { CreateVehicleSafeguardDto } from './dto/create-vehicle-safeguard.dto';
 import { FindVehicleSafeguardsDto } from './dto/find-vehicle-safeguards.dto';
 import { SignVehicleSafeguardDto } from './dto/sign-vehicle-safeguard.dto';
-import { VehicleSafeguardInspectionItemDto } from './dto/vehicle-safeguard-inspection-item.dto';
+import { VehicleSafeguardGenerationService } from './services/vehicle-safeguard-generation.service';
+import { VehicleSafeguardPdfService } from './services/vehicle-safeguard-pdf.service';
+import { VehicleSafeguardRecordsService } from './services/vehicle-safeguard-records.service';
+import { VehicleSafeguardSignatureService } from './services/vehicle-safeguard-signature.service';
 import {
-  getVehicleInspectionItemLabel,
-  getVehicleInspectionItemSection,
-  VEHICLE_BODY_INSPECTION_ITEMS,
-  VEHICLE_REVISION_ITEMS,
-} from './constants/vehicle-inspection-items.const';
-import { VehicleSafeguardPdfData } from './interfaces/vehicle-safeguard-pdf-interfaces';
-import { VehicleSafeguardPdfRenderer } from './pdf/vehicle-safeguard-pdf.renderer';
+  CreateFromEmployeeVehicleInput,
+  VehicleSafeguardWithDetails,
+} from './types/vehicle-safeguard.types';
 
-const DOC_CODE = 'ADM.F.01';
-const COMPANY_NAME = 'Diagnóstico y Referencia Analítica S.A. DE C.V.';
+export type { CreateFromEmployeeVehicleInput } from './types/vehicle-safeguard.types';
 
-const VEHICLE_SAFEGUARD_ALLOWED_FIELDS = [
-  'employeeName',
-  'area',
-  'usageType',
-  'createdAt',
-];
-
-const VEHICLE_SAFEGUARD_INCLUDE = {
-  employee: {
-    select: { id: true, name: true, department: true, position: true },
-  },
-  inspectionItems: true,
-} satisfies Prisma.VehicleSafeguardInclude;
-
-type VehicleSafeguardWithDetails = Prisma.VehicleSafeguardGetPayload<{
-  include: typeof VEHICLE_SAFEGUARD_INCLUDE;
-}>;
-
-interface InspectionItemCreateInput {
-  itemKey: string;
-  section: ReturnType<typeof getVehicleInspectionItemSection>;
-  state?: string | null;
-  observations?: string | null;
-}
-
-export interface CreateFromEmployeeVehicleInput {
-  usageType?: SafeguardUsageType;
-  startDate?: Date;
-  endDate?: Date;
-  createdByUserId: string;
-  inspectionItems?: VehicleSafeguardInspectionItemDto[];
-}
-
+/**
+ * Entry point of vehicle safeguards (ADM.F.01) for the controller and other
+ * modules. Holds no logic: each operation lives in `services/`.
+ */
 @Injectable()
 export class VehicleSafeguardsService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly pdfRenderer: VehicleSafeguardPdfRenderer,
-    private readonly cloudinaryService: CloudinaryService,
+    private readonly generation: VehicleSafeguardGenerationService,
+    private readonly records: VehicleSafeguardRecordsService,
+    private readonly signatures: VehicleSafeguardSignatureService,
+    private readonly pdf: VehicleSafeguardPdfService,
   ) {}
 
-  async createFromEmployeeVehicle(
+  createFromEmployeeVehicle(
     tx: Prisma.TransactionClient,
     employeeId: string,
     input: CreateFromEmployeeVehicleInput,
   ): Promise<VehicleSafeguardWithDetails> {
-    const employee = await tx.employee.findUniqueOrThrow({
-      where: { id: employeeId },
-    });
-
-    const vehicle = await tx.vehicleItem.findFirst({
-      where: { employeeId, status: DeviceStatus.ASSIGNED },
-      include: { catalog: true },
-    });
-
-    if (!vehicle) {
-      throw new BadRequestException(
-        'El empleado no tiene ningún vehículo asignado actualmente',
-      );
-    }
-
-    const existing = await tx.vehicleSafeguard.findFirst({
-      where: { employeeId, supersededAt: null },
-      include: VEHICLE_SAFEGUARD_INCLUDE,
-    });
-
-    const usageType = input.usageType ?? existing?.usageType;
-    if (!usageType) {
-      throw new BadRequestException(
-        'usageType es obligatorio para generar la primera responsiva del empleado',
-      );
-    }
-    const startDate = input.startDate ?? existing?.startDate ?? null;
-    const endDate = input.endDate ?? existing?.endDate ?? null;
-
-    let inspectionItemsData: InspectionItemCreateInput[];
-    if (input.inspectionItems) {
-      inspectionItemsData = this.resolveInspectionItems(input.inspectionItems);
-    } else if (existing?.vehicleId === vehicle.id) {
-      inspectionItemsData = existing.inspectionItems.map((item) => ({
-        itemKey: item.itemKey,
-        section: item.section,
-        state: item.state,
-        observations: item.observations,
-      }));
-    } else {
-      inspectionItemsData = [];
-    }
-
-    if (existing) {
-      await tx.vehicleSafeguard.update({
-        where: { id: existing.id },
-        data: { supersededAt: new Date() },
-      });
-    }
-
-    return tx.vehicleSafeguard.create({
-      data: {
-        employeeId,
-        vehicleId: vehicle.id,
-        branchId: employee.branchId,
-        employeeName: employee.name,
-        position: employee.position,
-        area: employee.department,
-        brand: vehicle.catalog.brand,
-        model: vehicle.catalog.model,
-        mileage: vehicle.mileage,
-        plateNumber: vehicle.plateNumber,
-        fuelType: vehicle.fuelType,
-        transmission: vehicle.transmission,
-        condition: vehicle.condition,
-        usageType,
-        startDate,
-        endDate,
-        createdByUserId: input.createdByUserId,
-        ...(inspectionItemsData.length && {
-          inspectionItems: { create: inspectionItemsData },
-        }),
-      },
-      include: VEHICLE_SAFEGUARD_INCLUDE,
-    });
+    return this.generation.createFromEmployeeVehicle(tx, employeeId, input);
   }
 
-  async create(
+  closeCurrentForEmployee(tx: Prisma.TransactionClient, employeeId: string) {
+    return this.generation.closeCurrentForEmployee(tx, employeeId);
+  }
+
+  create(
     dto: CreateVehicleSafeguardDto,
     user: BranchScopedUser & { id: string },
   ) {
-    const employee = await this.prisma.employee.findUnique({
-      where: { id: dto.employeeId },
-    });
-    if (!employee) {
-      throw new NotFoundException(
-        `Employee with ID '${dto.employeeId}' not found`,
-      );
-    }
-    assertBranchAccess(user, employee.branchId);
-
-    try {
-      return await this.prisma.$transaction((tx) =>
-        this.createFromEmployeeVehicle(tx, dto.employeeId, {
-          usageType: dto.usageType,
-          startDate: dto.startDate ? new Date(dto.startDate) : undefined,
-          endDate: dto.endDate ? new Date(dto.endDate) : undefined,
-          createdByUserId: user.id,
-          inspectionItems: dto.inspectionItems,
-        }),
-      );
-    } catch (error) {
-      handleDatabaseErrors(error, 'VehicleSafeguard');
-    }
+    return this.records.create(dto, user);
   }
 
-  async findAll(dto: FindVehicleSafeguardsDto, user: BranchScopedUser) {
-    const { skip, take, where, orderBy } = buildPaginatedQuery(dto, {
-      searchFields: ['employeeName', 'area'],
-      defaultSort: { createdAt: 'desc' },
-      allowedFields: VEHICLE_SAFEGUARD_ALLOWED_FIELDS,
-    });
-
-    const finalWhere = {
-      ...where,
-      ...userBranchFilter(user, dto.branchId),
-      ...(dto.employeeId && { employeeId: dto.employeeId }),
-      ...(!dto.includeHistory && { supersededAt: null }),
-    } as Prisma.VehicleSafeguardWhereInput;
-
-    const [data, total] = await this.prisma.$transaction([
-      this.prisma.vehicleSafeguard.findMany({
-        skip,
-        take,
-        where: finalWhere,
-        orderBy,
-        include: VEHICLE_SAFEGUARD_INCLUDE,
-      }),
-      this.prisma.vehicleSafeguard.count({ where: finalWhere }),
-    ]);
-
-    return paginatedResponse(data, total, dto.page ?? 1, dto.limit ?? 10);
+  findAll(dto: FindVehicleSafeguardsDto, user: BranchScopedUser) {
+    return this.records.findAll(dto, user);
   }
 
-  async findOne(
+  findOne(
     id: string,
     user: BranchScopedUser,
   ): Promise<VehicleSafeguardWithDetails> {
-    const safeguard = await this.prisma.vehicleSafeguard.findUnique({
-      where: { id },
-      include: VEHICLE_SAFEGUARD_INCLUDE,
-    });
-    if (!safeguard) {
-      throw new NotFoundException(`VehicleSafeguard with ID '${id}' not found`);
-    }
-    assertBranchAccess(user, safeguard.branchId);
-
-    return safeguard;
+    return this.records.findOne(id, user);
   }
 
-  async remove(id: string, user: BranchScopedUser) {
-    const safeguard = await this.findOne(id, user);
-
-    if (safeguard.supersededAt) {
-      throw new BadRequestException(
-        'No se pueden eliminar versiones históricas del resguardo; solo la vigente.',
-      );
-    }
-
-    try {
-      return await this.prisma.vehicleSafeguard.delete({ where: { id } });
-    } catch (error) {
-      handleDatabaseErrors(error, 'VehicleSafeguard');
-    }
+  remove(id: string, user: BranchScopedUser) {
+    return this.records.remove(id, user);
   }
 
-  async closeCurrentForEmployee(
-    tx: Prisma.TransactionClient,
-    employeeId: string,
-  ) {
-    await tx.vehicleSafeguard.updateMany({
-      where: { employeeId, supersededAt: null },
-      data: { supersededAt: new Date() },
-    });
-  }
-
-  async sign(
+  sign(
     id: string,
     dto: SignVehicleSafeguardDto,
     user: BranchScopedUser & { id: string },
   ) {
-    const safeguard = await this.findOne(id, user);
-
-    if (safeguard.supersededAt) {
-      throw new BadRequestException(
-        'No se puede firmar una versión histórica del resguardo',
-      );
-    }
-
-    try {
-      return await this.prisma.vehicleSafeguard.update({
-        where: { id },
-        data: {
-          signedAt: new Date(),
-          signedByUserId: user.id,
-          signedDocumentPublicId: dto.signedDocumentPublicId ?? null,
-        },
-        include: VEHICLE_SAFEGUARD_INCLUDE,
-      });
-    } catch (error) {
-      handleDatabaseErrors(error, 'VehicleSafeguard');
-    }
+    return this.signatures.sign(id, dto, user);
   }
 
-  async getSignedDocumentUrl(id: string, user: BranchScopedUser) {
-    const safeguard = await this.findOne(id, user);
-
-    if (!safeguard.signedDocumentPublicId) {
-      throw new NotFoundException(
-        'Este resguardo no tiene un documento firmado adjunto',
-      );
-    }
-
-    return this.cloudinaryService.getSignedDownloadUrl(
-      safeguard.signedDocumentPublicId,
-    );
+  getSignedDocumentUrl(id: string, user: BranchScopedUser) {
+    return this.signatures.getSignedDocumentUrl(id, user);
   }
 
-  async createUploadSignature(id: string, user: BranchScopedUser) {
-    const safeguard = await this.findOne(id, user);
-
-    if (safeguard.supersededAt) {
-      throw new BadRequestException(
-        'No se puede adjuntar un documento a una versión histórica del resguardo',
-      );
-    }
-
-    const publicId = `safeguards/vehicle-${safeguard.id}-${Date.now()}`;
-    return this.cloudinaryService.generateSignedUploadParams(publicId);
+  createUploadSignature(id: string, user: BranchScopedUser) {
+    return this.signatures.createUploadSignature(id, user);
   }
 
   buildSafeguardPdf(
     doc: PDFKit.PDFDocument,
     safeguard: VehicleSafeguardWithDetails,
   ): void {
-    const data = this.buildPdfData(safeguard);
-    this.pdfRenderer.render(doc, data);
-  }
-
-  private resolveInspectionItems(items?: VehicleSafeguardInspectionItemDto[]) {
-    if (!items?.length) return [];
-
-    const keys = items.map((item) => item.itemKey);
-    const duplicates = keys.filter((key, index) => keys.indexOf(key) !== index);
-    if (duplicates.length) {
-      throw new BadRequestException(
-        `itemKey duplicado(s) en inspectionItems: ${[...new Set(duplicates)].join(', ')}`,
-      );
-    }
-
-    return items.map((item) => ({
-      itemKey: item.itemKey,
-      section: getVehicleInspectionItemSection(item.itemKey),
-      state: item.state,
-      observations: item.observations,
-    }));
-  }
-
-  private buildPdfData(
-    safeguard: VehicleSafeguardWithDetails,
-  ): VehicleSafeguardPdfData {
-    return {
-      meta: {
-        formattedDate: safeguard.createdAt.toLocaleDateString('es-MX'),
-        docCode: DOC_CODE,
-        companyName: COMPANY_NAME,
-        logoPath: this.resolveLogoPath(),
-      },
-      employee: {
-        employeeName: safeguard.employeeName,
-        position: safeguard.position ?? '',
-        area: safeguard.area,
-      },
-      usage: {
-        usageType: safeguard.usageType,
-        formattedStartDate: safeguard.startDate
-          ? safeguard.startDate.toLocaleDateString('es-MX')
-          : null,
-        formattedEndDate: safeguard.endDate
-          ? safeguard.endDate.toLocaleDateString('es-MX')
-          : null,
-      },
-      vehicle: {
-        brand: safeguard.brand,
-        model: safeguard.model,
-        mileage: safeguard.mileage ?? '',
-        plateNumber: safeguard.plateNumber ?? '',
-        fuelType: safeguard.fuelType ?? '',
-        transmission: safeguard.transmission ?? '',
-        conditionLabel: this.conditionLabel(safeguard.condition),
-        revisionRows: this.buildInspectionRows(
-          VEHICLE_REVISION_ITEMS,
-          safeguard.inspectionItems,
-        ),
-        inspectionRows: this.buildInspectionRows(
-          VEHICLE_BODY_INSPECTION_ITEMS,
-          safeguard.inspectionItems,
-        ),
-      },
-    };
-  }
-
-  private buildInspectionRows(
-    canonicalItems: { key: string; label: string }[],
-    submitted: {
-      itemKey: string;
-      state: string | null;
-      observations: string | null;
-    }[],
-  ) {
-    const byKey = new Map(submitted.map((item) => [item.itemKey, item]));
-
-    return canonicalItems.map(({ key, label }) => {
-      const found = byKey.get(key);
-      return {
-        label: label ?? getVehicleInspectionItemLabel(key),
-        state: found?.state ?? '',
-        observations: found?.observations ?? '',
-      };
-    });
-  }
-
-  private conditionLabel(condition: SafeguardConditionState): string {
-    return condition === SafeguardConditionState.NEW ? 'Nuevo' : 'Seminuevo';
-  }
-
-  private resolveLogoPath(): string | null {
-    const rootDir = process.cwd();
-
-    const candidatePaths = [
-      path.join(rootDir, 'dist', 'assets', 'logo.png'),
-      path.join(rootDir, 'src', 'assets', 'logo.png'),
-    ];
-
-    for (const p of candidatePaths) {
-      if (fs.existsSync(p)) {
-        return p;
-      }
-    }
-
-    console.warn(
-      'No se pudo cargar el logo para el PDF de resguardo de vehículo. Ninguna ruta encontrada:',
-      candidatePaths,
-    );
-
-    return null;
+    this.pdf.buildSafeguardPdf(doc, safeguard);
   }
 }

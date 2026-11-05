@@ -50,6 +50,8 @@ src/vehicles/        VehiclesService (façade sin lógica) + services/ vehicle-w
 src/safeguards/      SafeguardsService (façade sin lógica) + services/ safeguard-generation (versiones desde
                      los equipos asignados), -records, -signature (Cloudinary), -pdf (ADM.F.18);
                      e2e en test/safeguards.e2e-spec.ts (SAFEGUARDS_E2E_TRACE=<ruta>, Cloudinary simulado)
+src/vehicle-safeguards/  VehicleSafeguardsService: mismo patrón (generation con checklist, records, signature,
+                     pdf ADM.F.01); e2e en test/vehicle-safeguards.e2e-spec.ts (VEHICLE_SAFEGUARDS_E2E_TRACE)
 src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
 src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida)
                      + notifications/, comments/, assignees/, forms/ticket-form-workflow;

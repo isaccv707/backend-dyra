@@ -5,6 +5,10 @@ import { PdfDrawingKit } from 'src/common/pdf/pdf-drawing.util';
 import { VehicleSafeguardsService } from './vehicle-safeguards.service';
 import { VehicleSafeguardsController } from './vehicle-safeguards.controller';
 import { VehicleSafeguardPdfRenderer } from './pdf/vehicle-safeguard-pdf.renderer';
+import { VehicleSafeguardGenerationService } from './services/vehicle-safeguard-generation.service';
+import { VehicleSafeguardPdfService } from './services/vehicle-safeguard-pdf.service';
+import { VehicleSafeguardRecordsService } from './services/vehicle-safeguard-records.service';
+import { VehicleSafeguardSignatureService } from './services/vehicle-safeguard-signature.service';
 
 @Module({
   imports: [PrismaModule, CloudinaryModule],
@@ -13,6 +17,10 @@ import { VehicleSafeguardPdfRenderer } from './pdf/vehicle-safeguard-pdf.rendere
     VehicleSafeguardsService,
     VehicleSafeguardPdfRenderer,
     PdfDrawingKit,
+    VehicleSafeguardGenerationService,
+    VehicleSafeguardRecordsService,
+    VehicleSafeguardSignatureService,
+    VehicleSafeguardPdfService,
   ],
   exports: [VehicleSafeguardsService],
 })
