@@ -7,6 +7,9 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { BranchesService } from 'src/branches/branches.service';
 import { ServicesService } from './services.service';
+import { ServiceAdminQueryService } from './services/service-admin-query.service';
+import { ServicePublicQueryService } from './services/service-public-query.service';
+import { ServiceWriteService } from './services/service-write.service';
 
 const BRANCH_ID = 'branch-1';
 
@@ -64,6 +67,9 @@ describe('ServicesService', () => {
     const module = await Test.createTestingModule({
       providers: [
         ServicesService,
+        ServiceWriteService,
+        ServicePublicQueryService,
+        ServiceAdminQueryService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: BranchesService,
