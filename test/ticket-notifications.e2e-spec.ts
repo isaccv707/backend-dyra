@@ -10,6 +10,7 @@ import { MailJob, MailQueueService } from 'src/mail/mail-queue.service';
 import { TicketNotificationsService } from 'src/tickets/notifications/ticket-notifications.service';
 import { TicketNotificationEvent } from 'src/tickets/notifications/ticket-notification-rules';
 import { PrismaService } from 'prisma/prisma/prisma.service';
+import { ensureE2eBaseData } from './support/e2e-seed';
 
 /**
  * Ticket notices end to end against a real database: who gets each event
@@ -114,6 +115,8 @@ describe('Tickets: avisos (e2e)', () => {
     configureApp(app);
     await app.init();
     prisma = app.get(PrismaService);
+
+    await ensureE2eBaseData(prisma);
 
     const state = await prisma.state.findFirstOrThrow();
     const branch = async (name: string) => {
