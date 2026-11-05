@@ -43,7 +43,10 @@ export class StudyExcelImportService {
     return this.template.generateTemplate(branchId);
   }
 
-  /** File checks → branch rules → upserts → panel children, in that order. */
+  /**
+   * File checks → branch rules → panel cycles → upserts → panel children, in
+   * that order: a rejected row is never saved.
+   */
   async importStudies(branchId: string, buffer: Buffer) {
     const { rows, valid, invalid } = await this.parser.parseRows(
       branchId,
@@ -54,6 +57,7 @@ export class StudyExcelImportService {
       valid,
       invalid,
     );
+    await this.panels.rejectCyclicPanels(branchId, valid, invalid);
     const { processed, created, updated, importErrors, processedCodes } =
       await this.writer.upsertStudies(branchId, valid, existingByCode);
 

@@ -330,5 +330,35 @@ describe('Importación de estudios desde Excel (e2e)', () => {
       ]),
     );
     await snapshot('estado tras segunda carga');
+
+    // GLU2 is a child of PERF, which is a child of PERF2: making GLU2 contain
+    // PERF2 closes a cycle with the branch's current panels.
+    const third = await upload(
+      'tercera carga',
+      201,
+      toExcel([
+        row('GLU2', {
+          isPanel: 'true',
+          parametros: 'PERF2',
+          name: 'No cambia',
+        }),
+        row('NUEVO2', { name: 'Glucosa' }),
+      ]),
+    );
+    expect(third).toMatchObject({ processed: 1, created: 1 });
+    expect(third.invalid).toEqual([
+      {
+        row: 2,
+        code: 'GLU2',
+        errors: [
+          'Los parámetros forman un ciclo: algún perfil hijo contiene (directa o indirectamente) a este perfil',
+        ],
+      },
+    ]);
+    const studies = await snapshot('estado tras tercera carga');
+    expect(studies.find((s) => s.code === 'GLU2')).toMatchObject({
+      isPanel: false,
+      name: 'Glucosa',
+    });
   });
 });
