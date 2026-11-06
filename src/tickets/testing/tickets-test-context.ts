@@ -7,12 +7,15 @@ import { TicketAssigneesService } from '../assignees/ticket-assignees.service';
 import { TicketCommentsService } from '../comments/ticket-comments.service';
 import { CreateTicketDto } from '../dto/create-ticket.dto';
 import { TicketFormWorkflowService } from '../forms/ticket-form-workflow.service';
+import { TICKET_FORM_WORKFLOW_PROVIDERS } from '../forms/workflow/ticket-form-workflow.providers';
 import { TicketFormSecretService } from '../forms/ticket-form-secret.service';
 import { TicketFormsService } from '../forms/ticket-forms.service';
 import { TicketNotificationsService } from '../notifications/ticket-notifications.service';
 import { TicketSlaService } from '../sla/ticket-sla.service';
 import { TicketsGateway } from '../tickets.gateway';
 import { TicketsService } from '../tickets.service';
+import { TICKET_NOTIFICATION_PROVIDERS } from '../notifications/services/ticket-notification.providers';
+import { TICKET_LIFECYCLE_PROVIDERS } from '../services/ticket-lifecycle.providers';
 
 export const branchId = 'branch-1';
 
@@ -126,10 +129,13 @@ export async function createTicketsTestContext() {
   const module = await Test.createTestingModule({
     providers: [
       TicketsService,
+      ...TICKET_LIFECYCLE_PROVIDERS,
       TicketNotificationsService,
+      ...TICKET_NOTIFICATION_PROVIDERS,
       TicketCommentsService,
       TicketAssigneesService,
       TicketFormWorkflowService,
+      ...TICKET_FORM_WORKFLOW_PROVIDERS,
       TicketSlaService,
       TicketFormSecretService,
       { provide: PrismaService, useValue: prisma },

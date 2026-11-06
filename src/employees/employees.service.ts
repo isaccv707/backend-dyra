@@ -27,6 +27,7 @@ const EMPLOYEE_ALLOWED_FIELDS = [
   'name',
   'department',
   'hasSignedResponsibility',
+  'hasSignedVehicleResponsibility',
   'createdAt',
 ];
 

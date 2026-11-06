@@ -7,8 +7,13 @@ import { Test } from '@nestjs/testing';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { BranchesService } from 'src/branches/branches.service';
 import { ServicesService } from './services.service';
+import { ServiceAdminQueryService } from './services/service-admin-query.service';
+import { ServicePublicQueryService } from './services/service-public-query.service';
+import { ServiceWriteService } from './services/service-write.service';
 
 const BRANCH_ID = 'branch-1';
+const OTHER_BRANCH_ID = 'branch-2';
+const user = { branches: [{ id: BRANCH_ID }] };
 
 describe('ServicesService', () => {
   let service: ServicesService;
@@ -20,6 +25,7 @@ describe('ServicesService', () => {
       findMany: jest.Mock;
       count: jest.Mock;
       delete: jest.Mock;
+      create: jest.Mock;
     };
     study: { findMany: jest.Mock; count: jest.Mock };
     studyOnPriceSheet: { findMany: jest.Mock };
@@ -48,6 +54,7 @@ describe('ServicesService', () => {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
         delete: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'svc-new' }),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
       },
@@ -56,14 +63,26 @@ describe('ServicesService', () => {
         count: jest.fn().mockResolvedValue(0),
       },
       studyOnPriceSheet: { findMany: jest.fn().mockResolvedValue([]) },
-      $transaction: jest.fn((queries: Promise<unknown>[]) =>
-        Promise.all(queries),
+      $transaction: jest.fn(
+        (queries: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
+          typeof queries === 'function'
+            ? queries({
+                benefit: { deleteMany: jest.fn() },
+                serviceDetail: { deleteMany: jest.fn() },
+                service: {
+                  update: jest.fn().mockResolvedValue({ id: 'svc-1' }),
+                },
+              })
+            : Promise.all(queries),
       ),
     };
 
     const module = await Test.createTestingModule({
       providers: [
         ServicesService,
+        ServiceWriteService,
+        ServicePublicQueryService,
+        ServiceAdminQueryService,
         { provide: PrismaService, useValue: prisma },
         {
           provide: BranchesService,
@@ -91,6 +110,17 @@ describe('ServicesService', () => {
         }),
       );
       expect(prisma.service.findMany).not.toHaveBeenCalled();
+    });
+
+    it('ordena los estudios de cada servicio por nombre', async () => {
+      await service.findAll({ branchId: BRANCH_ID });
+      expect(prisma.service.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            studies: expect.objectContaining({ orderBy: { name: 'asc' } }),
+          }),
+        }),
+      );
     });
   });
 
@@ -281,10 +311,13 @@ describe('ServicesService', () => {
       prisma.service.findUnique.mockResolvedValue({
         id: 'svc-1',
         name: 'Análisis',
+        branchId: BRANCH_ID,
         _count: { studies: 3 },
       });
 
-      await expect(service.remove('svc-1')).rejects.toThrow(ConflictException);
+      await expect(service.remove('svc-1', user)).rejects.toThrow(
+        ConflictException,
+      );
       expect(prisma.service.delete).not.toHaveBeenCalled();
     });
 
@@ -292,14 +325,90 @@ describe('ServicesService', () => {
       prisma.service.findUnique.mockResolvedValue({
         id: 'svc-1',
         name: 'Análisis',
+        branchId: BRANCH_ID,
         _count: { studies: 0 },
       });
 
-      await service.remove('svc-1');
+      await service.remove('svc-1', user);
 
       expect(prisma.service.delete).toHaveBeenCalledWith({
         where: { id: 'svc-1' },
       });
+    });
+  });
+
+  describe('escrituras acotadas a las sucursales del usuario', () => {
+    const dto = {
+      name: 'Rayos X',
+      imageUrl: 'https://example.com/x.png',
+      branchId: OTHER_BRANCH_ID,
+    };
+    const otherBranchService = {
+      id: 'svc-1',
+      name: 'Análisis',
+      branchId: OTHER_BRANCH_ID,
+      _count: { studies: 0 },
+    };
+
+    it('create responde 403 en una sucursal no asignada', async () => {
+      await expect(service.create(dto, user)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.service.create).not.toHaveBeenCalled();
+    });
+
+    it('create permite su sucursal y a un usuario global', async () => {
+      await service.create({ ...dto, branchId: BRANCH_ID }, user);
+      await service.create(dto, { branches: [] });
+      expect(prisma.service.create).toHaveBeenCalledTimes(2);
+    });
+
+    it('update responde 404 antes que 403 si el servicio no existe', async () => {
+      prisma.service.findUnique.mockResolvedValue(null);
+      await expect(
+        service.update('svc-x', { description: 'x' }, user),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('update responde 403 si el servicio es de otra sucursal', async () => {
+      prisma.service.findUnique.mockResolvedValue(otherBranchService);
+      await expect(
+        service.update('svc-1', { description: 'x' }, user),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('update responde 403 al mover el servicio a una sucursal no asignada', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        ...otherBranchService,
+        branchId: BRANCH_ID,
+      });
+      await expect(
+        service.update('svc-1', { branchId: OTHER_BRANCH_ID }, user),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('update permite un servicio de su sucursal', async () => {
+      prisma.service.findUnique.mockResolvedValue({
+        ...otherBranchService,
+        branchId: BRANCH_ID,
+      });
+      await expect(
+        service.update(
+          'svc-1',
+          { description: 'x', branchId: BRANCH_ID },
+          user,
+        ),
+      ).resolves.toEqual({ id: 'svc-1' });
+    });
+
+    it('remove responde 403 si el servicio es de otra sucursal', async () => {
+      prisma.service.findUnique.mockResolvedValue(otherBranchService);
+      await expect(service.remove('svc-1', user)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(prisma.service.delete).not.toHaveBeenCalled();
     });
   });
 });

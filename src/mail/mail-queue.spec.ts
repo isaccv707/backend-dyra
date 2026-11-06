@@ -83,6 +83,7 @@ describe('cola de correos', () => {
         password: 'p@ss',
         db: 2,
         tls: {},
+        family: 0,
         maxRetriesPerRequest: null,
       });
     });
@@ -91,6 +92,7 @@ describe('cola de correos', () => {
       expect(redisConnectionFromUrl('redis://localhost')).toEqual({
         host: 'localhost',
         port: 6379,
+        family: 0,
         maxRetriesPerRequest: null,
       });
     });

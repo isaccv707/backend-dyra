@@ -11,6 +11,8 @@ export function redisConnectionFromUrl(redisUrl: string): ConnectionOptions {
     ...(url.password && { password: decodeURIComponent(url.password) }),
     ...(db && { db: Number(db) }),
     ...(url.protocol === 'rediss:' && { tls: {} }),
+    // IPv4 or IPv6: Railway's private network (*.railway.internal) may be IPv6-only.
+    family: 0,
     // BullMQ workers block on Redis: retry forever instead of failing commands.
     maxRetriesPerRequest: null,
   };
