@@ -4403,6 +4403,277 @@
         ]
       }
     },
+    "/api/contact-messages": {
+      "post": {
+        "description": "Guarda el mensaje del formulario /contact en la sucursal indicada con estatus NEW y avisa por correo a los usuarios con contact-messages:update de esa sucursal. Requiere aceptar el aviso de privacidad.",
+        "operationId": "ContactMessagesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContactMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactMessageReceivedDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sucursal no encontrada o inactiva."
+          },
+          "429": {
+            "description": "Demasiados envíos en poco tiempo."
+          }
+        },
+        "summary": "Enviar mensaje de contacto (sitio público)",
+        "tags": [
+          "contact-messages"
+        ]
+      },
+      "get": {
+        "description": "Paginado, filtrable por sucursal, estatus y asunto; búsqueda por nombre, correo o teléfono. Limitado a las sucursales del usuario.",
+        "operationId": "ContactMessagesController_findAll",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "NEW",
+                "IN_PROGRESS",
+                "RESOLVED",
+                "DISCARDED"
+              ]
+            }
+          },
+          {
+            "name": "subject",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OTHER",
+                "CLINICAL_ANALYSIS",
+                "CORPORATE_HEALTH",
+                "HOME_SAMPLING"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar mensajes de contacto",
+        "tags": [
+          "contact-messages"
+        ]
+      }
+    },
+    "/api/contact-messages/pending-count": {
+      "get": {
+        "description": "Mensajes con estatus NEW en las sucursales del usuario (badge del menú).",
+        "operationId": "ContactMessagesController_countPending",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Contar mensajes nuevos",
+        "tags": [
+          "contact-messages"
+        ]
+      }
+    },
+    "/api/contact-messages/{id}": {
+      "get": {
+        "description": "Incluye el historial de estatus con quién y cuándo.",
+        "operationId": "ContactMessagesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Mensaje no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Detalle de mensaje de contacto",
+        "tags": [
+          "contact-messages"
+        ]
+      }
+    },
+    "/api/contact-messages/{id}/status": {
+      "patch": {
+        "description": "Cambia el estatus y/o registra una nota interna. Cada llamada queda en el historial.",
+        "operationId": "ContactMessagesController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateContactMessageStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mismo estatus sin nota."
+          },
+          "404": {
+            "description": "Mensaje no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar estatus / agregar seguimiento",
+        "tags": [
+          "contact-messages"
+        ]
+      }
+    },
     "/api/price-sheets": {
       "post": {
         "description": "Crea un nuevo tabulador de precios.",
@@ -11513,6 +11784,95 @@
             "type": "boolean"
           }
         }
+      },
+      "CreateContactMessageDto": {
+        "type": "object",
+        "properties": {
+          "website": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Honeypot anti-spam: debe ir vacío."
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\d{8,15}$"
+          },
+          "subject": {
+            "type": "string",
+            "enum": [
+              "OTHER",
+              "CLINICAL_ANALYSIS",
+              "CORPORATE_HEALTH",
+              "HOME_SAMPLING"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 2000
+          },
+          "privacyAccepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "branchId",
+          "name",
+          "email",
+          "phone",
+          "subject",
+          "message",
+          "privacyAccepted"
+        ]
+      },
+      "ContactMessageReceivedDto": {
+        "type": "object",
+        "properties": {
+          "received": {
+            "type": "boolean"
+          },
+          "folio": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "received"
+        ]
+      },
+      "UpdateContactMessageStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "IN_PROGRESS",
+              "RESOLVED",
+              "DISCARDED"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "status"
+        ]
       },
       "CreatePriceSheetDto": {
         "type": "object",

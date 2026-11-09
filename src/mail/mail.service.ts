@@ -34,6 +34,18 @@ export interface TicketUpdateEmailData {
   message: string;
 }
 
+/** New message from the public site's contact form, for the branch's managers. */
+export interface NewContactMessageEmailData {
+  contactMessageId: string;
+  folio: number;
+  branchName: string;
+  subjectLabel: string;
+  name: string;
+  email: string;
+  phone: string;
+  message: string;
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -252,6 +264,57 @@ export class MailService {
           <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
           <p style="color: #999; font-size: 12px; text-align: center;">
             DYRA Analítica — No respondas a este correo automático.
+          </p>
+        </div>
+      `,
+    });
+  }
+
+  /** Contact form message: patient data + link to follow it up in the admin. */
+  async sendNewContactMessageEmail(
+    to: string,
+    data: NewContactMessageEmailData,
+  ): Promise<void> {
+    const from = this.configService.getOrThrow<string>('MAIL_FROM');
+    const baseUrl = (
+      this.configService.get<string>('ADMIN_APP_URL') ?? DEFAULT_ADMIN_APP_URL
+    ).replace(/\/+$/, '');
+    const messageUrl = `${baseUrl}/dashboard/contact-messages/${data.contactMessageId}`;
+    const row = (label: string, value: string) =>
+      `<tr><td style="padding: 4px 8px; color: #888; vertical-align: top;">${label}</td><td style="padding: 4px 8px;">${value}</td></tr>`;
+    const message = escapeHtml(data.message).replace(/\r?\n/g, '<br/>');
+
+    await this.transporter.sendMail({
+      from,
+      to,
+      replyTo: data.email,
+      subject: `Nuevo mensaje de contacto #${data.folio} (${data.subjectLabel}) — ${data.branchName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #f9f9f9; border-radius: 8px;">
+          <h2 style="color: #1a1a2e; margin-bottom: 8px;">Nuevo mensaje de contacto</h2>
+          <p style="color: #444; margin-bottom: 24px;">
+            Un paciente escribió desde el sitio web a <strong>${escapeHtml(data.branchName)}</strong>. Dale seguimiento y actualiza su estatus en el panel.
+          </p>
+          <table style="width: 100%; background: #ffffff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 16px; color: #444; font-size: 14px;">
+            ${row('Folio', `<strong>#${data.folio}</strong>`)}
+            ${row('Asunto', escapeHtml(data.subjectLabel))}
+            ${row('Nombre', escapeHtml(data.name))}
+            ${row('Correo', `<a href="mailto:${escapeHtml(data.email)}" style="color: #1a1a2e;">${escapeHtml(data.email)}</a>`)}
+            ${row('Teléfono', `<a href="tel:${escapeHtml(data.phone)}" style="color: #1a1a2e;">${escapeHtml(data.phone)}</a>`)}
+          </table>
+          <div style="background: #ffffff; border: 2px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 24px; color: #444; font-size: 14px; line-height: 1.5;">
+            ${message}
+          </div>
+          <div style="text-align: center; margin-bottom: 24px;">
+            <a href="${messageUrl}" style="display: inline-block; background: #1a1a2e; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold;">Ver mensaje</a>
+          </div>
+          <p style="color: #666; font-size: 13px;">
+            Si el botón no funciona, copia este enlace en tu navegador:<br/>
+            <a href="${messageUrl}" style="color: #1a1a2e;">${messageUrl}</a>
+          </p>
+          <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 24px 0;" />
+          <p style="color: #999; font-size: 12px; text-align: center;">
+            DYRA Analítica — Contiene datos personales de un paciente: no lo reenvíes fuera del laboratorio.
           </p>
         </div>
       `,

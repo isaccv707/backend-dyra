@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import {
+  NewContactMessageEmailData,
   NewTicketEmailData,
   TicketAssignedEmailData,
   TicketUpdateEmailData,
@@ -13,7 +14,12 @@ export const MAIL_QUEUE = 'mail';
 export type MailJob =
   | { type: 'ticketAssigned'; to: string; data: TicketAssignedEmailData }
   | { type: 'newTicket'; to: string; data: NewTicketEmailData }
-  | { type: 'ticketUpdate'; to: string; data: TicketUpdateEmailData };
+  | { type: 'ticketUpdate'; to: string; data: TicketUpdateEmailData }
+  | {
+      type: 'newContactMessage';
+      to: string;
+      data: NewContactMessageEmailData;
+    };
 
 /** 5 tries over ~15 min (30 s, 1, 2, 4, 8 min); failed jobs stay in Redis to review. */
 export const MAIL_JOB_OPTIONS = {
