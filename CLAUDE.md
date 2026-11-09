@@ -2,179 +2,179 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Rol
+## Role
 
-API REST + WebSocket de DYRA (laboratorio clínico multi-sucursal). Dueño de la base de datos. **Consumidores:** `../admin-dyra-web` (casi todas las rutas, con JWT, y el socket `/tickets`) y `../dira-astro` (solo rutas `@Public()`). Contexto del sistema: `../CLAUDE.md`.
+DYRA REST API + WebSocket (multi-branch clinical laboratory). Owner of the database. **Consumers:** `../admin-dyra-web` (almost every route, with JWT, and the `/tickets` socket) and `../dira-astro` (only `@Public()` routes). System context: `../CLAUDE.md`.
 
 ## Stack
 
-NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, schema multi-archivo) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (plugin CLI) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · BullMQ (`@nestjs/bullmq` 11; la 12 es solo ESM) · cloudinary. Node 22. Gestor: **yarn 1** (único lockfile `yarn.lock`; no usar npm).
+NestJS 11 · Prisma 7 (`@prisma/adapter-pg`, multi-file schema) · PostgreSQL 14 (docker) · TypeScript 5.7 · Jest 30 · Socket.IO 4 · `@nestjs/swagger` (CLI plugin) · `@nestjs/schedule` · `@nestjs/throttler` · pdfkit · xlsx · nodemailer · BullMQ (`@nestjs/bullmq` 11; 12 is ESM-only) · cloudinary. Node 22. Package manager: **yarn 1** (single lockfile `yarn.lock`; don't use npm).
 
-## Comandos
+## Commands
 
 ```bash
 yarn install
-docker compose up -d            # Postgres :5432, datos en ./postgres
+docker compose up -d            # Postgres :5432, data in ./postgres
 yarn start:dev                  # http://localhost:3000/api (watch)
 yarn build                      # prisma generate + nest build → dist/
-yarn test                       # unit (Jest, *.spec.ts en src/)
-npx jest src/studies/studies.service.spec.ts   # un archivo
-npx jest -t "nombre del test"                  # un test
+yarn test                       # unit (Jest, *.spec.ts in src/)
+npx jest src/studies/studies.service.spec.ts   # one file
+npx jest -t "test name"                        # one test
 yarn test:cov
-yarn lint                       # ESLint con --fix (modifica archivos)
-yarn lint:check                 # ESLint sin --fix (lo que corre CI)
-yarn format                     # Prettier src/ y test/
-npx prisma generate             # tras cambiar prisma/schema/*.prisma
-yarn db:migrate --name <cambio> # prisma migrate dev: crea y aplica migración en la BD local
-yarn db:deploy                  # prisma migrate deploy (lo que corre start:prod)
+yarn lint                       # ESLint with --fix (modifies files)
+yarn lint:check                 # ESLint without --fix (what CI runs)
+yarn format                     # Prettier src/ and test/
+npx prisma generate             # after changing prisma/schema/*.prisma
+yarn db:migrate --name <change> # prisma migrate dev: creates and applies a migration on the local DB
+yarn db:deploy                  # prisma migrate deploy (what start:prod runs)
 yarn db:status                  # prisma migrate status
 npx prisma db seed              # ts-node prisma/seed.ts
 npx prisma studio
-yarn openapi:export             # nest build + escribe openapi.json (contrato para los frontends)
+yarn openapi:export             # nest build + writes openapi.json (contract for the frontends)
 ```
 
-- `yarn test:e2e` (`test/jest-e2e.json`): formularios de tickets, equipos y vehículos con sus traspasos (`DEVICES_E2E_TRACE=<ruta>` / `VEHICLES_E2E_TRACE=<ruta>` vuelcan las respuestas normalizadas para comparar antes/después de un refactor) contra BD real, Redis y `TICKET_SECRET_KEY` (crea y borra sus datos; solo BD local o de CI).
-- Seed: siempre roles/permisos, usuario admin (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`; se le asignan todas las sucursales existentes) y subcategorías de tickets. Solo si `SEED_DEV_BRANCH=true` y `NODE_ENV!=production`: estados + sucursal por defecto `a1b2c3d4-0001-4000-8000-000000000001` (debe ir antes del admin). **Nunca** activar `SEED_DEV_BRANCH` contra producción: `seedBranches` actualiza la fila si existe.
+- `yarn test:e2e` (`test/jest-e2e.json`): ticket forms, devices and vehicles with their transfers (`DEVICES_E2E_TRACE=<path>` / `VEHICLES_E2E_TRACE=<path>` dump normalized responses to compare before/after a refactor) against a real DB, Redis and `TICKET_SECRET_KEY` (creates and deletes its own data; local or CI DB only).
+- Seed: always roles/permissions, admin user (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`; assigned to every existing branch) and ticket subcategories. Only if `SEED_DEV_BRANCH=true` and `NODE_ENV!=production`: states + default branch `a1b2c3d4-0001-4000-8000-000000000001` (must run before the admin). **Never** enable `SEED_DEV_BRANCH` against production: `seedBranches` updates the row if it exists.
 
-## Estructura
+## Structure
 
 ```
-src/<módulo>/        controller, service, dto/, *.spec.ts  (un módulo Nest por feature)
-src/auth/            login/OTP/reset, JwtStrategy, guards globales, @Public/@Permissions/@CurrentUser
-src/common/          filtro Prisma, handle-db-errors, paginate.util, branch-access.util,
+src/<module>/        controller, service, dto/, *.spec.ts  (one Nest module per feature)
+src/auth/            login/OTP/reset, JwtStrategy, global guards, @Public/@Permissions/@CurrentUser
+src/common/          Prisma filter, handle-db-errors, paginate.util, branch-access.util,
                      slugger.util, excel utils, cors.util, cloudinary/, pdf/
-src/devices/         DevicesService (façade sin lógica) + services/ device-write, device-query,
+src/devices/         DevicesService (logic-free façade) + services/ device-write, device-query,
                      device-assignment, device-transfer, device-validation, device-safeguard
-src/vehicles/        VehiclesService (façade sin lógica) + services/ vehicle-write, vehicle-query,
+src/vehicles/        VehiclesService (logic-free façade) + services/ vehicle-write, vehicle-query,
                      vehicle-assignment, vehicle-transfer, vehicle-validation, vehicle-safeguard
-src/safeguards/      SafeguardsService (façade sin lógica) + services/ safeguard-generation (versiones desde
-                     los equipos asignados), -records, -signature (Cloudinary), -pdf (ADM.F.18);
-                     e2e en test/safeguards.e2e-spec.ts (SAFEGUARDS_E2E_TRACE=<ruta>, Cloudinary simulado)
-src/vehicle-safeguards/  VehicleSafeguardsService: mismo patrón (generation con checklist, records, signature,
-                     pdf ADM.F.01); e2e en test/vehicle-safeguards.e2e-spec.ts (VEHICLE_SAFEGUARDS_E2E_TRACE)
-src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (cola BullMQ `mail`, 5 reintentos)
-src/tickets/         REST + gateway WS /tickets + cron SLA (cada hora); TicketsService (ciclo de vida, façade sin lógica
-                     sobre services/ ticket-create, ticket-query, ticket-update, ticket-classification;
-                     e2e en test/tickets.e2e-spec.ts con TICKETS_E2E_TRACE=<ruta>)
-                     + notifications/ (TicketNotificationsService: façade sobre services/ -dispatch, -inbox,
-                     ticket-email-preferences; logs con contexto TicketNotificationsService; e2e en
-                     test/ticket-notifications.e2e-spec.ts con TICKET_NOTIFICATIONS_E2E_TRACE=<ruta>),
-                     comments/, assignees/, forms/ticket-form-workflow (façade sobre
-                     forms/workflow/ ticket-form-edit, -decision, -access, -state; logs con contexto
-                     TicketFormWorkflowService; e2e en test/ticket-form-workflow.e2e-spec.ts con
-                     TICKET_FORM_WORKFLOW_E2E_TRACE=<ruta>);
-                     tipos/labels compartidos en tickets.shared.ts; specs con testing/tickets-test-context
-src/studies/         StudiesService (façade sin lógica: controllers y otros módulos solo usan esta)
+src/safeguards/      SafeguardsService (logic-free façade) + services/ safeguard-generation (versions from
+                     assigned devices), -records, -signature (Cloudinary), -pdf (ADM.F.18);
+                     e2e in test/safeguards.e2e-spec.ts (SAFEGUARDS_E2E_TRACE=<path>, mocked Cloudinary)
+src/vehicle-safeguards/  VehicleSafeguardsService: same pattern (generation with checklist, records, signature,
+                     pdf ADM.F.01); e2e in test/vehicle-safeguards.e2e-spec.ts (VEHICLE_SAFEGUARDS_E2E_TRACE)
+src/mail/            MailService (nodemailer) + MailQueueService/MailProcessor (BullMQ queue `mail`, 5 retries)
+src/tickets/         REST + WS gateway /tickets + SLA cron (hourly); TicketsService (lifecycle, logic-free façade
+                     over services/ ticket-create, ticket-query, ticket-update, ticket-classification;
+                     e2e in test/tickets.e2e-spec.ts with TICKETS_E2E_TRACE=<path>)
+                     + notifications/ (TicketNotificationsService: façade over services/ -dispatch, -inbox,
+                     ticket-email-preferences; logs with context TicketNotificationsService; e2e in
+                     test/ticket-notifications.e2e-spec.ts with TICKET_NOTIFICATIONS_E2E_TRACE=<path>),
+                     comments/, assignees/, forms/ticket-form-workflow (façade over
+                     forms/workflow/ ticket-form-edit, -decision, -access, -state; logs with context
+                     TicketFormWorkflowService; e2e in test/ticket-form-workflow.e2e-spec.ts with
+                     TICKET_FORM_WORKFLOW_E2E_TRACE=<path>);
+                     shared types/labels in tickets.shared.ts; specs with testing/tickets-test-context
+src/studies/         StudiesService (logic-free façade: controllers and other modules only use this one)
                      + services/ study-validation, study-write, study-query, study-panel, study-price, study-export;
-                     includes en constants/study-includes.const, helpers en utils/study-mappers.util
-src/services/        ServicesService (façade sin lógica) + services/ service-write, service-public-query,
-                     service-admin-query; e2e en test/services.e2e-spec.ts (SERVICES_E2E_TRACE=<ruta>)
-src/quotations/      QuotationsService (façade sin lógica) + services/ quotation-create (precios del tarifario,
-                     snapshot de perfiles, totales con IVA incluido), -records, -pdf; e2e en
-                     test/quotations.e2e-spec.ts (QUOTATIONS_E2E_TRACE=<ruta>, incluye POST /quotations/pdf del sitio)
-src/swagger.ts       createOpenApiDocument(): usado por main.ts y src/scripts/export-openapi.ts
-openapi.json         contrato generado (versionado; CI falla si está desactualizado)
-prisma/schema/       un .prisma por módulo; generator/datasource en schema.prisma
-prisma/migrations/   0_init (baseline = schema de main al 2026-10-20) + migraciones nuevas
-prisma/migrations-legacy/  historial previo al baseline; solo referencia, Prisma no lo lee
-prisma/prisma/       PrismaModule (global) y PrismaService (ruta doblemente anidada)
-prisma/seeds/, prisma/constants/   seeds y catálogos (roles-permissions.ts)
-prisma/scripts/      backfills one-off de migraciones de datos
-src/assets/          logo para PDFs (se copia a dist/assets)
+                     includes in constants/study-includes.const, helpers in utils/study-mappers.util
+src/services/        ServicesService (logic-free façade) + services/ service-write, service-public-query,
+                     service-admin-query; e2e in test/services.e2e-spec.ts (SERVICES_E2E_TRACE=<path>)
+src/quotations/      QuotationsService (logic-free façade) + services/ quotation-create (prices from the
+                     price sheet, panel snapshot, totals with VAT included), -records, -pdf; e2e in
+                     test/quotations.e2e-spec.ts (QUOTATIONS_E2E_TRACE=<path>, includes the site's POST /quotations/pdf)
+src/swagger.ts       createOpenApiDocument(): used by main.ts and src/scripts/export-openapi.ts
+openapi.json         generated contract (versioned; CI fails if it is out of date)
+prisma/schema/       one .prisma per module; generator/datasource in schema.prisma
+prisma/migrations/   0_init (baseline = main's schema as of 2026-10-20) + new migrations
+prisma/migrations-legacy/  history prior to the baseline; reference only, Prisma doesn't read it
+prisma/prisma/       PrismaModule (global) and PrismaService (doubly nested path)
+prisma/seeds/, prisma/constants/   seeds and catalogs (roles-permissions.ts)
+prisma/scripts/      one-off backfills for data migrations
+src/assets/          logo for PDFs (copied to dist/assets)
 ```
 
-Módulos: auth, users, roles-permissions, branches, states, services, studies, study-catalogs, price-sheets, quotations, posts, authors, banners, reviews, employees, locations, devices, safeguards, vehicles, vehicle-safeguards, tickets.
+Modules: auth, users, roles-permissions, branches, states, services, studies, study-catalogs, price-sheets, quotations, posts, authors, banners, reviews, employees, locations, devices, safeguards, vehicles, vehicle-safeguards, tickets.
 
-## Patrones y convenciones
+## Patterns and conventions
 
-- **Bootstrap (`src/main.ts`):** prefijo global `/api`; Swagger en `/api` (`/api-json`) con `createOpenApiDocument()` de `src/swagger.ts` (siempre después de `setGlobalPrefix`); `ValidationPipe({ whitelist, forbidNonWhitelisted })`; `PrismaClientExceptionFilter` (P2002→409, P2025→404, P2003→400); CORS desde `CORS_ORIGINS`; query parser `extended`.
-- **Nueva entidad:** modelo en `prisma/schema/<módulo>.prisma` (los modelos se referencian entre archivos sin imports) → `yarn db:migrate --name <cambio>` (genera la migración y el cliente) → `src/<entidad>/` con controller/service/dto → importar en `src/app.module.ts` → permisos en `prisma/constants/roles-permissions.ts`. Imitar `src/services/` o `src/studies/`.
-- **DTOs de respuesta:** tickets documenta sus respuestas con clases en `src/tickets/dto/ticket-response.dto.ts` (`@ApiResponse({ type })`); `ticket-response.dto.spec.ts` compara esas clases (vía `openapi.json`) con las columnas e includes de Prisma: al agregar una columna o include, actualizar el DTO y `yarn openapi:export`.
-- **DTOs:** `class-validator`; `@Type(() => …)` para anidados y números (los query params llegan como string). Swagger se infiere del DTO; documentar con `@ApiOperation`/`@ApiResponse` como en `services.controller.ts`.
-- **Errores:** `handleDatabaseErrors()` (`src/common/handle-db-errors.ts`) en los catch de servicios; mensajes en español (estudios: `handleStudyDbErrors()`).
-- **Paginación:** `{ data, total, page, limit, totalPages }` vía `src/common/utils/paginate.util.ts`.
-- **Slugs:** `generateSlug()` de `src/common/utils/slugger.util.ts` (posts, services, studies).
-- **Permisos:** `@Permissions('módulo:acción')`, guard global en `auth.module.ts`. Rutas abiertas: `@Public()`. Roles sembrados: `Administrador` (todo), `Usuario` (lectura salvo users/roles/permissions + `tickets:create`), `Soporte TI` (Usuario + `tickets:update`). `tickets` solo tiene `create` y `update`.
-- **Prisma:** para búsquedas case-insensitive de varios nombres usar `OR` de `equals` + `mode: 'insensitive'`; `in` + `insensitive` está roto con Prisma 7 + adapter-pg.
+- **Bootstrap (`src/main.ts`):** global prefix `/api`; Swagger at `/api` (`/api-json`) with `createOpenApiDocument()` from `src/swagger.ts` (always after `setGlobalPrefix`); `ValidationPipe({ whitelist, forbidNonWhitelisted })`; `PrismaClientExceptionFilter` (P2002→409, P2025→404, P2003→400); CORS from `CORS_ORIGINS`; `extended` query parser.
+- **New entity:** model in `prisma/schema/<module>.prisma` (models reference each other across files without imports) → `yarn db:migrate --name <change>` (generates the migration and the client) → `src/<entity>/` with controller/service/dto → import in `src/app.module.ts` → permissions in `prisma/constants/roles-permissions.ts`. Mimic `src/services/` or `src/studies/`.
+- **Response DTOs:** tickets documents its responses with classes in `src/tickets/dto/ticket-response.dto.ts` (`@ApiResponse({ type })`); `ticket-response.dto.spec.ts` compares those classes (via `openapi.json`) with Prisma columns and includes: when adding a column or include, update the DTO and run `yarn openapi:export`.
+- **DTOs:** `class-validator`; `@Type(() => …)` for nested objects and numbers (query params arrive as strings). Swagger is inferred from the DTO; document with `@ApiOperation`/`@ApiResponse` as in `services.controller.ts`.
+- **Errors:** `handleDatabaseErrors()` (`src/common/handle-db-errors.ts`) in service catch blocks; messages in Spanish (studies: `handleStudyDbErrors()`).
+- **Pagination:** `{ data, total, page, limit, totalPages }` via `src/common/utils/paginate.util.ts`.
+- **Slugs:** `generateSlug()` from `src/common/utils/slugger.util.ts` (posts, services, studies).
+- **Permissions:** `@Permissions('module:action')`, global guard in `auth.module.ts`. Open routes: `@Public()`. Seeded roles: `Administrador` (everything), `Usuario` (read-only except users/roles/permissions + `tickets:create`), `Soporte TI` (Usuario + `tickets:update`). `tickets` only has `create` and `update`.
+- **Prisma:** for case-insensitive searches over several names use `OR` of `equals` + `mode: 'insensitive'`; `in` + `insensitive` is broken with Prisma 7 + adapter-pg.
 
-## Reglas de dominio
+## Domain rules
 
-**Sucursal (`branchId`):** no existe contenido "global". `Service`, `Author`, `Post`, `Banner`, `PriceSheets`, `Study` tienen un único `branchId` requerido (nunca `Branch[]`); DTOs reciben `branchId`, no `branchIds`; listas filtran con `where.branchId` opcional. Unicidad (`name`/`nameKey`, `slug`, `code`) es por sucursal (`@@unique([branchId, …])`).
-- Excepciones: `Review.branchId` es nullable; `User` ↔ `Branch[]` es many-to-many real — escritura y lectura admin se acotan con `assertBranchAccess`/`userBranchFilter` (`src/common/utils/branch-access.util.ts`).
-- Validado en servicio, no en BD: `Post.authorId` misma sucursal; `Study.branchId` = la de su `service` (`assertServiceBelongsToBranch`); `StudyOnPriceSheet` solo con tarifarios de la misma sucursal; `Safeguard.branchId` se deriva del empleado.
-- Escrituras de `Service` acotadas con `assertBranchAccess`: crear valida `dto.branchId`; editar/borrar, la sucursal del servicio (404 antes que 403), y mover (`branchId` en PATCH) también la de destino.
-- Responsivas firmadas: `Employee.hasSignedResponsibility` es solo la de equipo (`Safeguard`, ADM.F.18) y `Employee.hasSignedVehicleResponsibility` la de vehículo (`VehicleSafeguard`, ADM.F.01); son independientes (hay empleados con equipo y sin vehículo, y al revés). Firmar la versión vigente pone su marca en `true`; generar una versión nueva la regresa a `false`.
-- `Banner.order` es una cola por `(branchId, placement)`.
+**Branch (`branchId`):** there is no "global" content. `Service`, `Author`, `Post`, `Banner`, `PriceSheets`, `Study` have a single required `branchId` (never `Branch[]`); DTOs receive `branchId`, not `branchIds`; lists filter with an optional `where.branchId`. Uniqueness (`name`/`nameKey`, `slug`, `code`) is per branch (`@@unique([branchId, …])`).
+- Exceptions: `Review.branchId` is nullable; `User` ↔ `Branch[]` is a real many-to-many — admin writes and reads are scoped with `assertBranchAccess`/`userBranchFilter` (`src/common/utils/branch-access.util.ts`).
+- Validated in the service, not in the DB: `Post.authorId` same branch; `Study.branchId` = its `service`'s branch (`assertServiceBelongsToBranch`); `StudyOnPriceSheet` only with price sheets of the same branch; `Safeguard.branchId` is derived from the employee.
+- `Service` writes scoped with `assertBranchAccess`: create validates `dto.branchId`; edit/delete, the service's branch (404 before 403); moving (`branchId` in PATCH) also validates the destination.
+- Signed responsibility forms: `Employee.hasSignedResponsibility` is only the device one (`Safeguard`, ADM.F.18) and `Employee.hasSignedVehicleResponsibility` the vehicle one (`VehicleSafeguard`, ADM.F.01); they are independent (some employees have devices and no vehicle, and vice versa). Signing the current version sets its flag to `true`; generating a new version sets it back to `false`.
+- `Banner.order` is a queue per `(branchId, placement)`.
 
-**Estudios:**
-- `branchId` se fija al crear y nunca cambia (no hay traspasos). Toda escritura y lectura admin valida sucursales del usuario; las lecturas públicas no.
-- `DELETE /studies/:id` solo desactiva; reactivar con `PATCH isActive: true`. Lecturas públicas solo devuelven activos; admin usa `/inactive`. Cotizaciones rechazan inactivos.
-- `code` se recorta y pasa a mayúsculas. `slug` viene del DTO o de `name`; renombrar no cambia el slug. `title` opcional (default `name`; respuestas usan `studyTitle()`). Slugs únicos por sucursal → `GET /studies/by-slug/:slug?branchId=` (requerido); `/:id` solo acepta UUID. `deliveryTime` en días.
-- **Orderable = tiene precio:** activo y con `StudyOnPriceSheet` en un tarifario activo. Público: `GET /studies/orderable` (solo tarifarios públicos); admin: `GET /studies/admin/orderable`.
-- `eligiblePatients` (M/F/A, DIAS/AÑOS) se aplana en columnas y `toStudyResponse()` lo reagrupa. `referenceValues[]` son cuantitativos (`minValue`/`maxValue`, `gender` MASCULINO/FEMENINO/AMBOS, `unitAge`) o cualitativos (`text`); reglas en `assertValidReferenceValues()`; enviar la lista la reemplaza completa.
-- **Catálogos** (`StudySection`, `SampleType`, `StudyTechnique`, por sucursal): `sectionId` y `sampleTypeId` requeridos al crear y no se pueden limpiar; `techniqueId` opcional (acepta `null`). Un controller factory sirve `/api/study-sections|sample-types|study-techniques`. Nombres únicos case-insensitive (validado en servicio). En uso → no se borran (409), se desactivan. Import masivo `POST /api/study-catalogs/import?branchId=` solo crea (existentes → `skipped`).
-- Migración en curso (fase 1): columnas `Study.legacySection/legacySampleType/legacyTechnique` omitidas globalmente en `PrismaService`; solo las lee `prisma/scripts/backfill-study-catalogs.ts`. La fase 2 las elimina **en un deploy posterior** al backfill.
-- **Paneles (perfiles):** `isPanel = true` con hijos ordenados vía `StudyPanelItem` (many-to-many, un hijo puede ser panel). Reglas en `src/studies/utils/panel-tree.util.ts`: solo paneles tienen hijos, misma sucursal, sin ciclos/duplicados/autorreferencia, hijos activos, un estudio dentro de un panel no se desactiva, `isPanel` no se apaga con hijos. Reemplazo completo con `PUT /studies/:id/panel-items`; árbol en `GET /studies/:id/panel-tree`. Un panel no tiene `units`/`decimals`/`referenceValues`. Las cotizaciones guardan snapshot en `QuotationItem.components`.
-- **Import Excel de estudios:** `StudyExcelImportService` (`src/studies/study-excel-import.service.ts`) sirve `POST /studies/import?branchId=` (sin precios; fila con `price` → error). Orquesta, en este orden, `services/study-import-*`: `parser` (archivo y fila sola) → `rules` (contra estudios existentes) → `panels.rejectCyclicPanels` (ciclos de `parametros` con los perfiles actuales o del archivo: la fila va a `invalid` y no se guarda) → `writer` (upserts) → `panels`; `template` genera la plantilla. Columna `parametros` (códigos hijos, solo paneles) se aplica al final. Resuelve/auto-crea catálogos con `resolveStudyCatalogIds()`. Slug solo al crear (`assignNewStudySlugs()`). Respuesta: `invalid`, `importErrors`, `panelErrors`, `created`/`updated`. E2E: `test/study-import.e2e-spec.ts` (`STUDY_IMPORT_E2E_TRACE=<ruta>` vuelca respuestas y estado para comparar antes/después de un refactor).
-- **Import de precios:** `POST /price-sheets/:id/import-excel` (`PriceSheetPriceImportService`, permiso `price-sheets:update`) solo hace upsert de `StudyOnPriceSheet` por `code` + `price` (`name` se ignora; `price` vacío → `skipped`; code inexistente/inactivo → `invalid`). Nunca crea ni edita estudios ni toca `showPrice`. Respuesta: `{ totalRows, created, updated, skipped, invalid }`.
+**Studies:**
+- `branchId` is set on create and never changes (no transfers). Every write and admin read validates the user's branches; public reads don't.
+- `DELETE /studies/:id` only deactivates; reactivate with `PATCH isActive: true`. Public reads only return active ones; admin uses `/inactive`. Quotations reject inactive ones.
+- `code` is trimmed and uppercased. `slug` comes from the DTO or from `name`; renaming doesn't change the slug. `title` optional (default `name`; responses use `studyTitle()`). Slugs unique per branch → `GET /studies/by-slug/:slug?branchId=` (required); `/:id` only accepts UUIDs. `deliveryTime` in days.
+- **Orderable = has a price:** active and with `StudyOnPriceSheet` in an active price sheet. Public: `GET /studies/orderable` (public price sheets only); admin: `GET /studies/admin/orderable`.
+- `eligiblePatients` (M/F/A, DIAS/AÑOS) is flattened into columns and `toStudyResponse()` regroups it. `referenceValues[]` are quantitative (`minValue`/`maxValue`, `gender` MASCULINO/FEMENINO/AMBOS, `unitAge`) or qualitative (`text`); rules in `assertValidReferenceValues()`; sending the list replaces it entirely.
+- **Catalogs** (`StudySection`, `SampleType`, `StudyTechnique`, per branch): `sectionId` and `sampleTypeId` required on create and cannot be cleared; `techniqueId` optional (accepts `null`). A controller factory serves `/api/study-sections|sample-types|study-techniques`. Names unique case-insensitive (validated in the service). In use → not deleted (409), deactivated instead. Bulk import `POST /api/study-catalogs/import?branchId=` only creates (existing → `skipped`).
+- Migration in progress (phase 1): columns `Study.legacySection/legacySampleType/legacyTechnique` globally omitted in `PrismaService`; only `prisma/scripts/backfill-study-catalogs.ts` reads them. Phase 2 drops them **in a deploy after** the backfill.
+- **Panels (profiles):** `isPanel = true` with ordered children via `StudyPanelItem` (many-to-many, a child can be a panel). Rules in `src/studies/utils/panel-tree.util.ts`: only panels have children, same branch, no cycles/duplicates/self-reference, active children, a study inside a panel can't be deactivated, `isPanel` can't be turned off while it has children. Full replacement with `PUT /studies/:id/panel-items`; tree at `GET /studies/:id/panel-tree`. A panel has no `units`/`decimals`/`referenceValues`. Quotations store a snapshot in `QuotationItem.components`.
+- **Study Excel import:** `StudyExcelImportService` (`src/studies/study-excel-import.service.ts`) serves `POST /studies/import?branchId=` (no prices; a row with `price` → error). It orchestrates, in this order, `services/study-import-*`: `parser` (file and single row) → `rules` (against existing studies) → `panels.rejectCyclicPanels` (`parametros` cycles with current or in-file panels: the row goes to `invalid` and isn't saved) → `writer` (upserts) → `panels`; `template` generates the template. The `parametros` column (child codes, panels only) is applied last. Resolves/auto-creates catalogs with `resolveStudyCatalogIds()`. Slug only on create (`assignNewStudySlugs()`). Response: `invalid`, `importErrors`, `panelErrors`, `created`/`updated`. E2E: `test/study-import.e2e-spec.ts` (`STUDY_IMPORT_E2E_TRACE=<path>` dumps responses and state to compare before/after a refactor).
+- **Price import:** `POST /price-sheets/:id/import-excel` (`PriceSheetPriceImportService`, permission `price-sheets:update`) only upserts `StudyOnPriceSheet` by `code` + `price` (`name` is ignored; empty `price` → `skipped`; missing/inactive code → `invalid`). It never creates or edits studies nor touches `showPrice`. Response: `{ totalRows, created, updated, skipped, invalid }`.
 
 **Tickets:**
-- `branchId` requerido y validado contra las sucursales del creador. Quien no tiene `tickets:update` solo crea y ve/comenta/adjunta los suyos (`createdById`) o donde está asignado — **sin depender de sucursal** (`assertTicketAccess()` omite `assertBranchAccess` a propósito).
-- `tickets:update` (Soporte TI) sí está acotado por sucursal: gestiona todos los tickets de sus sucursales, ve notas internas (`TicketComment.isInternal`), cambia estado/prioridad/asignados y entra a la sala socket `ti_staff_room`.
-- N asignados (`TicketAssignee`, sin principal): `PUT /tickets/:id/assignees`; candidatos válidos en `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: activos, con acceso a la sucursal, no el creador). **Avisos:** quién recibe qué (in-app y correo) se define solo en `TICKET_NOTIFICATION_RULES` (`src/tickets/notifications/ticket-notification-rules.ts`) y se envía con `TicketNotificationsService.dispatch()`; el actor nunca recibe su propio aviso. TI = activos con `tickets:update` de la sucursal o globales. Correos siempre por la cola (`MailQueueService.enqueue`, nunca `await` del SMTP en un request); excepción: el correo de acceso de formularios, que reporta `emailSent`. Un fallo del aviso no falla la creación del ticket.
-- **Ciclo de vida por tiempo** (`TicketSlaService`, cron cada 10 min en `tickets-sla.cron.ts`): aviso al 75% del SLA (asignados o TI), aviso de vencido (creador + asignados; correo a asignados), escalamiento a rol `Administrador` si sigue vencido y sin asignar `TICKET_ESCALATION_HOURS` h hábiles, y cierre automático de RESOLVED tras `TICKET_AUTO_CLOSE_DAYS` días hábiles. Cada paso reclama el ticket con un `updateMany` condicional (`slaWarnedAt`, `overdueNotifiedAt`, `escalatedAt`); cambiar prioridad/reabrir los limpia. Si el creador comenta un ticket RESOLVED, se reabre a IN_PROGRESS. Acciones del sistema: `TicketComment.authorId`/`TicketEvent.actorId` = null.
-- **Secretos de formulario** (contraseña de TeamViewer, `secretField` del handler): van cifrados (AES-256-GCM) en `TicketForm.encryptedSecret`, nunca en `data`; la columna está omitida globalmente en `PrismaService` y solo la lee `GET /tickets/:id/form/secret` (TI de la sucursal o asignados, no el creador; solo con el ticket `IN_PROGRESS`). Es de una sesión: solo existe en `FORM_SECRET_STATUSES` (`OPEN`, `IN_PROGRESS`); toda ruta que saque al ticket de ahí debe llamar `purgeFormSecret()` en su transacción. Para volver a atenderlo, se registra de nuevo editando el formulario con el ticket en progreso.
-- **Analítica** (`/tickets/analytics/*`, permiso `tickets:update`, acotada a las sucursales del usuario): `TicketsAnalyticsService` es façade sin lógica sobre `analytics/services/`: `filters` (from/to como día local en `BUSINESS_TIMEZONE`, `where` de Prisma y fragmentos SQL), `summary` (resumen y tendencia), `breakdown` (por usuario, asignado y categoría), `report` (xlsx/pdf). Los desgloses van de mayor a menor `total`/`count`; los empates, por nombre (usuario, asignado, subcategoría) o por etiqueta de categoría (`localeCompare` `es`). Los `byStatus`/`byPriority` del resumen siguen el orden de `groupBy` (no garantizado). E2E: `test/tickets-analytics.e2e-spec.ts` (`TICKETS_ANALYTICS_E2E_TRACE=<ruta>` vuelca las respuestas normalizadas para comparar antes/después de un refactor).
+- `branchId` required and validated against the creator's branches. Whoever lacks `tickets:update` can only create and see/comment/attach their own (`createdById`) or those they're assigned to — **regardless of branch** (`assertTicketAccess()` skips `assertBranchAccess` on purpose).
+- `tickets:update` (Soporte TI) is scoped by branch: manages every ticket of their branches, sees internal notes (`TicketComment.isInternal`), changes status/priority/assignees and joins the socket room `ti_staff_room`.
+- N assignees (`TicketAssignee`, no primary): `PUT /tickets/:id/assignees`; valid candidates in `GET /tickets/:id/assignable-users` (`assertAssigneesAreValid()`: active, with access to the branch, not the creator). **Notifications:** who receives what (in-app and email) is defined only in `TICKET_NOTIFICATION_RULES` (`src/tickets/notifications/ticket-notification-rules.ts`) and sent with `TicketNotificationsService.dispatch()`; the actor never receives their own notification. IT = active users with `tickets:update` for the branch or global. Emails always go through the queue (`MailQueueService.enqueue`, never `await` SMTP inside a request); exception: the form access email, which reports `emailSent`. A notification failure doesn't fail ticket creation.
+- **Time-based lifecycle** (`TicketSlaService`, cron every 10 min in `tickets-sla.cron.ts`): warning at 75% of the SLA (assignees or IT), overdue notice (creator + assignees; email to assignees), escalation to the `Administrador` role if still overdue and unassigned after `TICKET_ESCALATION_HOURS` business hours, and auto-close of RESOLVED tickets after `TICKET_AUTO_CLOSE_DAYS` business days. Each step claims the ticket with a conditional `updateMany` (`slaWarnedAt`, `overdueNotifiedAt`, `escalatedAt`); changing priority/reopening clears them. If the creator comments on a RESOLVED ticket, it reopens to IN_PROGRESS. System actions: `TicketComment.authorId`/`TicketEvent.actorId` = null.
+- **Form secrets** (TeamViewer password, the handler's `secretField`): stored encrypted (AES-256-GCM) in `TicketForm.encryptedSecret`, never in `data`; the column is globally omitted in `PrismaService` and only `GET /tickets/:id/form/secret` reads it (branch IT or assignees, not the creator; only with the ticket `IN_PROGRESS`). It is single-session: it only exists in `FORM_SECRET_STATUSES` (`OPEN`, `IN_PROGRESS`); every path that moves the ticket out of those must call `purgeFormSecret()` inside its transaction. To work on it again, it is re-entered by editing the form with the ticket in progress.
+- **Analytics** (`/tickets/analytics/*`, permission `tickets:update`, scoped to the user's branches): `TicketsAnalyticsService` is a logic-free façade over `analytics/services/`: `filters` (from/to as local day in `BUSINESS_TIMEZONE`, Prisma `where` and SQL fragments), `summary` (summary and trend), `breakdown` (by user, assignee and category), `report` (xlsx/pdf). Breakdowns go from highest to lowest `total`/`count`; ties by name (user, assignee, subcategory) or by category label (`localeCompare` `es`). The summary's `byStatus`/`byPriority` follow `groupBy` order (not guaranteed). E2E: `test/tickets-analytics.e2e-spec.ts` (`TICKETS_ANALYTICS_E2E_TRACE=<path>` dumps normalized responses to compare before/after a refactor).
 
-**PDF:** pdfkit en servidor (cotizaciones, resguardos de equipo `ADM.F.18` con secciones cómputo/móvil y de vehículo `ADM.F.01`; checklist en `src/vehicle-safeguards/constants/vehicle-inspection-items.const.ts`). Logo desde `dist/assets/`. Documentos firmados: subida directa a Cloudinary con firma generada aquí (el secret nunca sale del backend).
+**PDF:** server-side pdfkit (quotations, device safeguards `ADM.F.18` with computer/mobile sections and vehicle safeguards `ADM.F.01`; checklist in `src/vehicle-safeguards/constants/vehicle-inspection-items.const.ts`). Logo from `dist/assets/`. Signed documents: direct upload to Cloudinary with a signature generated here (the secret never leaves the backend).
 
-## Variables de entorno (ver `.env.example`)
+## Environment variables (see `.env.example`)
 
-| Variable | Uso |
+| Variable | Use |
 |---|---|
-| `DATABASE_URL` | Conexión Prisma |
-| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Contenedor Postgres de `docker-compose.yaml` |
-| `PORT` | Puerto HTTP (default 3000) |
-| `CORS_ORIGINS` | Orígenes permitidos REST + WS, separados por coma |
-| `JWT_SECRET`, `JWT_EXPIRES_IN` | Firma y vigencia del JWT (default 7d) |
-| `ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Usuario admin del seed |
-| `SEED_DEV_BRANCH` | `true` = sembrar sucursal de desarrollo (solo local) |
-| `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, asignación de tickets) |
-| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Firma de subidas de documentos firmados |
-| `ADMIN_APP_URL` | Base de links en correos (opcional) |
-| `TICKET_AUTO_CLOSE_DAYS`, `TICKET_ESCALATION_HOURS` | Cierre automático (default 3 días hábiles) y escalamiento (default 2 h hábiles) |
-| `REDIS_URL` | **Requerido.** Cola de correos (BullMQ) y Socket.IO entre instancias (`docker compose` levanta redis) |
-| `TICKET_SECRET_KEY` | **Requerido.** 32 bytes en base64: cifra los secretos de formularios de tickets. La app no arranca sin ella |
+| `DATABASE_URL` | Prisma connection |
+| `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Postgres container in `docker-compose.yaml` |
+| `PORT` | HTTP port (default 3000) |
+| `CORS_ORIGINS` | Allowed origins for REST + WS, comma-separated |
+| `JWT_SECRET`, `JWT_EXPIRES_IN` | JWT signing and lifetime (default 7d) |
+| `ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | Seed admin user |
+| `SEED_DEV_BRANCH` | `true` = seed the development branch (local only) |
+| `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` | SMTP (OTP, ticket assignment) |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Signing uploads of signed documents |
+| `ADMIN_APP_URL` | Base for links in emails (optional) |
+| `TICKET_AUTO_CLOSE_DAYS`, `TICKET_ESCALATION_HOURS` | Auto-close (default 3 business days) and escalation (default 2 business hours) |
+| `REDIS_URL` | **Required.** Mail queue (BullMQ) and Socket.IO across instances (`docker compose` starts redis) |
+| `TICKET_SECRET_KEY` | **Required.** 32 bytes in base64: encrypts ticket form secrets. The app doesn't start without it |
 
-## Integración
+## Integration
 
-- Cambiar una ruta, DTO, forma de respuesta o permiso **obliga a revisar ambos frontends**: `../admin-dyra-web/src/api/` + `src/interfaces/` y `../dira-astro/src/api/` + `src/interfaces/`. Avisar qué se rompe.
-- El sitio público solo usa: `GET /studies`, `/studies/by-slug/:slug`, `/studies/:id/panel-tree`, `/services`, `/services/:idOrSlug`, `/branches`, `/branches/:id`, `/posts`, `/banners/active/:placement`, `/reviews/approved`, `POST /quotations/pdf`, `POST /reviews`. Quitar `@Public()` de cualquiera rompe el sitio.
-- El gateway WS (`/tickets`) vive fuera de `/api` y autentica con `handshake.auth.token`.
+- Changing a route, DTO, response shape or permission **requires checking both frontends**: `../admin-dyra-web/src/api/` + `src/interfaces/` and `../dira-astro/src/api/` + `src/interfaces/`. Warn about what breaks.
+- The public site only uses: `GET /studies`, `/studies/by-slug/:slug`, `/studies/:id/panel-tree`, `/services`, `/services/:idOrSlug`, `/branches`, `/branches/:id`, `/posts`, `/banners/active/:placement`, `/reviews/approved`, `POST /quotations/pdf`, `POST /reviews`. Removing `@Public()` from any of them breaks the site.
+- The WS gateway (`/tickets`) lives outside `/api` and authenticates with `handshake.auth.token`.
 
-## Migraciones
+## Migrations
 
-- Todo cambio de schema va con su migración (`yarn db:migrate --name <cambio>`); CI aplica las migraciones a una BD vacía y falla si difieren del schema. No usar `db push` salvo en una BD local desechable.
-- `start:prod` corre `prisma migrate deploy`. Renombrar una columna: editar el SQL generado (`ALTER ... RENAME`) en lugar del DROP + ADD que propone Prisma. Backfill y eliminación de columnas en deploys separados.
-- **Corte a migraciones en producción (una sola vez, antes del primer deploy con `migrate deploy`):**
-  1. Respaldar la BD de producción.
-  2. Con `DATABASE_URL` de prod: `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --script` debe mostrar **solo** el SQL de `20261020000000_auth_hardening` (si muestra más, prod no está en el schema de `main`: resolver antes).
-  3. Verificar que no hay roles duplicados (`SELECT name FROM "Role" GROUP BY name HAVING count(*) > 1`); si los hay, el índice único falla.
+- Every schema change ships with its migration (`yarn db:migrate --name <change>`); CI applies the migrations to an empty DB and fails if they differ from the schema. Don't use `db push` except on a disposable local DB.
+- `start:prod` runs `prisma migrate deploy`. Renaming a column: edit the generated SQL (`ALTER ... RENAME`) instead of the DROP + ADD Prisma proposes. Backfill and column removal in separate deploys.
+- **Switching production to migrations (one time, before the first deploy with `migrate deploy`):**
+  1. Back up the production DB.
+  2. With the prod `DATABASE_URL`: `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema --script` must show **only** the SQL of `20261020000000_auth_hardening` (if it shows more, prod isn't on `main`'s schema: resolve that first).
+  3. Check there are no duplicate roles (`SELECT name FROM "Role" GROUP BY name HAVING count(*) > 1`); if there are, the unique index fails.
   4. `npx prisma migrate resolve --applied 0_init`.
-  5. Deploy: `start:prod` aplica `auth_hardening`. Si se omite el paso 4, `migrate deploy` falla y la app no arranca (no toca datos).
-- BD local que venía de `db push`: `npx prisma db push` y luego `npx prisma migrate resolve --applied <cada migración>`; o recrearla con `yarn db:deploy` + seed.
+  5. Deploy: `start:prod` applies `auth_hardening`. If step 4 is skipped, `migrate deploy` fails and the app doesn't start (it doesn't touch data).
+- Local DB that came from `db push`: `npx prisma db push` and then `npx prisma migrate resolve --applied <each migration>`; or recreate it with `yarn db:deploy` + seed.
 
-## Errores comunes / evitar
+## Common mistakes / avoid
 
-- `yarn lint` aplica `--fix`: revisar el diff después.
-- No usar npm (genera `package-lock.json`).
-- No olvidar `npx prisma generate` tras editar el schema (los tipos de `@prisma/client` quedan viejos).
+- `yarn lint` applies `--fix`: review the diff afterwards.
+- Don't use npm (it generates `package-lock.json`).
+- Don't forget `npx prisma generate` after editing the schema (`@prisma/client` types go stale).
 
-## Definición de terminado
+## Definition of done
 
-1. `yarn test` en verde (agregar/ajustar specs del servicio tocado).
-2. `yarn lint:check` sin errores y `yarn build` exitoso.
-3. Si cambió el schema: migración creada con `yarn db:migrate` y aplicada en local.
-4. Si cambió una ruta o DTO: `yarn openapi:export`, commitear `openapi.json`, y en cada frontend afectado `pnpm api:types` + revisar sus interfaces (ver `../CLAUDE.md` §6).
+1. `yarn test` green (add/adjust specs for the touched service).
+2. `yarn lint:check` with no errors and `yarn build` successful.
+3. If the schema changed: migration created with `yarn db:migrate` and applied locally.
+4. If a route or DTO changed: `yarn openapi:export`, commit `openapi.json`, and in each affected frontend `pnpm api:types` + review its interfaces (see `../CLAUDE.md` §6).
 
-CI (`.github/workflows/ci.yml`, PRs a `dev`/`main`): lint:check, test, build, migraciones vs schema, `openapi.json` al día.
+CI (`.github/workflows/ci.yml`, PRs to `dev`/`main`): lint:check, test, build, migrations vs schema, `openapi.json` up to date.
