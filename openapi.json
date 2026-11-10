@@ -3111,6 +3111,27 @@
         ]
       }
     },
+    "/api/posts/upload-signature": {
+      "post": {
+        "description": "Genera los parámetros firmados para que el admin suba una imagen pública directo a POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta posts/, formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.",
+        "operationId": "PostsController_createImageUploadSignature",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Parámetros firmados generados."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Solicitar firma de subida de imagen a Cloudinary",
+        "tags": [
+          "posts"
+        ]
+      }
+    },
     "/api/posts": {
       "post": {
         "description": "Crea una nueva publicación de blog.",

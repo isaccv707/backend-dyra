@@ -22,12 +22,34 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PaginationPostDto } from './dto/pagination-post.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
-import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import {
+  AnyPermissions,
+  Permissions,
+} from 'src/auth/decorators/permissions.decorator';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 
 @ApiTags('posts')
 @Controller('posts')
 export class PostsController {
-  constructor(private readonly postsService: PostsService) {}
+  constructor(
+    private readonly postsService: PostsService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Solicitar firma de subida de imagen a Cloudinary',
+    description:
+      'Genera los parámetros firmados para que el admin suba una imagen pública directo a ' +
+      'POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta posts/, ' +
+      'formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.',
+  })
+  @ApiResponse({ status: 201, description: 'Parámetros firmados generados.' })
+  @ApiBearerAuth()
+  @AnyPermissions('posts:create', 'posts:update')
+  @Post('upload-signature')
+  createImageUploadSignature() {
+    return this.cloudinaryService.generateSignedImageUploadParams('posts');
+  }
 
   @ApiOperation({
     summary: 'Crear publicación',
