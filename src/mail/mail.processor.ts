@@ -21,6 +21,8 @@ export class MailProcessor extends WorkerHost {
         return this.mailService.sendNewTicketEmail(mail.to, mail.data);
       case 'ticketUpdate':
         return this.mailService.sendTicketUpdateEmail(mail.to, mail.data);
+      case 'newContactMessage':
+        return this.mailService.sendNewContactMessageEmail(mail.to, mail.data);
     }
   }
 

@@ -76,6 +76,17 @@ export const PERMISSIONS = [
   },
   { action: 'safeguards:delete', description: 'Eliminar resguardos de equipo' },
 
+  {
+    action: 'contact-messages:read',
+    description:
+      'Ver los mensajes del formulario de contacto del sitio (datos de pacientes) de sus sucursales',
+  },
+  {
+    action: 'contact-messages:update',
+    description:
+      'Dar seguimiento a los mensajes de contacto (estatus y notas) y recibir el aviso por correo de cada mensaje nuevo',
+  },
+
   { action: 'reviews:create', description: 'Crear reseñas' },
   { action: 'reviews:read', description: 'Leer reseñas' },
   { action: 'reviews:update', description: 'Actualizar reseñas' },
@@ -235,7 +246,13 @@ export const PERMISSIONS = [
   { action: 'permissions:delete', description: 'Eliminar permisos' },
 ];
 
-const USUARIO_EXCLUDED_MODULES = ['users', 'roles', 'permissions'];
+// contact-messages: patients' personal data, only for roles granted explicitly.
+const USUARIO_EXCLUDED_MODULES = [
+  'users',
+  'roles',
+  'permissions',
+  'contact-messages',
+];
 
 const USUARIO_PERMISSIONS = [
   ...PERMISSIONS.filter(

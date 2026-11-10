@@ -1,0 +1,65 @@
+/// Follow-up status of a message sent from the public site's contact form.
+enum ContactMessageStatus {
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  DISCARDED
+}
+
+enum ContactMessageSubject {
+  CLINICAL_ANALYSIS
+  CORPORATE_HEALTH
+  HOME_SAMPLING
+  OTHER
+}
+
+/// Patient message from the public site's /contact form, scoped to a branch.
+model ContactMessage {
+  id    String @id @default(uuid())
+  /// Global, human-friendly folio shown in the admin and the notification email.
+  folio Int    @unique @default(autoincrement())
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  name    String                @db.VarChar(100)
+  email   String                @db.VarChar(254)
+  phone   String                @db.VarChar(20)
+  subject ContactMessageSubject
+  message String                @db.Text
+
+  status ContactMessageStatus @default(NEW)
+
+  /// When the patient accepted the privacy notice (required to submit).
+  privacyAcceptedAt DateTime @map("privacy_accepted_at")
+
+  history ContactMessageStatusChange[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([branchId, status, createdAt])
+  @@index([createdAt])
+  @@map("contact_messages")
+}
+
+/// Audit trail: every status change (or note) with who made it and when.
+model ContactMessageStatusChange {
+  id Int @id @default(autoincrement())
+
+  contactMessageId String         @map("contact_message_id")
+  contactMessage   ContactMessage @relation(fields: [contactMessageId], references: [id], onDelete: Cascade)
+
+  /// Null on the first entry if ever created without a previous status.
+  fromStatus ContactMessageStatus? @map("from_status")
+  toStatus   ContactMessageStatus  @map("to_status")
+  note       String?               @db.Text
+
+  changedById String? @map("changed_by_id")
+  changedBy   User?   @relation("ContactMessageStatusChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([contactMessageId, createdAt])
+  @@map("contact_message_status_changes")
+}

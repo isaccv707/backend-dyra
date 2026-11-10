@@ -27,6 +27,8 @@ model User {
   ticketFormsRejected       TicketForm[]           @relation("TicketFormRejectedBy")
   ticketNotificationsCaused TicketNotification[]   @relation("TicketNotificationActor")
   ticketEmailPreference     TicketEmailPreference?
+
+  contactMessageStatusChanges ContactMessageStatusChange[] @relation("ContactMessageStatusChangedBy")
 }
 
 model PasswordResetToken {

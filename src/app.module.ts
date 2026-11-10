@@ -14,6 +14,7 @@ import { ServicesModule } from './services/services.module';
 import { BranchesModule } from './branches/branches.module';
 import { StatesModule } from './states/states.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { ContactMessagesModule } from './contact-messages/contact-messages.module';
 import { PriceSheetsModule } from './price-sheets/price-sheets.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
@@ -52,6 +53,7 @@ import { TicketsModule } from './tickets/tickets.module';
     BranchesModule,
     StatesModule,
     ReviewsModule,
+    ContactMessagesModule,
     PriceSheetsModule,
     AuthModule,
     UsersModule,
