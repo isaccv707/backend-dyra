@@ -1,6 +1,7 @@
 import { BannerPlacement } from '@prisma/client';
 import {
   IsBoolean,
+  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
@@ -8,6 +9,7 @@ import {
   IsUrl,
   IsUUID,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateBannerDto {
@@ -31,13 +33,17 @@ export class CreateBannerDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @IsString()
+  /** ISO 8601. `null` clears the start of the validity window. */
   @IsOptional()
-  startAt?: Date;
+  @ValidateIf((_, value) => value !== null)
+  @IsDateString()
+  startAt?: string | null;
 
-  @IsString()
+  /** ISO 8601. `null` removes the expiry (banner never expires). */
   @IsOptional()
-  endAt?: Date;
+  @ValidateIf((_, value) => value !== null)
+  @IsDateString()
+  endAt?: string | null;
 
   @IsUUID()
   branchId!: string;

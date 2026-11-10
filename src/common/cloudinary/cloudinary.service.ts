@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -18,6 +19,13 @@ export interface SignedUploadParams {
   type: SignedUploadType;
   resourceType: SignedUploadResourceType;
 }
+
+export interface SignedImageUploadParams extends SignedUploadParams {
+  allowedFormats: string;
+}
+
+/** Raster formats the public site can serve through Cloudinary transformations. */
+export const PUBLIC_IMAGE_FORMATS = 'jpg,jpeg,png,webp';
 
 export interface SignedUploadOptions {
   resourceType?: SignedUploadResourceType;
@@ -75,6 +83,37 @@ export class CloudinaryService {
       publicId,
       type,
       resourceType,
+    };
+  }
+
+  /**
+   * Signs a public image upload (type `upload`, resource `image`) under `folder`
+   * with a random public_id, restricted to PUBLIC_IMAGE_FORMATS. The frontend
+   * must send `allowed_formats` exactly as returned or Cloudinary rejects the
+   * signature.
+   */
+  generateSignedImageUploadParams(folder: string): SignedImageUploadParams {
+    const publicId = `${folder}/${randomUUID()}`;
+    const timestamp = Math.floor(Date.now() / 1000);
+    const signature = cloudinary.utils.api_sign_request(
+      {
+        timestamp,
+        public_id: publicId,
+        type: 'upload',
+        allowed_formats: PUBLIC_IMAGE_FORMATS,
+      },
+      process.env.CLOUDINARY_API_SECRET as string,
+    );
+
+    return {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME as string,
+      apiKey: process.env.CLOUDINARY_API_KEY as string,
+      timestamp,
+      signature,
+      publicId,
+      type: 'upload',
+      resourceType: 'image',
+      allowedFormats: PUBLIC_IMAGE_FORMATS,
     };
   }
 }

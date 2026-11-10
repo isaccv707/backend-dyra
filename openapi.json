@@ -2686,6 +2686,27 @@
         ]
       }
     },
+    "/api/banners/upload-signature": {
+      "post": {
+        "description": "Genera los parámetros firmados para que el admin suba una imagen pública directo a POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta banners/, formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.",
+        "operationId": "BannersController_createImageUploadSignature",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Parámetros firmados generados."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Solicitar firma de subida de imagen a Cloudinary",
+        "tags": [
+          "banners"
+        ]
+      }
+    },
     "/api/banners/active/{placement}": {
       "get": {
         "description": "Devuelve los banners activos de una sucursal para un tipo de ubicación (placement).",
@@ -3332,6 +3353,27 @@
         "summary": "Eliminar publicación",
         "tags": [
           "posts"
+        ]
+      }
+    },
+    "/api/services/upload-signature": {
+      "post": {
+        "description": "Genera los parámetros firmados para que el admin suba una imagen pública directo a POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta services/, formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.",
+        "operationId": "ServicesController_createImageUploadSignature",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": "Parámetros firmados generados."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Solicitar firma de subida de imagen a Cloudinary",
+        "tags": [
+          "services"
         ]
       }
     },
@@ -11369,12 +11411,12 @@
             "type": "boolean"
           },
           "startAt": {
-            "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "endAt": {
-            "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "nullable": true
           },
           "branchId": {
             "type": "string",

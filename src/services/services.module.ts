@@ -5,9 +5,10 @@ import { ServicePublicQueryService } from './services/service-public-query.servi
 import { ServiceWriteService } from './services/service-write.service';
 import { ServicesController } from './services.controller';
 import { BranchesModule } from 'src/branches/branches.module';
+import { CloudinaryModule } from 'src/common/cloudinary/cloudinary.module';
 
 @Module({
-  imports: [BranchesModule],
+  imports: [BranchesModule, CloudinaryModule],
   controllers: [ServicesController],
   providers: [
     ServicesService,

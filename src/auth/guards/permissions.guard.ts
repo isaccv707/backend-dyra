@@ -6,7 +6,10 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../decorators/permissions.decorator';
 import { RequestUser } from '../interfaces/request-user.interface';
 
 @Injectable()
@@ -23,12 +26,18 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
-      PERMISSIONS_KEY,
-      [context.getHandler(), context.getClass()],
-    );
+    const requiredPermissions =
+      this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? [];
+    const anyPermissions =
+      this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, [
+        context.getHandler(),
+        context.getClass(),
+      ]) ?? [];
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    if (requiredPermissions.length === 0 && anyPermissions.length === 0) {
       return true;
     }
 
@@ -40,8 +49,11 @@ export class PermissionsGuard implements CanActivate {
     const hasAllPermissions = requiredPermissions.every((permission) =>
       userPermissions.includes(permission),
     );
+    const hasAnyPermission =
+      anyPermissions.length === 0 ||
+      anyPermissions.some((permission) => userPermissions.includes(permission));
 
-    if (!hasAllPermissions) {
+    if (!hasAllPermissions || !hasAnyPermission) {
       throw new ForbiddenException(
         'No tienes permisos suficientes para realizar esta acción',
       );
