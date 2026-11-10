@@ -1,17 +1,25 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
+import {
+  ANY_PERMISSIONS_KEY,
+  PERMISSIONS_KEY,
+} from '../decorators/permissions.decorator';
 import { PermissionsGuard } from './permissions.guard';
 
 describe('PermissionsGuard', () => {
   let reflector: { getAllAndOverride: jest.Mock };
   let guard: PermissionsGuard;
 
-  const metadata = (values: { isPublic?: boolean; permissions?: string[] }) =>
+  const metadata = (values: {
+    isPublic?: boolean;
+    permissions?: string[];
+    anyPermissions?: string[];
+  }) =>
     reflector.getAllAndOverride.mockImplementation((key: string) => {
       if (key === IS_PUBLIC_KEY) return values.isPublic;
       if (key === PERMISSIONS_KEY) return values.permissions;
+      if (key === ANY_PERMISSIONS_KEY) return values.anyPermissions;
       return undefined;
     });
 
@@ -60,5 +68,17 @@ describe('PermissionsGuard', () => {
   it('rejects with 403 when there is no user on the request', () => {
     metadata({ permissions: ['users:read'] });
     expect(() => guard.canActivate(contextFor())).toThrow(ForbiddenException);
+  });
+
+  it('allows a user with at least one of the @AnyPermissions()', () => {
+    metadata({ anyPermissions: ['banners:create', 'banners:update'] });
+    expect(guard.canActivate(contextFor(['banners:update']))).toBe(true);
+  });
+
+  it('rejects with 403 when the user has none of the @AnyPermissions()', () => {
+    metadata({ anyPermissions: ['banners:create', 'banners:update'] });
+    expect(() => guard.canActivate(contextFor(['banners:read']))).toThrow(
+      ForbiddenException,
+    );
   });
 });

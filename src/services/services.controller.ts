@@ -21,7 +21,11 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { FindServicesDto } from './dto/find-services.dto';
 import { Public } from 'src/auth/decorators/public.decorator';
-import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import {
+  AnyPermissions,
+  Permissions,
+} from 'src/auth/decorators/permissions.decorator';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 import { CurrentUser } from 'src/auth/decorators/current-user.decorator';
 import type { BranchScopedUser } from 'src/common/utils/branch-access.util';
 import {
@@ -32,7 +36,25 @@ import {
 @ApiTags('services')
 @Controller('services')
 export class ServicesController {
-  constructor(private readonly servicesService: ServicesService) {}
+  constructor(
+    private readonly servicesService: ServicesService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Solicitar firma de subida de imagen a Cloudinary',
+    description:
+      'Genera los parámetros firmados para que el admin suba una imagen pública directo a ' +
+      'POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta services/, ' +
+      'formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.',
+  })
+  @ApiResponse({ status: 201, description: 'Parámetros firmados generados.' })
+  @ApiBearerAuth()
+  @AnyPermissions('services:create', 'services:update')
+  @Post('upload-signature')
+  createImageUploadSignature() {
+    return this.cloudinaryService.generateSignedImageUploadParams('services');
+  }
 
   @ApiOperation({
     summary: 'Crear servicio',

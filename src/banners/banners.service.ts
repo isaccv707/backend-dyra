@@ -64,16 +64,8 @@ export class BannersService {
     const placement = rest.placement ?? BannerPlacement.HOME;
     const order = rest.order ?? 0;
     const isActive = rest.isActive ?? true;
-    const startAt = rest.startAt ? new Date(rest.startAt) : null;
-    const endAt = rest.endAt ? new Date(rest.endAt) : null;
-
-    if (startAt && Number.isNaN(startAt.getTime())) {
-      throw new BadRequestException('Invalid startAt date');
-    }
-
-    if (endAt && Number.isNaN(endAt.getTime())) {
-      throw new BadRequestException('Invalid endAt date');
-    }
+    const startAt = this.parseDate(rest.startAt, 'startAt');
+    const endAt = this.parseDate(rest.endAt, 'endAt');
 
     if (startAt && endAt && startAt >= endAt) {
       throw new BadRequestException('startAt must be before endAt');
@@ -125,8 +117,25 @@ export class BannersService {
       order: newOrder,
       placement: newPlacement,
       branchId: newBranchId,
+      startAt: rawStartAt,
+      endAt: rawEndAt,
       ...rest
     } = dto;
+
+    // undefined = keep current value, null = clear it.
+    const startAt =
+      rawStartAt === undefined
+        ? undefined
+        : this.parseDate(rawStartAt, 'startAt');
+    const endAt =
+      rawEndAt === undefined ? undefined : this.parseDate(rawEndAt, 'endAt');
+    const effectiveStart =
+      startAt === undefined ? currentBanner.startAt : startAt;
+    const effectiveEnd = endAt === undefined ? currentBanner.endAt : endAt;
+
+    if (effectiveStart && effectiveEnd && effectiveStart >= effectiveEnd) {
+      throw new BadRequestException('startAt must be before endAt');
+    }
 
     const oldOrder = currentBanner.order;
     const oldPlacement = currentBanner.placement;
@@ -202,6 +211,8 @@ export class BannersService {
         where: { id },
         data: {
           ...rest,
+          ...(startAt !== undefined && { startAt }),
+          ...(endAt !== undefined && { endAt }),
           ...(newOrder !== undefined && { order: newOrder }),
           ...(newPlacement !== undefined && { placement: newPlacement }),
           ...(newBranchId && { branch: { connect: { id: newBranchId } } }),
@@ -209,6 +220,18 @@ export class BannersService {
         include: { branch: true },
       });
     });
+  }
+
+  private parseDate(
+    value: string | null | undefined,
+    field: 'startAt' | 'endAt',
+  ): Date | null {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException(`Invalid ${field} date`);
+    }
+    return date;
   }
 
   async remove(id: string) {
