@@ -23,12 +23,34 @@ import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { BannerPlacement } from '@prisma/client';
 import { Public } from 'src/auth/decorators/public.decorator';
-import { Permissions } from 'src/auth/decorators/permissions.decorator';
+import {
+  AnyPermissions,
+  Permissions,
+} from 'src/auth/decorators/permissions.decorator';
+import { CloudinaryService } from 'src/common/cloudinary/cloudinary.service';
 
 @ApiTags('banners')
 @Controller('banners')
 export class BannersController {
-  constructor(private readonly bannersService: BannersService) {}
+  constructor(
+    private readonly bannersService: BannersService,
+    private readonly cloudinaryService: CloudinaryService,
+  ) {}
+
+  @ApiOperation({
+    summary: 'Solicitar firma de subida de imagen a Cloudinary',
+    description:
+      'Genera los parámetros firmados para que el admin suba una imagen pública directo a ' +
+      'POST https://api.cloudinary.com/v1_1/{cloudName}/image/upload (type upload, carpeta banners/, ' +
+      'formatos jpg/jpeg/png/webp). El secure_url resultante se manda después en el payload de creación/edición.',
+  })
+  @ApiResponse({ status: 201, description: 'Parámetros firmados generados.' })
+  @ApiBearerAuth()
+  @AnyPermissions('banners:create', 'banners:update')
+  @Post('upload-signature')
+  createImageUploadSignature() {
+    return this.cloudinaryService.generateSignedImageUploadParams('banners');
+  }
 
   @ApiOperation({
     summary: 'Listar banners activos',
