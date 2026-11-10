@@ -83,7 +83,7 @@ prisma/scripts/      one-off backfills for data migrations
 src/assets/          logo for PDFs (copied to dist/assets)
 ```
 
-Modules: auth, users, roles-permissions, branches, states, services, studies, study-catalogs, price-sheets, quotations, posts, authors, banners, reviews, employees, locations, devices, safeguards, vehicles, vehicle-safeguards, tickets.
+Modules: auth, users, roles-permissions, branches, states, services, studies, study-catalogs, price-sheets, quotations, posts, authors, banners, reviews, contact-messages, employees, locations, devices, safeguards, vehicles, vehicle-safeguards, tickets.
 
 ## Patterns and conventions
 
@@ -94,7 +94,7 @@ Modules: auth, users, roles-permissions, branches, states, services, studies, st
 - **Errors:** `handleDatabaseErrors()` (`src/common/handle-db-errors.ts`) in service catch blocks; messages in Spanish (studies: `handleStudyDbErrors()`).
 - **Pagination:** `{ data, total, page, limit, totalPages }` via `src/common/utils/paginate.util.ts`.
 - **Slugs:** `generateSlug()` from `src/common/utils/slugger.util.ts` (posts, services, studies).
-- **Permissions:** `@Permissions('module:action')`, global guard in `auth.module.ts`. Open routes: `@Public()`. Seeded roles: `Administrador` (everything), `Usuario` (read-only except users/roles/permissions + `tickets:create`), `Soporte TI` (Usuario + `tickets:update`). `tickets` only has `create` and `update`.
+- **Permissions:** `@Permissions('module:action')`, global guard in `auth.module.ts`. Open routes: `@Public()`. Seeded roles: `Administrador` (everything), `Usuario` (read-only except users/roles/permissions/contact-messages + `tickets:create`), `Soporte TI` (Usuario + `tickets:update`). `tickets` only has `create` and `update`.
 - **Prisma:** for case-insensitive searches over several names use `OR` of `equals` + `mode: 'insensitive'`; `in` + `insensitive` is broken with Prisma 7 + adapter-pg.
 
 ## Domain rules
@@ -126,6 +126,8 @@ Modules: auth, users, roles-permissions, branches, states, services, studies, st
 - **Form secrets** (TeamViewer password, the handler's `secretField`): stored encrypted (AES-256-GCM) in `TicketForm.encryptedSecret`, never in `data`; the column is globally omitted in `PrismaService` and only `GET /tickets/:id/form/secret` reads it (branch IT or assignees, not the creator; only with the ticket `IN_PROGRESS`). It is single-session: it only exists in `FORM_SECRET_STATUSES` (`OPEN`, `IN_PROGRESS`); every path that moves the ticket out of those must call `purgeFormSecret()` inside its transaction. To work on it again, it is re-entered by editing the form with the ticket in progress.
 - **Analytics** (`/tickets/analytics/*`, permission `tickets:update`, scoped to the user's branches): `TicketsAnalyticsService` is a logic-free façade over `analytics/services/`: `filters` (from/to as local day in `BUSINESS_TIMEZONE`, Prisma `where` and SQL fragments), `summary` (summary and trend), `breakdown` (by user, assignee and category), `report` (xlsx/pdf). Breakdowns go from highest to lowest `total`/`count`; ties by name (user, assignee, subcategory) or by category label (`localeCompare` `es`). The summary's `byStatus`/`byPriority` follow `groupBy` order (not guaranteed). E2E: `test/tickets-analytics.e2e-spec.ts` (`TICKETS_ANALYTICS_E2E_TRACE=<path>` dumps normalized responses to compare before/after a refactor).
 
+**Contact messages** (`src/contact-messages/`): the site's `/contact` form → `POST /contact-messages` (`@Public`, throttled 5 per 10 min per IP, honeypot `website`: filled → 201 without storing, `privacyAccepted` must be `true` → `privacyAcceptedAt`). Required `branchId` (active branch). Status `NEW → IN_PROGRESS → RESOLVED | DISCARDED`; `PATCH /:id/status` changes status and/or adds a note, and every call (plus the creation) leaves a `ContactMessageStatusChange` (who/when). Email to active users with `contact-messages:update` for the branch or global, through the queue; a notification failure doesn't fail the submission. `GET /pending-count` (NEW, user's branches) feeds the admin badge. Patient personal data: `contact-messages:*` is excluded from the `Usuario` role.
+
 **PDF:** server-side pdfkit (quotations, device safeguards `ADM.F.18` with computer/mobile sections and vehicle safeguards `ADM.F.01`; checklist in `src/vehicle-safeguards/constants/vehicle-inspection-items.const.ts`). Logo from `dist/assets/`. Signed documents: direct upload to Cloudinary with a signature generated here (the secret never leaves the backend).
 
 ## Environment variables (see `.env.example`)
@@ -144,12 +146,13 @@ Modules: auth, users, roles-permissions, branches, states, services, studies, st
 | `ADMIN_APP_URL` | Base for links in emails (optional) |
 | `TICKET_AUTO_CLOSE_DAYS`, `TICKET_ESCALATION_HOURS` | Auto-close (default 3 business days) and escalation (default 2 business hours) |
 | `REDIS_URL` | **Required.** Mail queue (BullMQ) and Socket.IO across instances (`docker compose` starts redis) |
+| `TRUST_PROXY` | Proxy hops to trust (e.g. `1` behind Railway) so `req.ip` is the client's: per-IP rate limits (login, contact form). Empty locally |
 | `TICKET_SECRET_KEY` | **Required.** 32 bytes in base64: encrypts ticket form secrets. The app doesn't start without it |
 
 ## Integration
 
 - Changing a route, DTO, response shape or permission **requires checking both frontends**: `../admin-dyra-web/src/api/` + `src/interfaces/` and `../dira-astro/src/api/` + `src/interfaces/`. Warn about what breaks.
-- The public site only uses: `GET /studies`, `/studies/by-slug/:slug`, `/studies/:id/panel-tree`, `/services`, `/services/:idOrSlug`, `/branches`, `/branches/:id`, `/posts`, `/banners/active/:placement`, `/reviews/approved`, `POST /quotations/pdf`, `POST /reviews`. Removing `@Public()` from any of them breaks the site.
+- The public site only uses: `GET /studies`, `/studies/by-slug/:slug`, `/studies/:id/panel-tree`, `/services`, `/services/:idOrSlug`, `/branches`, `/branches/:id`, `/posts`, `/banners/active/:placement`, `/reviews/approved`, `POST /quotations/pdf`, `POST /reviews`, `POST /contact-messages`. Removing `@Public()` from any of them breaks the site.
 - The WS gateway (`/tickets`) lives outside `/api` and authenticates with `handshake.auth.token`.
 
 ## Migrations

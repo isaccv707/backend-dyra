@@ -13,6 +13,11 @@ import { parseCorsOrigins } from './common/utils/cors.util';
 export function configureApp(app: INestApplication) {
   const httpAdapterInstance = app.getHttpAdapter().getInstance() as Application;
   httpAdapterInstance.set('query parser', 'extended');
+  // Behind a reverse proxy (Railway…) req.ip is the proxy's: rate limits
+  // (login, contact form) would be shared by every visitor. TRUST_PROXY = number
+  // of proxy hops to trust (e.g. 1) so req.ip comes from X-Forwarded-For.
+  const trustProxy = Number.parseInt(process.env.TRUST_PROXY ?? '', 10);
+  if (trustProxy > 0) httpAdapterInstance.set('trust proxy', trustProxy);
   registerBodyParsers(httpAdapterInstance);
 
   app.setGlobalPrefix('api');
