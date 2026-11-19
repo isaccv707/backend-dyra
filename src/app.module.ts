@@ -26,6 +26,7 @@ import { SafeguardsModule } from './safeguards/safeguards.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { VehicleSafeguardsModule } from './vehicle-safeguards/vehicle-safeguards.module';
 import { TicketsModule } from './tickets/tickets.module';
+import { AttendanceModule } from './attendance/attendance.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { TicketsModule } from './tickets/tickets.module';
     VehiclesModule,
     VehicleSafeguardsModule,
     TicketsModule,
+    AttendanceModule,
   ],
   controllers: [],
   providers: [],

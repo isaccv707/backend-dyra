@@ -22,6 +22,11 @@ model Branch {
   isVisible  Boolean @default(true)
   urlResults String
 
+  /// Attendance geofence: center and radius in meters.
+  latitude        Float?
+  longitude       Float?
+  geofenceRadiusM Int    @default(150) @map("geofence_radius_m")
+
   stateId Int   @map("state_id")
   state   State @relation(fields: [stateId], references: [id])
 
@@ -43,6 +48,8 @@ model Branch {
   schedules       BranchSchedule[]
   users           User[]
   quotations      Quotation[]
+
+  attendanceRecords AttendanceRecord[]
 
   locations                   Location[]
   employees                   Employee[]

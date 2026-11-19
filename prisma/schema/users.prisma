@@ -29,6 +29,10 @@ model User {
   ticketEmailPreference     TicketEmailPreference?
 
   contactMessageStatusChanges ContactMessageStatusChange[] @relation("ContactMessageStatusChangedBy")
+
+  attendanceRecords         AttendanceRecord[] @relation("AttendanceUser")
+  attendanceRecordsCreated  AttendanceRecord[] @relation("AttendanceCreatedBy")
+  attendanceRecordsAdjusted AttendanceRecord[] @relation("AttendanceAdjustedBy")
 }
 
 model PasswordResetToken {

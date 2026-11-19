@@ -1,0 +1,73 @@
+enum AttendanceType {
+  CHECK_IN
+  CHECK_OUT
+}
+
+/// VALID: normal or approved by a supervisor. FLAGGED: needs review.
+/// ADJUSTED: a supervisor changed its time.
+enum AttendanceStatus {
+  VALID
+  FLAGGED
+  ADJUSTED
+}
+
+/// DEVICE: the user punched from their browser with geolocation.
+/// MANUAL: a supervisor registered it (forgotten punch), without location.
+enum AttendanceSource {
+  DEVICE
+  MANUAL
+}
+
+enum AttendanceFlag {
+  OUTSIDE_GEOFENCE
+  LOW_ACCURACY
+  CLOCK_SKEW
+}
+
+/// One punch (check-in or check-out). Work sessions are derived by pairing
+/// consecutive CHECK_IN/CHECK_OUT of the same user ordered by `recordedAt`.
+model AttendanceRecord {
+  id     String           @id @default(uuid())
+  type   AttendanceType
+  status AttendanceStatus @default(VALID)
+  source AttendanceSource @default(DEVICE)
+
+  /// Server time; the client clock is never trusted.
+  recordedAt      DateTime  @default(now()) @map("recorded_at")
+  clientTimestamp DateTime? @map("client_timestamp")
+
+  latitude       Float?
+  longitude      Float?
+  accuracyM      Float?           @map("accuracy_m")
+  distanceM      Float?           @map("distance_m")
+  /// null when the branch has no coordinates configured or the punch is manual.
+  withinGeofence Boolean?         @map("within_geofence")
+  flags          AttendanceFlag[] @default([])
+
+  ipAddress String? @map("ip_address")
+  userAgent String? @map("user_agent")
+  notes     String? @db.Text
+
+  userId String @map("user_id")
+  user   User   @relation("AttendanceUser", fields: [userId], references: [id])
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdById String? @map("created_by_id")
+  createdBy   User?   @relation("AttendanceCreatedBy", fields: [createdById], references: [id])
+
+  adjustedById       String?   @map("adjusted_by_id")
+  adjustedBy         User?     @relation("AttendanceAdjustedBy", fields: [adjustedById], references: [id])
+  adjustedAt         DateTime? @map("adjusted_at")
+  adjustmentReason   String?   @map("adjustment_reason") @db.Text
+  originalRecordedAt DateTime? @map("original_recorded_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, recordedAt])
+  @@index([branchId, recordedAt])
+  @@index([status])
+  @@map("attendance_records")
+}

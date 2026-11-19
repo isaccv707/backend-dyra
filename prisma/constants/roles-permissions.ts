@@ -1,4 +1,18 @@
 export const PERMISSIONS = [
+  {
+    action: 'attendance:check',
+    description: 'Registrar entradas y salidas propias y ver su historial',
+  },
+  {
+    action: 'attendance:read',
+    description: 'Ver la asistencia de los usuarios de sus sucursales',
+  },
+  {
+    action: 'attendance:update',
+    description: 'Ajustar, aprobar y registrar checadas manuales',
+  },
+  { action: 'attendance:export', description: 'Exportar asistencia a Excel' },
+
   { action: 'authors:create', description: 'Crear autores' },
   { action: 'authors:read', description: 'Leer autores' },
   { action: 'authors:update', description: 'Actualizar autores' },
@@ -247,11 +261,13 @@ export const PERMISSIONS = [
 ];
 
 // contact-messages: patients' personal data, only for roles granted explicitly.
+// attendance: staff locations; Usuario only gets attendance:check (own punches).
 const USUARIO_EXCLUDED_MODULES = [
   'users',
   'roles',
   'permissions',
   'contact-messages',
+  'attendance',
 ];
 
 const USUARIO_PERMISSIONS = [
@@ -263,6 +279,7 @@ const USUARIO_PERMISSIONS = [
       ),
   ).map((p) => p.action),
   'tickets:create',
+  'attendance:check',
 ];
 
 export const ROLES = [

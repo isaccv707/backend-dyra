@@ -39,13 +39,13 @@ async function main() {
     process.env.SEED_DEV_BRANCH === 'true' &&
     process.env.NODE_ENV !== 'production'
   ) {
-    await seedStates(prisma);
-    await seedBranches(prisma);
+    // await seedStates(prisma);
+    // await seedBranches(prisma);
   }
 
-  await seedAdminUser(prisma);
+  // await seedAdminUser(prisma);
 
-  await seedTicketSubcategories(prisma);
+  // await seedTicketSubcategories(prisma);
 
   console.log('All seeds completed successfully!');
 }

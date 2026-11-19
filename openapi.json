@@ -6342,8 +6342,8 @@
             "schema": {
               "type": "string",
               "enum": [
-                "AVAILABLE",
                 "ASSIGNED",
+                "AVAILABLE",
                 "IN_TRANSFER",
                 "MAINTENANCE",
                 "RETIRED_DISPOSED",
@@ -6794,10 +6794,10 @@
             "schema": {
               "type": "string",
               "enum": [
+                "CANCELLED",
                 "PENDING",
                 "IN_TRANSIT",
                 "COMPLETED",
-                "CANCELLED",
                 "REJECTED"
               ]
             }
@@ -7652,8 +7652,8 @@
             "schema": {
               "type": "string",
               "enum": [
-                "AVAILABLE",
                 "ASSIGNED",
+                "AVAILABLE",
                 "IN_TRANSFER",
                 "MAINTENANCE",
                 "RETIRED_DISPOSED",
@@ -8073,10 +8073,10 @@
             "schema": {
               "type": "string",
               "enum": [
+                "CANCELLED",
                 "PENDING",
                 "IN_TRANSIT",
                 "COMPLETED",
-                "CANCELLED",
                 "REJECTED"
               ]
             }
@@ -8955,12 +8955,12 @@
             "schema": {
               "type": "string",
               "enum": [
-                "CANCELLED",
                 "OPEN",
                 "IN_PROGRESS",
                 "ON_HOLD",
                 "RESOLVED",
-                "CLOSED"
+                "CLOSED",
+                "CANCELLED"
               ]
             }
           },
@@ -10914,6 +10914,526 @@
           "ticket-reply-templates"
         ]
       }
+    },
+    "/api/attendance/me/status": {
+      "get": {
+        "description": "Devuelve la siguiente checada permitida (entrada o salida), la última checada y las sucursales del usuario con su geocerca.",
+        "operationId": "AttendanceController_getStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Estado de asistencia del usuario",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/me": {
+      "get": {
+        "description": "Sesiones de trabajo (entrada/salida emparejadas) del usuario en un rango de días locales. Por defecto, los últimos 7 días; máximo 93.",
+        "operationId": "AttendanceController_findMine",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyAttendanceDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Historial propio",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/punch": {
+      "post": {
+        "description": "Guarda la checada con la hora del servidor y la ubicación del navegador. Nunca se rechaza por ubicación: si está fuera de la geocerca, con baja precisión o con el reloj desfasado queda FLAGGED para revisión.",
+        "operationId": "AttendanceController_punch",
+        "parameters": [
+          {
+            "name": "user-agent",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PunchAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecordDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La checada no corresponde (entrada duplicada o salida sin entrada)."
+          },
+          "429": {
+            "description": "Demasiadas checadas seguidas."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar entrada o salida",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance": {
+      "get": {
+        "description": "Paginado y limitado a las sucursales del usuario. Filtros: sucursal, usuario, rango de días locales, estatus, tipo y origen; búsqueda por nombre de usuario.",
+        "operationId": "AttendanceController_findAll",
+        "parameters": [
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AttendanceStatus"
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AttendanceType"
+            }
+          },
+          {
+            "name": "source",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/AttendanceSource"
+            }
+          },
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAttendanceRecordsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar checadas",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/summary": {
+      "get": {
+        "description": "Horas trabajadas por usuario y por día local, con sesiones incompletas y checadas por revisar. Máximo 93 días.",
+        "operationId": "AttendanceController_summary",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceSummaryDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resumen de asistencia",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/users": {
+      "get": {
+        "description": "Usuarios activos con attendance:check en la sucursal indicada (o en las del usuario). Para filtros y checadas manuales.",
+        "operationId": "AttendanceController_listUsers",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AttendanceUserOptionDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Usuarios que checan",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/export": {
+      "get": {
+        "description": "Hojas: totales por usuario, resumen por día y todas las checadas del rango.",
+        "operationId": "AttendanceController_export",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "userId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo Excel."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exportar asistencia a Excel",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/manual": {
+      "post": {
+        "description": "Para olvidos: un supervisor registra la entrada o salida de otro usuario con motivo obligatorio. Sin ubicación. Debe respetar la secuencia entrada/salida.",
+        "operationId": "AttendanceController_createManual",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateManualAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecordDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Sucursal ajena o checada propia."
+          },
+          "409": {
+            "description": "Rompe la secuencia."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar checada manual",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/attendance/{id}": {
+      "patch": {
+        "description": "Con recordedAt corrige la hora (ADJUSTED, guarda la hora original); sin él aprueba la checada (VALID). Motivo obligatorio. No se pueden revisar checadas propias.",
+        "operationId": "AttendanceController_adjust",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador de la checada.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttendanceRecordDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Checada no encontrada."
+          },
+          "409": {
+            "description": "La nueva hora cambia el orden de las checadas."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revisar checada",
+        "tags": [
+          "attendance"
+        ]
+      }
     }
   },
   "info": {
@@ -11753,6 +12273,19 @@
             "items": {
               "$ref": "#/components/schemas/CreateBranchScheduleDto"
             }
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "geofenceRadiusM": {
+            "type": "number",
+            "minimum": 20,
+            "maximum": 5000
           }
         },
         "required": [
@@ -14155,12 +14688,12 @@
           "status": {
             "type": "string",
             "enum": [
-              "CANCELLED",
               "OPEN",
               "IN_PROGRESS",
               "ON_HOLD",
               "RESOLVED",
-              "CLOSED"
+              "CLOSED",
+              "CANCELLED"
             ]
           },
           "priority": {
@@ -14414,6 +14947,609 @@
             "maxLength": 2000
           }
         }
+      },
+      "AttendanceType": {
+        "type": "string",
+        "enum": [
+          "CHECK_IN",
+          "CHECK_OUT"
+        ]
+      },
+      "AttendanceStatus": {
+        "type": "string",
+        "enum": [
+          "VALID",
+          "FLAGGED",
+          "ADJUSTED"
+        ]
+      },
+      "AttendanceSource": {
+        "type": "string",
+        "enum": [
+          "DEVICE",
+          "MANUAL"
+        ]
+      },
+      "AttendanceFlag": {
+        "type": "string",
+        "enum": [
+          "OUTSIDE_GEOFENCE",
+          "LOW_ACCURACY",
+          "CLOCK_SKEW"
+        ]
+      },
+      "AttendanceRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "AttendanceRecordDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceType"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceStatus"
+              }
+            ]
+          },
+          "source": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceSource"
+              }
+            ]
+          },
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceFlag"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "recordedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "clientTimestamp": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "accuracyM": {
+            "type": "number",
+            "nullable": true
+          },
+          "distanceM": {
+            "type": "number",
+            "nullable": true
+          },
+          "withinGeofence": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "ipAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "userAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          },
+          "userId": {
+            "type": "string"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "createdById": {
+            "type": "string",
+            "nullable": true
+          },
+          "adjustedById": {
+            "type": "string",
+            "nullable": true
+          },
+          "adjustedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "adjustmentReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "originalRecordedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AttendanceRefDto"
+          },
+          "branch": {
+            "$ref": "#/components/schemas/AttendanceRefDto"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRefDto"
+              }
+            ]
+          },
+          "adjustedBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRefDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "source",
+          "flags",
+          "id",
+          "recordedAt",
+          "clientTimestamp",
+          "latitude",
+          "longitude",
+          "accuracyM",
+          "distanceM",
+          "withinGeofence",
+          "ipAddress",
+          "userAgent",
+          "notes",
+          "userId",
+          "branchId",
+          "createdById",
+          "adjustedById",
+          "adjustedAt",
+          "adjustmentReason",
+          "originalRecordedAt",
+          "createdAt",
+          "updatedAt",
+          "user",
+          "branch",
+          "createdBy",
+          "adjustedBy"
+        ]
+      },
+      "AttendanceBranchGeofenceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true
+          },
+          "geofenceRadiusM": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "latitude",
+          "longitude",
+          "geofenceRadiusM"
+        ]
+      },
+      "AttendanceStatusDto": {
+        "type": "object",
+        "properties": {
+          "nextType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceType"
+              }
+            ]
+          },
+          "lastRecord": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRecordDto"
+              }
+            ]
+          },
+          "openSince": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "branches": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceBranchGeofenceDto"
+            }
+          }
+        },
+        "required": [
+          "nextType",
+          "lastRecord",
+          "openSince",
+          "branches"
+        ]
+      },
+      "WorkSessionDto": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "checkIn": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRecordDto"
+              }
+            ]
+          },
+          "checkOut": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceRecordDto"
+              }
+            ]
+          },
+          "workedMinutes": {
+            "type": "number"
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "inProgress": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "date",
+          "checkIn",
+          "checkOut",
+          "workedMinutes",
+          "incomplete",
+          "inProgress"
+        ]
+      },
+      "MyAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "totalWorkedMinutes": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkSessionDto"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "totalWorkedMinutes",
+          "sessions"
+        ]
+      },
+      "PunchAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceType"
+              }
+            ]
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "accuracyM": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "clientTimestamp": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "type",
+          "branchId",
+          "latitude",
+          "longitude",
+          "accuracyM"
+        ]
+      },
+      "PaginatedAttendanceRecordsDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceRecordDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "totalPages": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "AttendanceDayRowDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "firstCheckIn": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "lastCheckOut": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "workedMinutes": {
+            "type": "number"
+          },
+          "sessions": {
+            "type": "number"
+          },
+          "incomplete": {
+            "type": "boolean"
+          },
+          "inProgress": {
+            "type": "boolean"
+          },
+          "flaggedCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "userName",
+          "date",
+          "firstCheckIn",
+          "lastCheckOut",
+          "workedMinutes",
+          "sessions",
+          "incomplete",
+          "inProgress",
+          "flaggedCount"
+        ]
+      },
+      "AttendanceUserTotalDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "workedMinutes": {
+            "type": "number"
+          },
+          "daysWorked": {
+            "type": "number"
+          },
+          "incompleteSessions": {
+            "type": "number"
+          },
+          "flaggedCount": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "userName",
+          "workedMinutes",
+          "daysWorked",
+          "incompleteSessions",
+          "flaggedCount"
+        ]
+      },
+      "AttendanceSummaryDto": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceDayRowDto"
+            }
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttendanceUserTotalDto"
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "days",
+          "users"
+        ]
+      },
+      "AttendanceUserOptionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email"
+        ]
+      },
+      "CreateManualAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AttendanceType"
+              }
+            ]
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recordedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "type",
+          "userId",
+          "branchId",
+          "recordedAt",
+          "reason"
+        ]
+      },
+      "AdjustAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "recordedAt": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "reason"
+        ]
       }
     }
   }
