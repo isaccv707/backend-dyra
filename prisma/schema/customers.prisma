@@ -1,0 +1,29 @@
+/// Cliente (empresa o convenio) con hoja de precios opcional de su misma sucursal.
+/// Modalidad de pago excluyente: accountsReceivable (genera cuenta por cobrar)
+/// XOR liquidate (liquida al instante); lo refuerza un CHECK en la base.
+model Customer {
+  id                 String    @id @default(uuid())
+  name               String
+  email              String
+  accountsReceivable Boolean   @default(false) @map("accounts_receivable")
+  liquidate          Boolean   @default(true)
+  isActive           Boolean   @default(true) @map("is_active")
+  contractAmount     Decimal?  @map("contract_amount") @db.Decimal(12, 2)
+  patientAmount      Decimal?  @map("patient_amount") @db.Decimal(12, 2)
+  startDate          DateTime? @map("start_date") @db.Date
+  endDate            DateTime? @map("end_date") @db.Date
+
+  priceSheetId String?      @map("price_sheet_id")
+  priceSheet   PriceSheets? @relation(fields: [priceSheetId], references: [id], onDelete: SetNull)
+
+  branchId String @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([branchId, name])
+  @@index([branchId])
+  @@index([priceSheetId])
+  @@map("customers")
+}

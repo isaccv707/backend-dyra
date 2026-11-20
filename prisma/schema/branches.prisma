@@ -29,6 +29,7 @@ model Branch {
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
 
   priceSheets PriceSheets[]
+  customers   Customer[]
 
   authors         Author[]
   banners         Banner[]
