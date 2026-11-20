@@ -514,7 +514,7 @@ describe('TicketFormWorkflowService', () => {
       it('los formularios informativos no se aprueban', async () => {
         prisma.ticket.findUnique.mockResolvedValue({
           ...pendingTicket,
-          form: { ...pendingTicket.form, type: 'CLIENT_CREATE' },
+          form: { ...pendingTicket.form, type: 'SOFTWARE_REMOTE' },
         });
 
         await expect(

@@ -8,6 +8,7 @@ import { instanceToPlain } from 'class-transformer';
 import { PrismaService } from 'prisma/prisma/prisma.service';
 import { AccessRequestFormHandler } from './handlers/access-request-form.handler';
 import { ClientCreateFormHandler } from './handlers/client-create-form.handler';
+import { ClientUpdateFormHandler } from './handlers/client-update-form.handler';
 import { ReferenceValuesUpdateFormHandler } from './handlers/reference-values-update-form.handler';
 import { SoftwareRemoteFormHandler } from './handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './handlers/study-create-form.handler';
@@ -37,6 +38,7 @@ export class TicketFormsService {
     studyCreate: StudyCreateFormHandler,
     studyUpdate: StudyUpdateFormHandler,
     clientCreate: ClientCreateFormHandler,
+    clientUpdate: ClientUpdateFormHandler,
     referenceValuesUpdate: ReferenceValuesUpdateFormHandler,
   ) {
     this.handlers = {
@@ -45,6 +47,7 @@ export class TicketFormsService {
       STUDY_CREATE: studyCreate,
       STUDY_UPDATE: studyUpdate,
       CLIENT_CREATE: clientCreate,
+      CLIENT_UPDATE: clientUpdate,
       REFERENCE_VALUES_UPDATE: referenceValuesUpdate,
     } as Record<TicketFormType, TicketFormHandler>;
   }

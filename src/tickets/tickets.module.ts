@@ -6,6 +6,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { PrismaModule } from 'prisma/prisma/prisma.module';
 import { MailModule } from 'src/mail/mail.module';
 import { StudiesModule } from 'src/studies/studies.module';
+import { CustomersModule } from 'src/customers/customers.module';
 import { UsersModule } from 'src/users/users.module';
 import { TicketsController } from './tickets.controller';
 import { TicketsGateway } from './tickets.gateway';
@@ -34,6 +35,7 @@ import { TicketFormsService } from './forms/ticket-forms.service';
 import { TicketFormSecretService } from './forms/ticket-form-secret.service';
 import { AccessRequestFormHandler } from './forms/handlers/access-request-form.handler';
 import { ClientCreateFormHandler } from './forms/handlers/client-create-form.handler';
+import { ClientUpdateFormHandler } from './forms/handlers/client-update-form.handler';
 import { ReferenceValuesUpdateFormHandler } from './forms/handlers/reference-values-update-form.handler';
 import { SoftwareRemoteFormHandler } from './forms/handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './forms/handlers/study-create-form.handler';
@@ -44,6 +46,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     PrismaModule,
     MailModule,
     StudiesModule,
+    CustomersModule,
     UsersModule,
     ScheduleModule.forRoot(),
     JwtModule.registerAsync({
@@ -94,6 +97,7 @@ import { StudyUpdateFormHandler } from './forms/handlers/study-update-form.handl
     StudyCreateFormHandler,
     StudyUpdateFormHandler,
     ClientCreateFormHandler,
+    ClientUpdateFormHandler,
     ReferenceValuesUpdateFormHandler,
   ],
 })

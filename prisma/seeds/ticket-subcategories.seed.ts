@@ -14,6 +14,12 @@ const TICKET_SUBCATEGORIES: {
   },
   {
     category: 'COGNITI',
+    name: 'Actualizar cliente',
+    formType: 'CLIENT_UPDATE',
+    isActive: true,
+  },
+  {
+    category: 'COGNITI',
     name: 'Crear parámetro',
     formType: 'STUDY_CREATE',
     isActive: true,

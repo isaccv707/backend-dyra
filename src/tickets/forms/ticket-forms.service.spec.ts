@@ -6,13 +6,16 @@ import { MailService } from 'src/mail/mail.service';
 import { StudiesService } from 'src/studies/studies.service';
 import { UsersService } from 'src/users/users.service';
 import { AccessRequestFormHandler } from './handlers/access-request-form.handler';
+import { CustomersService } from 'src/customers/customers.service';
 import { ClientCreateFormHandler } from './handlers/client-create-form.handler';
+import { ClientUpdateFormHandler } from './handlers/client-update-form.handler';
 import { ReferenceValuesUpdateFormHandler } from './handlers/reference-values-update-form.handler';
 import { SoftwareRemoteFormHandler } from './handlers/software-remote-form.handler';
 import { StudyCreateFormHandler } from './handlers/study-create-form.handler';
 import { StudyUpdateFormHandler } from './handlers/study-update-form.handler';
 import { TicketFormSecretService } from './ticket-form-secret.service';
 import { TicketFormsService } from './ticket-forms.service';
+import { TICKET_FORM_DEFINITIONS } from './ticket-forms.const';
 
 process.env.TICKET_SECRET_KEY = Buffer.alloc(32, 1).toString('base64');
 
@@ -22,6 +25,7 @@ const SHEET_ID = '33333333-3333-4333-8333-333333333333';
 const STUDY_ID = '44444444-4444-4444-8444-444444444444';
 const CHILD_ID = '55555555-5555-4555-8555-555555555555';
 const ROLE_ID = '66666666-6666-4666-8666-666666666666';
+const CUSTOMER_ID = '77777777-7777-4777-8777-777777777777';
 
 describe('TicketFormsService', () => {
   let service: TicketFormsService;
@@ -43,6 +47,10 @@ describe('TicketFormsService', () => {
     | 'update'
     | 'setPanelItems'
     | 'replacePrices',
+    jest.Mock
+  >;
+  let customers: Record<
+    'prepareCreate' | 'create' | 'prepareUpdate' | 'update',
     jest.Mock
   >;
   let users: { create: jest.Mock };
@@ -87,6 +95,25 @@ describe('TicketFormsService', () => {
     ],
   };
 
+  const storedCustomer = (overrides: Record<string, unknown> = {}) => ({
+    id: CUSTOMER_ID,
+    name: 'Clínica Sur',
+    email: 'compras@clinicasur.mx',
+    accountsReceivable: false,
+    liquidate: true,
+    isActive: true,
+    contractAmount: null,
+    patientAmount: null,
+    startDate: null,
+    endDate: null,
+    priceSheetId: null,
+    priceSheet: null,
+    branchId: BRANCH_ID,
+    createdAt: new Date('2026-11-01T00:00:00.000Z'),
+    updatedAt: new Date('2026-11-01T00:00:00.000Z'),
+    ...overrides,
+  });
+
   beforeEach(async () => {
     prisma = {
       role: {
@@ -111,6 +138,16 @@ describe('TicketFormsService', () => {
       setPanelItems: jest.fn().mockResolvedValue([]),
       replacePrices: jest.fn().mockResolvedValue(undefined),
     };
+    customers = {
+      prepareCreate: jest.fn().mockResolvedValue({}),
+      create: jest
+        .fn()
+        .mockResolvedValue({ id: CUSTOMER_ID, name: 'Clínica Sur' }),
+      prepareUpdate: jest.fn().mockResolvedValue({
+        current: storedCustomer(),
+      }),
+      update: jest.fn(),
+    };
     users = { create: jest.fn().mockResolvedValue({ id: 'new-user' }) };
     mail = { sendAccessGrantedEmail: jest.fn().mockResolvedValue(undefined) };
 
@@ -122,10 +159,12 @@ describe('TicketFormsService', () => {
         StudyCreateFormHandler,
         StudyUpdateFormHandler,
         ClientCreateFormHandler,
+        ClientUpdateFormHandler,
         ReferenceValuesUpdateFormHandler,
         TicketFormSecretService,
         { provide: PrismaService, useValue: prisma },
         { provide: StudiesService, useValue: studies },
+        { provide: CustomersService, useValue: customers },
         { provide: UsersService, useValue: users },
         { provide: MailService, useValue: mail },
       ],
@@ -463,27 +502,116 @@ describe('TicketFormsService', () => {
       });
     });
 
-    it('CLIENT_CREATE exige un tarifario activo de la sucursal', async () => {
-      prisma.priceSheets.findFirst.mockResolvedValue(null);
+    describe('CLIENT_CREATE', () => {
+      const clientForm = {
+        name: 'Clínica Sur',
+        email: 'compras@clinicasur.mx',
+        accountsReceivable: true,
+        priceSheetId: SHEET_ID,
+        contractAmount: 15000,
+        startDate: '2026-01-01',
+      };
 
-      await expect(
-        service.parse(
+      it('valida con las reglas del cliente en la sucursal del ticket', async () => {
+        const parsed = await service.parse(
           'CLIENT_CREATE',
-          {
+          clientForm,
+          context,
+        );
+
+        expect(customers.prepareCreate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            ...clientForm,
+            branchId: BRANCH_ID,
+            isActive: true,
+          }),
+          actor,
+          expect.anything(),
+        );
+        expect(parsed.title).toBe('Alta de cliente: Clínica Sur');
+      });
+
+      it('propaga el rechazo del cliente (p. ej. CxC y liquida a la vez)', async () => {
+        customers.prepareCreate.mockRejectedValue(
+          new BadRequestException('elige solo una modalidad de pago'),
+        );
+
+        await expect(
+          service.parse(
+            'CLIENT_CREATE',
+            { ...clientForm, liquidate: true },
+            context,
+          ),
+        ).rejects.toThrow('elige solo una modalidad de pago');
+      });
+
+      it('rechaza el correo inválido y los campos que no declara', async () => {
+        await expect(
+          service.parse(
+            'CLIENT_CREATE',
+            { ...clientForm, email: 'no', branchId: BRANCH_ID },
+            context,
+          ),
+        ).rejects.toThrow(BadRequestException);
+        expect(customers.prepareCreate).not.toHaveBeenCalled();
+      });
+
+      it('la versión 1 (receivable/payInCash) se migra a la 2', () => {
+        expect(TICKET_FORM_DEFINITIONS.CLIENT_CREATE.version).toBe(2);
+        expect(
+          service.upgrade('CLIENT_CREATE', 1, {
             name: 'Clínica Sur',
             email: 'compras@clinicasur.mx',
             receivable: true,
             payInCash: false,
             priceSheetId: SHEET_ID,
-          },
+          }),
+        ).toEqual({
+          name: 'Clínica Sur',
+          email: 'compras@clinicasur.mx',
+          accountsReceivable: true,
+          liquidate: false,
+          priceSheetId: SHEET_ID,
+        });
+      });
+    });
+
+    describe('CLIENT_UPDATE', () => {
+      it('exige al menos un cambio', async () => {
+        await expect(
+          service.parse('CLIENT_UPDATE', { customerId: CUSTOMER_ID }, context),
+        ).rejects.toThrow('al menos un dato');
+      });
+
+      it('rechaza un cliente de otra sucursal', async () => {
+        customers.prepareUpdate.mockResolvedValue({
+          current: storedCustomer({ branchId: 'otra' }),
+        });
+
+        await expect(
+          service.parse(
+            'CLIENT_UPDATE',
+            { customerId: CUSTOMER_ID, name: 'Nuevo' },
+            context,
+          ),
+        ).rejects.toThrow('form.customerId');
+      });
+
+      it('valida solo los campos enviados y titula con el nombre actual', async () => {
+        const parsed = await service.parse(
+          'CLIENT_UPDATE',
+          { customerId: CUSTOMER_ID, liquidate: false, priceSheetId: null },
           context,
-        ),
-      ).rejects.toThrow('form.priceSheetId');
-      expect(prisma.priceSheets.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { id: SHEET_ID, branchId: BRANCH_ID, isActive: true },
-        }),
-      );
+        );
+
+        expect(customers.prepareUpdate).toHaveBeenCalledWith(
+          CUSTOMER_ID,
+          { liquidate: false, priceSheetId: null },
+          actor,
+          expect.anything(),
+        );
+        expect(parsed.title).toBe('Actualización de cliente: Clínica Sur');
+      });
     });
   });
 
@@ -500,6 +628,91 @@ describe('TicketFormsService', () => {
           tx,
         ),
       ).rejects.toThrow('informativo');
+    });
+
+    it('CLIENT_CREATE crea el cliente activo en la sucursal del ticket dentro de la transacción', async () => {
+      const result = await service.apply(
+        'CLIENT_CREATE',
+        {
+          name: 'Clínica Sur',
+          email: 'compras@clinicasur.mx',
+          accountsReceivable: true,
+          liquidate: false,
+        },
+        {},
+        context,
+        tx,
+      );
+
+      expect(customers.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Clínica Sur',
+          accountsReceivable: true,
+          liquidate: false,
+          branchId: BRANCH_ID,
+          isActive: true,
+        }),
+        actor,
+        tx,
+      );
+      expect(result).toEqual({
+        result: { customerId: CUSTOMER_ID, name: 'Clínica Sur' },
+        summary: 'dio de alta el cliente "Clínica Sur"',
+      });
+    });
+
+    it('CLIENT_CREATE no acepta datos de TI', async () => {
+      await expect(
+        service.apply(
+          'CLIENT_CREATE',
+          { name: 'Clínica Sur', email: 'compras@clinicasur.mx' },
+          { code: 'X' },
+          context,
+          tx,
+        ),
+      ).rejects.toThrow(BadRequestException);
+      expect(customers.create).not.toHaveBeenCalled();
+    });
+
+    it('CLIENT_UPDATE aplica los cambios y guarda el antes/después (modalidad en par)', async () => {
+      customers.update.mockResolvedValue({
+        ...storedCustomer({ accountsReceivable: true, liquidate: false }),
+        contractAmount: 900,
+      });
+
+      const result = await service.apply(
+        'CLIENT_UPDATE',
+        {
+          customerId: CUSTOMER_ID,
+          accountsReceivable: true,
+          contractAmount: 900,
+        },
+        {},
+        context,
+        tx,
+      );
+
+      expect(customers.update).toHaveBeenCalledWith(
+        CUSTOMER_ID,
+        { accountsReceivable: true, contractAmount: 900 },
+        actor,
+        tx,
+      );
+      expect(result.result).toEqual({
+        customerId: CUSTOMER_ID,
+        name: 'Clínica Sur',
+        before: {
+          accountsReceivable: false,
+          contractAmount: null,
+          liquidate: true,
+        },
+        after: {
+          accountsReceivable: true,
+          contractAmount: 900,
+          liquidate: false,
+        },
+      });
+      expect(result.summary).toBe('actualizó el cliente "Clínica Sur"');
     });
 
     it('STUDY_CREATE crea el perfil, sus parámetros nuevos y los enlaza en orden', async () => {
