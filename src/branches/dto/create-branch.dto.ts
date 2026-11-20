@@ -1,3 +1,4 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -12,6 +13,7 @@ import {
 } from 'class-validator';
 import { CreateAddressDto } from './create-address.dto';
 import { CreateBranchScheduleDto } from './create-branch-schedule.dto';
+import { BranchInternetProviderDto } from './branch-internet-provider.dto';
 
 export class CreateBranchDto {
   @IsString()
@@ -48,4 +50,15 @@ export class CreateBranchDto {
   @ValidateNested({ each: true })
   @Type(() => CreateBranchScheduleDto)
   schedules?: CreateBranchScheduleDto[];
+
+  @ApiPropertyOptional({
+    type: () => BranchInternetProviderDto,
+    nullable: true,
+    description:
+      'Proveedor de internet (opcional). En actualización, `null` lo elimina.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BranchInternetProviderDto)
+  internetProvider?: BranchInternetProviderDto | null;
 }

@@ -41,10 +41,16 @@ export const TICKET_FORM_DEFINITIONS: Record<
     applyPermission: 'studies:update',
   },
   CLIENT_CREATE: {
-    version: 1,
+    version: 2,
     label: 'Alta de cliente',
     category: 'COGNITI',
-    applyPermission: null,
+    applyPermission: 'customers:create',
+  },
+  CLIENT_UPDATE: {
+    version: 1,
+    label: 'Actualización de cliente',
+    category: 'COGNITI',
+    applyPermission: 'customers:update',
   },
   REFERENCE_VALUES_UPDATE: {
     version: 1,
@@ -68,6 +74,7 @@ export const SUBCATEGORY_FORM_TYPES: TicketFormType[] = [
   'STUDY_CREATE',
   'STUDY_UPDATE',
   'CLIENT_CREATE',
+  'CLIENT_UPDATE',
   'REFERENCE_VALUES_UPDATE',
 ];
 
@@ -98,8 +105,16 @@ type FormData = Record<string, unknown>;
 
 /**
  * Upgrade steps per form type: `[n]` turns data of version n into version n+1.
- * Empty while every form is at version 1.
  */
 export const TICKET_FORM_UPGRADES: Partial<
   Record<TicketFormType, Record<number, (data: FormData) => FormData>>
-> = {};
+> = {
+  CLIENT_CREATE: {
+    // v1 → v2: the form now creates a Customer and uses its field names.
+    1: ({ receivable, payInCash, ...rest }) => ({
+      ...rest,
+      accountsReceivable: receivable,
+      liquidate: payInCash,
+    }),
+  },
+};

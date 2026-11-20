@@ -6,7 +6,14 @@ import {
   ApplyStudyCreateFormDto,
   ApplyStudyUpdateFormDto,
 } from './dto/apply-study-form.dto';
-import { ClientCreateFormDto } from './dto/client-create-form.dto';
+import {
+  ApplyClientCreateFormDto,
+  ClientCreateFormDto,
+} from './dto/client-create-form.dto';
+import {
+  ApplyClientUpdateFormDto,
+  ClientUpdateFormDto,
+} from './dto/client-update-form.dto';
 import {
   ApplyReferenceValuesUpdateFormDto,
   ReferenceValuesUpdateFormDto,
@@ -22,6 +29,7 @@ export const TICKET_FORM_DTOS = [
   StudyCreateFormDto,
   StudyUpdateFormDto,
   ClientCreateFormDto,
+  ClientUpdateFormDto,
   ReferenceValuesUpdateFormDto,
 ];
 
@@ -30,4 +38,6 @@ export const TICKET_FORM_APPLY_DTOS = [
   ApplyStudyCreateFormDto,
   ApplyStudyUpdateFormDto,
   ApplyReferenceValuesUpdateFormDto,
+  ApplyClientCreateFormDto,
+  ApplyClientUpdateFormDto,
 ];

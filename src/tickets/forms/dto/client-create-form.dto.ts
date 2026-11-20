@@ -1,33 +1,18 @@
-import { Transform } from 'class-transformer';
-import {
-  IsBoolean,
-  IsEmail,
-  IsNotEmpty,
-  IsString,
-  IsUUID,
-  MaxLength,
-} from 'class-validator';
+import { OmitType } from '@nestjs/swagger';
+import { CreateCustomerDto } from 'src/customers/dto/create-customer.dto';
 
-export class ClientCreateFormDto {
-  @Transform(({ value }: { value: unknown }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
-  name!: string;
+/**
+ * Same fields as CreateCustomerDto; the branch is the ticket's and the client
+ * is created active. accountsReceivable (genera CxC) and liquidate (liquida al
+ * instante) are mutually exclusive.
+ *
+ * Version 2 (version 1 used `receivable` / `payInCash` and a required
+ * priceSheetId; see TICKET_FORM_UPGRADES).
+ */
+export class ClientCreateFormDto extends OmitType(CreateCustomerDto, [
+  'branchId',
+  'isActive',
+] as const) {}
 
-  @IsEmail({}, { message: 'email debe ser un correo válido' })
-  email!: string;
-
-  /** Cliente con cuenta por cobrar (crédito). */
-  @IsBoolean()
-  receivable!: boolean;
-
-  @IsBoolean()
-  payInCash!: boolean;
-
-  /** Tarifario activo de la sucursal del ticket. */
-  @IsUUID()
-  priceSheetId!: string;
-}
+/** IT doesn't capture anything when approving: the client is created as requested. */
+export class ApplyClientCreateFormDto {}

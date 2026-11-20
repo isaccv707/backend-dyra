@@ -76,6 +76,21 @@ export class BranchesController {
   }
 
   @ApiOperation({
+    summary: 'Obtener proveedor de internet de la sucursal',
+    description:
+      'Devuelve el proveedor de internet de la sucursal o `null` si no tiene. No se expone en las rutas públicas.',
+  })
+  @ApiParam({ name: 'id', description: 'Identificador de la sucursal.' })
+  @ApiResponse({ status: 200, description: 'Proveedor de internet o null.' })
+  @ApiResponse({ status: 404, description: 'Sucursal no encontrada.' })
+  @ApiBearerAuth()
+  @Permissions('branches:read')
+  @Get(':id/internet-provider')
+  findInternetProvider(@Param('id') id: string) {
+    return this.branchesService.findInternetProvider(id);
+  }
+
+  @ApiOperation({
     summary: 'Actualizar sucursal',
     description: 'Actualiza los datos de una sucursal existente.',
   })

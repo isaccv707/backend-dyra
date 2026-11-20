@@ -29,6 +29,7 @@ model Branch {
   address   Address @relation(fields: [addressId], references: [id], onDelete: Cascade)
 
   priceSheets PriceSheets[]
+  customers   Customer[]
 
   authors         Author[]
   banners         Banner[]
@@ -66,10 +67,27 @@ model Branch {
 
   contactMessages ContactMessage[]
 
+  internetProvider BranchInternetProvider?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("branches")
+}
+
+model BranchInternetProvider {
+  id            String  @id @default(uuid())
+  nameProvider  String  @map("name_provider")
+  accountNumber String  @map("account_number")
+  monthlyPrice  Decimal @map("monthly_price") @db.Decimal(10, 2)
+
+  branchId String @unique @map("branch_id")
+  branch   Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("branch_internet_providers")
 }
 
 model BranchSchedule {

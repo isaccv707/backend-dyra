@@ -14,6 +14,11 @@ export const PERMISSIONS = [
   { action: 'branches:update', description: 'Actualizar sucursales' },
   { action: 'branches:delete', description: 'Eliminar sucursales' },
 
+  { action: 'customers:create', description: 'Crear clientes' },
+  { action: 'customers:read', description: 'Leer clientes' },
+  { action: 'customers:update', description: 'Actualizar clientes' },
+  { action: 'customers:delete', description: 'Eliminar clientes' },
+
   {
     action: 'device-catalog:create',
     description: 'Crear modelos de catálogo de equipos',

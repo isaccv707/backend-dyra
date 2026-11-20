@@ -4042,6 +4042,40 @@
         ]
       }
     },
+    "/api/branches/{id}/internet-provider": {
+      "get": {
+        "description": "Devuelve el proveedor de internet de la sucursal o `null` si no tiene. No se expone en las rutas públicas.",
+        "operationId": "BranchesController_findInternetProvider",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador de la sucursal.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proveedor de internet o null."
+          },
+          "404": {
+            "description": "Sucursal no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener proveedor de internet de la sucursal",
+        "tags": [
+          "branches"
+        ]
+      }
+    },
     "/api/states": {
       "post": {
         "description": "Crea un nuevo estado (entidad federativa).",
@@ -5067,6 +5101,416 @@
         "summary": "Importar precios a un tarifario",
         "tags": [
           "price-sheets"
+        ]
+      }
+    },
+    "/api/customers/import-template": {
+      "get": {
+        "description": "Excel con la hoja \"Clientes\" (columnas name, email, accountsReceivable, liquidate, priceSheet, contractAmount, patientAmount, startDate, endDate, isActive y una fila de ejemplo) y una segunda hoja con los tarifarios de la sucursal (nombre, id y estado) para llenar la columna priceSheet.",
+        "operationId": "CustomersController_downloadImportTemplate",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": true,
+            "in": "query",
+            "description": "Sucursal (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo Excel de plantilla."
+          },
+          "404": {
+            "description": "Sucursal no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Descargar plantilla de importación de clientes",
+        "tags": [
+          "customers"
+        ]
+      }
+    },
+    "/api/customers/export": {
+      "get": {
+        "description": "Excel con todos los clientes de la sucursal (activos e inactivos) en las mismas columnas que la plantilla, para editarlo y volver a importarlo, más la hoja de tarifarios de la sucursal.",
+        "operationId": "CustomersController_exportByBranch",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": true,
+            "in": "query",
+            "description": "Sucursal (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo Excel de clientes."
+          },
+          "404": {
+            "description": "Sucursal no encontrada."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exportar clientes de una sucursal",
+        "tags": [
+          "customers"
+        ]
+      }
+    },
+    "/api/customers/import": {
+      "post": {
+        "description": "Procesa la hoja \"Clientes\" (o la primera) de un .xlsx/.xls, máximo 2000 filas. Cada fila se busca por name (sin distinguir mayúsculas) en la sucursal: si existe se actualiza, si no se crea. Mismas reglas que el alta: name y email obligatorios; accountsReceivable/liquidate excluyentes (Sí/No; si solo se llena uno, el otro se infiere; vacíos = se conserva la modalidad actual o, al crear, liquida); priceSheet = nombre o id de un tarifario activo de la sucursal; montos ≥ 0; fechas AAAA-MM-DD, DD/MM/AAAA o fecha de Excel. priceSheet, montos y fechas vacíos quedan sin valor; isActive vacío conserva el estado (al crear: activo). Las filas inválidas se reportan en invalid y las válidas se guardan juntas.",
+        "operationId": "CustomersController_importFromExcel",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": true,
+            "in": "query",
+            "description": "Sucursal (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Archivo Excel (.xlsx o .xls) con el formato de la plantilla."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerImportResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Archivo faltante, de tipo inválido, sin filas, con demasiadas filas o sin las columnas name/email."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Importar clientes (alta y actualización masiva)",
+        "tags": [
+          "customers"
+        ]
+      }
+    },
+    "/api/customers": {
+      "post": {
+        "description": "Crea un cliente en una sucursal. Nombre único por sucursal (sin distinguir mayúsculas). accountsReceivable (genera CxC) y liquidate (liquida al instante) son excluyentes; si solo se envía uno, el otro se infiere. La hoja de precios debe ser activa y de la misma sucursal.",
+        "operationId": "CustomersController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCustomerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Modalidad de pago, fechas u hoja de precios inválidas."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Crear cliente",
+        "tags": [
+          "customers"
+        ]
+      },
+      "get": {
+        "description": "Listado paginado con alcance según las sucursales del usuario. search busca en nombre y correo.",
+        "operationId": "CustomersController_findAll",
+        "parameters": [
+          {
+            "name": "branchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "isActive",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "accountsReceivable",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "priceSheetId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "search",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/QuerySortDto"
+            }
+          },
+          {
+            "name": "filters",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/QueryFiltersDto"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedCustomersResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Listar clientes",
+        "tags": [
+          "customers"
+        ]
+      }
+    },
+    "/api/customers/{id}": {
+      "get": {
+        "operationId": "CustomersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cliente no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Obtener cliente",
+        "tags": [
+          "customers"
+        ]
+      },
+      "patch": {
+        "description": "Actualización parcial. La sucursal no se puede cambiar. priceSheetId/fechas/montos aceptan null para limpiarlos.",
+        "operationId": "CustomersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCustomerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cliente no encontrado."
+          },
+          "409": {
+            "description": "El nombre ya existe."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Actualizar cliente",
+        "tags": [
+          "customers"
+        ]
+      },
+      "delete": {
+        "operationId": "CustomersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Identificador (UUID).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Cliente no encontrado."
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eliminar cliente",
+        "tags": [
+          "customers"
         ]
       }
     },
@@ -8845,7 +9289,7 @@
     },
     "/api/tickets": {
       "post": {
-        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form (SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto, ReferenceValuesUpdateFormDto). Con ACCESS y COGNITI el título se genera del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
+        "description": "Crea un ticket de soporte de TI en la sucursal del usuario autenticado y notifica a la sala de TI en tiempo real. La categoría define los datos: HARDWARE/OTHER piden title, priority y description; SOFTWARE además form (SoftwareRemoteFormDto); ACCESS solo form (AccessRequestFormDto); COGNITI exige subcategoryId y su formType define el form (StudyCreateFormDto, StudyUpdateFormDto, ClientCreateFormDto, ClientUpdateFormDto, ReferenceValuesUpdateFormDto). Con ACCESS y COGNITI el título se genera del formulario. El formulario no ejecuta nada hasta que TI lo aprueba (POST /tickets/:id/form/apply). Requiere el permiso tickets:create. El ticket queda enlazado a quien lo crea (createdById): esa persona podrá consultarlo siempre en su histórico, sin importar si más adelante deja de estar asignada a esa sucursal.",
         "operationId": "TicketsController_create",
         "parameters": [],
         "requestBody": {
@@ -9039,7 +9483,8 @@
                 "STUDY_CREATE",
                 "STUDY_UPDATE",
                 "CLIENT_CREATE",
-                "REFERENCE_VALUES_UPDATE"
+                "REFERENCE_VALUES_UPDATE",
+                "CLIENT_UPDATE"
               ]
             }
           },
@@ -9759,6 +10204,9 @@
                     "$ref": "#/components/schemas/ClientCreateFormDto"
                   },
                   {
+                    "$ref": "#/components/schemas/ClientUpdateFormDto"
+                  },
+                  {
                     "$ref": "#/components/schemas/ReferenceValuesUpdateFormDto"
                   }
                 ]
@@ -9850,7 +10298,7 @@
     },
     "/api/tickets/{id}/form/apply": {
       "post": {
-        "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. REFERENCE_VALUES_UPDATE reemplaza los valores de referencia de un parámetro (sin datos de TI). ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. SOFTWARE_REMOTE y CLIENT_CREATE son informativos (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update o users:create.",
+        "description": "TI aprueba la solicitud y el sistema ejecuta la acción; todo se revierte si algo falla. STUDY_CREATE crea el estudio o perfil en la sucursal del ticket con el code (y opcionalmente title, abbreviation, slug) que captura TI (ApplyStudyCreateFormDto); newStudies trae el code de cada parámetro nuevo del perfil, en orden. STUDY_UPDATE aplica los cambios (más ajustes opcionales de TI, ApplyStudyUpdateFormDto) y guarda el antes/después en form.result. REFERENCE_VALUES_UPDATE reemplaza los valores de referencia de un parámetro (sin datos de TI). ACCESS_REQUEST crea el usuario (TI puede cambiar el rol con roleId) y le envía un correo para definir su contraseña. CLIENT_CREATE da de alta el cliente en la sucursal del ticket y CLIENT_UPDATE aplica los cambios al cliente (sin datos de TI). SOFTWARE_REMOTE es informativo (400). El ticket pasa a Resuelto. Requiere tickets:update y el permiso de la acción: studies:create, studies:update, users:create, customers:create o customers:update.",
         "operationId": "TicketsController_applyForm",
         "parameters": [
           {
@@ -9880,6 +10328,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ApplyReferenceValuesUpdateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyClientCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyClientUpdateFormDto"
                   }
                 ]
               }
@@ -9953,6 +10407,12 @@
                   },
                   {
                     "$ref": "#/components/schemas/ApplyReferenceValuesUpdateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyClientCreateFormDto"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ApplyClientUpdateFormDto"
                   }
                 ]
               }
@@ -11659,6 +12119,34 @@
         "type": "object",
         "properties": {}
       },
+      "BranchInternetProviderDto": {
+        "type": "object",
+        "properties": {
+          "nameProvider": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "Telmex",
+            "description": "Nombre del proveedor."
+          },
+          "accountNumber": {
+            "type": "string",
+            "maxLength": 50,
+            "example": "1234567890",
+            "description": "Número de cuenta."
+          },
+          "monthlyPrice": {
+            "type": "number",
+            "minimum": 0,
+            "example": 599,
+            "description": "Precio mensual (MXN)."
+          }
+        },
+        "required": [
+          "nameProvider",
+          "accountNumber",
+          "monthlyPrice"
+        ]
+      },
       "CreateAddressDto": {
         "type": "object",
         "properties": {
@@ -11725,6 +12213,16 @@
       "CreateBranchDto": {
         "type": "object",
         "properties": {
+          "internetProvider": {
+            "nullable": true,
+            "description": "Proveedor de internet (opcional). En actualización, `null` lo elimina.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BranchInternetProviderDto"
+              }
+            ]
+          },
           "name": {
             "type": "string"
           },
@@ -11945,6 +12443,304 @@
       "UpdatePriceSheetDto": {
         "type": "object",
         "properties": {}
+      },
+      "CustomerImportRowErrorDto": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "type": "number"
+          },
+          "name": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "row",
+          "errors"
+        ]
+      },
+      "CustomerImportResultDto": {
+        "type": "object",
+        "properties": {
+          "invalid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerImportRowErrorDto"
+            }
+          },
+          "totalRows": {
+            "type": "number"
+          },
+          "created": {
+            "type": "number"
+          },
+          "updated": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "invalid",
+          "totalRows",
+          "created",
+          "updated"
+        ]
+      },
+      "CreateCustomerDto": {
+        "type": "object",
+        "properties": {
+          "accountsReceivable": {
+            "type": "boolean",
+            "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
+          },
+          "liquidate": {
+            "type": "boolean",
+            "description": "Liquida al instante (no genera CxC). Excluyente con accountsReceivable."
+          },
+          "priceSheetId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Hoja de precios activa de la misma sucursal; null la desasocia."
+          },
+          "contractAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "patientAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-01-01",
+            "description": "Inicio de vigencia (YYYY-MM-DD)."
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-31",
+            "description": "Fin de vigencia (YYYY-MM-DD), igual o posterior a startDate."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "branchId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "branchId"
+        ]
+      },
+      "CustomerPriceSheetDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "isActive"
+        ]
+      },
+      "CustomerResponseDto": {
+        "type": "object",
+        "properties": {
+          "contractAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "patientAmount": {
+            "type": "number",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-01-01"
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-31"
+          },
+          "priceSheetId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "priceSheet": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CustomerPriceSheetDto"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "accountsReceivable": {
+            "type": "boolean"
+          },
+          "liquidate": {
+            "type": "boolean"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "branchId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contractAmount",
+          "patientAmount",
+          "startDate",
+          "endDate",
+          "priceSheetId",
+          "priceSheet",
+          "id",
+          "name",
+          "email",
+          "accountsReceivable",
+          "liquidate",
+          "isActive",
+          "branchId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PaginatedCustomersResponseDto": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomerResponseDto"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "totalPages": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "data",
+          "total",
+          "page",
+          "limit",
+          "totalPages"
+        ]
+      },
+      "UpdateCustomerDto": {
+        "type": "object",
+        "properties": {
+          "accountsReceivable": {
+            "type": "boolean",
+            "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
+          },
+          "liquidate": {
+            "type": "boolean",
+            "description": "Liquida al instante (no genera CxC). Excluyente con accountsReceivable."
+          },
+          "priceSheetId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Hoja de precios activa de la misma sucursal; null la desasocia."
+          },
+          "contractAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "patientAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-01-01",
+            "description": "Inicio de vigencia (YYYY-MM-DD)."
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-31",
+            "description": "Fin de vigencia (YYYY-MM-DD), igual o posterior a startDate."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
       },
       "LoginDto": {
         "type": "object",
@@ -13069,31 +13865,119 @@
       "ClientCreateFormDto": {
         "type": "object",
         "properties": {
+          "accountsReceivable": {
+            "type": "boolean",
+            "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
+          },
+          "liquidate": {
+            "type": "boolean",
+            "description": "Liquida al instante (no genera CxC). Excluyente con accountsReceivable."
+          },
+          "priceSheetId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Hoja de precios activa de la misma sucursal; null la desasocia."
+          },
+          "contractAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "patientAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-01-01",
+            "description": "Inicio de vigencia (YYYY-MM-DD)."
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-31",
+            "description": "Fin de vigencia (YYYY-MM-DD), igual o posterior a startDate."
+          },
           "name": {
             "type": "string",
-            "maxLength": 200
+            "maxLength": 150
           },
           "email": {
             "type": "string",
+            "maxLength": 254,
             "format": "email"
+          }
+        },
+        "required": [
+          "name",
+          "email"
+        ]
+      },
+      "ClientUpdateFormDto": {
+        "type": "object",
+        "properties": {
+          "accountsReceivable": {
+            "type": "boolean",
+            "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
           },
-          "receivable": {
-            "type": "boolean"
-          },
-          "payInCash": {
-            "type": "boolean"
+          "liquidate": {
+            "type": "boolean",
+            "description": "Liquida al instante (no genera CxC). Excluyente con accountsReceivable."
           },
           "priceSheetId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Hoja de precios activa de la misma sucursal; null la desasocia."
+          },
+          "contractAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "patientAmount": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 9999999999.99
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-01-01",
+            "description": "Inicio de vigencia (YYYY-MM-DD)."
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-12-31",
+            "description": "Fin de vigencia (YYYY-MM-DD), igual o posterior a startDate."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "customerId": {
             "type": "string",
             "format": "uuid"
           }
         },
         "required": [
-          "name",
-          "email",
-          "receivable",
-          "payInCash",
-          "priceSheetId"
+          "customerId"
         ]
       },
       "ReferenceValuesUpdateFormDto": {
@@ -13208,6 +14092,14 @@
         "type": "object",
         "properties": {}
       },
+      "ApplyClientCreateFormDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ApplyClientUpdateFormDto": {
+        "type": "object",
+        "properties": {}
+      },
       "CreateTicketDto": {
         "type": "object",
         "properties": {
@@ -13228,6 +14120,9 @@
               },
               {
                 "$ref": "#/components/schemas/ClientCreateFormDto"
+              },
+              {
+                "$ref": "#/components/schemas/ClientUpdateFormDto"
               },
               {
                 "$ref": "#/components/schemas/ReferenceValuesUpdateFormDto"
@@ -13314,7 +14209,8 @@
           "STUDY_CREATE",
           "STUDY_UPDATE",
           "CLIENT_CREATE",
-          "REFERENCE_VALUES_UPDATE"
+          "REFERENCE_VALUES_UPDATE",
+          "CLIENT_UPDATE"
         ]
       },
       "TicketSubcategoryRefDto": {
@@ -14330,7 +15226,8 @@
               "STUDY_CREATE",
               "STUDY_UPDATE",
               "CLIENT_CREATE",
-              "REFERENCE_VALUES_UPDATE"
+              "REFERENCE_VALUES_UPDATE",
+              "CLIENT_UPDATE"
             ]
           }
         },

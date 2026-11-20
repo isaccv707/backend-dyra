@@ -7,6 +7,7 @@ model PriceSheets {
   studyOnPriceSheets StudyOnPriceSheet[]
   quotations         Quotation[]
   publicForService   Service?
+  customers          Customer[]
 
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
