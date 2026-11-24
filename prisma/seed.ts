@@ -2,16 +2,10 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { seedStudies } from './seeds/studies.seed';
-import { seedServices } from './seeds/services.seed';
 import { seedStates } from './seeds/states.seed';
 import { seedRolesAndPermissions } from './seeds/roles-permissions.seed';
 import { seedAdminUser } from './seeds/admin-user.seed';
 import { seedBranches } from './seeds/branches.seed';
-import { seedBanners } from './seeds/banners.seed';
-import { seedAuthors } from './seeds/authors.seed';
-import { seedPosts } from './seeds/posts.seed';
-import { seedReviews } from './seeds/reviews.seed';
 import { seedTicketSubcategories } from './seeds/ticket-subcategories.seed';
 
 if (!process.env.DATABASE_URL) {
@@ -28,24 +22,28 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🚀 Starting the process of seeding...');
 
+  // Runs on every production deploy (Railway pre-deploy): only roles,
+  // permissions and the admin user. Everything else is development only.
+  const isDevSeed =
+    process.env.SEED_DEV_BRANCH === 'true' &&
+    process.env.NODE_ENV !== 'production';
+
   await seedRolesAndPermissions(prisma);
   console.log('✅ Roles and permissions seeded.');
 
   // Development only: production already has active branches that must not be
-  // touched (seedBranches updates an existing row). Opt-in via SEED_DEV_BRANCH
-  // and never when NODE_ENV=production. Runs before the admin seed so the
-  // admin user gets the branch assigned.
-  if (
-    process.env.SEED_DEV_BRANCH === 'true' &&
-    process.env.NODE_ENV !== 'production'
-  ) {
+  // touched (seedBranches updates an existing row). Runs before the admin seed
+  // so the admin user gets the branch assigned.
+  if (isDevSeed) {
     await seedStates(prisma);
     await seedBranches(prisma);
   }
 
   await seedAdminUser(prisma);
 
-  await seedTicketSubcategories(prisma);
+  if (isDevSeed) {
+    await seedTicketSubcategories(prisma);
+  }
 
   console.log('All seeds completed successfully!');
 }
