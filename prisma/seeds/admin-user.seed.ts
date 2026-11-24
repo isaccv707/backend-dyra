@@ -28,9 +28,10 @@ export async function seedAdminUser(prisma: PrismaClient) {
 
   await prisma.user.upsert({
     where: { email },
+    // Password only on create: the seed runs on every deploy and must not
+    // overwrite a password changed in production.
     update: {
       name: 'Administrador Sistema',
-      password: hashedPassword,
       isActive: true,
       role: { connect: { id: adminRole.id } },
       branches: { set: branches.map((b) => ({ id: b.id })) },
