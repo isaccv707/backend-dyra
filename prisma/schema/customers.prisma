@@ -4,7 +4,7 @@
 model Customer {
   id                 String    @id @default(uuid())
   name               String
-  email              String
+  email              String?
   accountsReceivable Boolean   @default(false) @map("accounts_receivable")
   liquidate          Boolean   @default(true)
   isActive           Boolean   @default(true) @map("is_active")

@@ -22,8 +22,8 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🚀 Starting the process of seeding...');
 
-  // Runs on every production deploy (Railway pre-deploy): only roles,
-  // permissions and the admin user. Everything else is development only.
+  // Runs on every production deploy (Railway pre-deploy): roles,
+  // permissions, admin user and ticket subcategories (CogniTI forms). Everything else is development only.
   const isDevSeed =
     process.env.SEED_DEV_BRANCH === 'true' &&
     process.env.NODE_ENV !== 'production';
@@ -41,9 +41,7 @@ async function main() {
 
   await seedAdminUser(prisma);
 
-  if (isDevSeed) {
-    await seedTicketSubcategories(prisma);
-  }
+  await seedTicketSubcategories(prisma);
 
   console.log('All seeds completed successfully!');
 }

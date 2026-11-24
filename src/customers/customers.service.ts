@@ -141,7 +141,7 @@ export class CustomersService {
 
     return {
       name: dto.name,
-      email: dto.email,
+      email: dto.email ?? null,
       ...paymentMode,
       isActive: dto.isActive ?? true,
       priceSheetId: dto.priceSheetId ?? null,

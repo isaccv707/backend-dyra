@@ -288,11 +288,27 @@ describe('CustomerExcelService', () => {
       expect(customers.create).toHaveBeenCalledTimes(1);
     });
 
-    it('exige las columnas name y email', async () => {
+    it('exige la columna name', async () => {
       const buffer = workbookBuffer([['x']], ['nombre']);
       await expect(
         service.importFromExcel(BRANCH_ID, buffer, user),
-      ).rejects.toThrow("'name', 'email'");
+      ).rejects.toThrow("'name'");
+    });
+
+    it('acepta clientes sin correo', async () => {
+      const buffer = workbookBuffer([
+        ['Sin Correo', '', '', '', '', '', '', '', '', ''],
+      ]);
+
+      const result = await service.importFromExcel(BRANCH_ID, buffer, user);
+
+      expect(result.created).toBe(1);
+      expect(result.invalid).toEqual([]);
+      expect(customers.create).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Sin Correo', email: null }),
+        user,
+        tx,
+      );
     });
 
     it('rechaza un archivo sin filas', async () => {
