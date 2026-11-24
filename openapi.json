@@ -12494,6 +12494,13 @@
       "CreateCustomerDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 254,
+            "format": "email",
+            "description": "Correo opcional; vacío o null lo deja sin correo."
+          },
           "accountsReceivable": {
             "type": "boolean",
             "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
@@ -12536,11 +12543,6 @@
             "type": "string",
             "maxLength": 150
           },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
-          },
           "isActive": {
             "type": "boolean"
           },
@@ -12551,7 +12553,6 @@
         },
         "required": [
           "name",
-          "email",
           "branchId"
         ]
       },
@@ -12577,6 +12578,10 @@
       "CustomerResponseDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
           "contractAmount": {
             "type": "number",
             "nullable": true
@@ -12615,9 +12620,6 @@
           "name": {
             "type": "string"
           },
-          "email": {
-            "type": "string"
-          },
           "accountsReceivable": {
             "type": "boolean"
           },
@@ -12640,6 +12642,7 @@
           }
         },
         "required": [
+          "email",
           "contractAmount",
           "patientAmount",
           "startDate",
@@ -12648,7 +12651,6 @@
           "priceSheet",
           "id",
           "name",
-          "email",
           "accountsReceivable",
           "liquidate",
           "isActive",
@@ -12690,6 +12692,13 @@
       "UpdateCustomerDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 254,
+            "format": "email",
+            "description": "Correo opcional; vacío o null lo deja sin correo."
+          },
           "accountsReceivable": {
             "type": "boolean",
             "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
@@ -12731,11 +12740,6 @@
           "name": {
             "type": "string",
             "maxLength": 150
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
           },
           "isActive": {
             "type": "boolean"
@@ -13865,6 +13869,13 @@
       "ClientCreateFormDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 254,
+            "format": "email",
+            "description": "Correo opcional; vacío o null lo deja sin correo."
+          },
           "accountsReceivable": {
             "type": "boolean",
             "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
@@ -13906,21 +13917,22 @@
           "name": {
             "type": "string",
             "maxLength": 150
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
           }
         },
         "required": [
-          "name",
-          "email"
+          "name"
         ]
       },
       "ClientUpdateFormDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 254,
+            "format": "email",
+            "description": "Correo opcional; vacío o null lo deja sin correo."
+          },
           "accountsReceivable": {
             "type": "boolean",
             "description": "Genera cuenta por cobrar (CxC). Excluyente con liquidate: no pueden ser ambos true ni ambos false. Si solo se envía uno, el otro se infiere como su contrario."
@@ -13962,11 +13974,6 @@
           "name": {
             "type": "string",
             "maxLength": 150
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email"
           },
           "isActive": {
             "type": "boolean"

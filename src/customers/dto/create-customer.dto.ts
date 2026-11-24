@@ -23,8 +23,12 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
 
-const trimLower = ({ value }: { value: unknown }) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : value;
+/** Trims and lowercases; an empty string becomes null (no email). */
+const emailOrNull = ({ value }: { value: unknown }) => {
+  if (typeof value !== 'string') return value;
+  const email = value.trim().toLowerCase();
+  return email === '' ? null : email;
+};
 
 const notNull = (_: unknown, value: unknown) => value !== null;
 
@@ -40,10 +44,19 @@ export class CreateCustomerDto {
   @MaxLength(CUSTOMER_NAME_MAX_LENGTH)
   name!: string;
 
-  @Transform(trimLower)
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: String,
+    format: 'email',
+    description: 'Correo opcional; vacío o null lo deja sin correo.',
+  })
+  @Transform(emailOrNull)
+  @IsOptional()
+  @ValidateIf(notNull)
   @IsEmail({}, { message: 'El correo electrónico no es válido' })
   @MaxLength(254)
-  email!: string;
+  email?: string | null;
 
   @ApiProperty({
     required: false,

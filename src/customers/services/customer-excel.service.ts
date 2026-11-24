@@ -39,7 +39,7 @@ export const CUSTOMER_EXCEL_COLUMNS = [
 ] as const;
 type CustomerColumn = (typeof CUSTOMER_EXCEL_COLUMNS)[number];
 
-const REQUIRED_COLUMNS: CustomerColumn[] = ['name', 'email'];
+const REQUIRED_COLUMNS: CustomerColumn[] = ['name'];
 export const CUSTOMER_IMPORT_MAX_ROWS = 2000;
 const IMPORT_TX_TIMEOUT_MS = 60_000;
 
@@ -248,7 +248,7 @@ export class CustomerExcelService {
       value === null ? '' : Number(value);
     const rows = customers.map((customer) => [
       customer.name,
-      customer.email,
+      customer.email ?? '',
       yesNo(customer.accountsReceivable),
       yesNo(customer.liquidate),
       customer.priceSheet?.name ?? '',
@@ -321,7 +321,8 @@ export class CustomerExcelService {
     const errors: string[] = [];
     const payload: Record<string, unknown> = {
       name: text(raw.name),
-      email: text(raw.email),
+      // A blank cell clears the email (the file is the source of truth).
+      email: text(raw.email) || null,
       branchId,
     };
 
