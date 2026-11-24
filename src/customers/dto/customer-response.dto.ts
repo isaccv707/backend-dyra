@@ -9,7 +9,8 @@ export class CustomerPriceSheetDto {
 export class CustomerResponseDto {
   id!: string;
   name!: string;
-  email!: string;
+  @ApiProperty({ type: String, nullable: true })
+  email!: string | null;
   accountsReceivable!: boolean;
   liquidate!: boolean;
   isActive!: boolean;
