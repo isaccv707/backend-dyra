@@ -34,7 +34,7 @@ yarn openapi:export             # nest build + writes openapi.json (contract for
 ```
 
 - `yarn test:e2e` (`test/jest-e2e.json`): ticket forms, devices and vehicles with their transfers (`DEVICES_E2E_TRACE=<path>` / `VEHICLES_E2E_TRACE=<path>` dump normalized responses to compare before/after a refactor) against a real DB, Redis and `TICKET_SECRET_KEY` (creates and deletes its own data; local or CI DB only).
-- Seed: always roles/permissions, admin user (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` only on create; assigned to every existing branch). Only if `SEED_DEV_BRANCH=true` and `NODE_ENV!=production`: states + default branch `a1b2c3d4-0001-4000-8000-000000000001` (must run before the admin) and ticket subcategories. Production runs it on every deploy (Railway pre-deploy `yarn db:deploy && yarn db:seed:prod`). **Never** enable `SEED_DEV_BRANCH` against production: `seedBranches` updates the row if it exists.
+- Seed: always roles/permissions, admin user (`ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` only on create; assigned to every existing branch) and ticket subcategories. Only if `SEED_DEV_BRANCH=true` and `NODE_ENV!=production`: states + default branch `a1b2c3d4-0001-4000-8000-000000000001` (must run before the admin). Production runs it on every deploy (Railway pre-deploy `yarn db:deploy && yarn db:seed:prod`). **Never** enable `SEED_DEV_BRANCH` against production: `seedBranches` updates the row if it exists.
 
 ## Structure
 
