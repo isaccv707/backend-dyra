@@ -10,6 +10,8 @@ model Study {
   deliveryTime     Int?
   preparation      String?
   isActive         Boolean @default(true)
+  /// Posición en "Más solicitados" del inicio del sitio (1 = primero). null = no destacado.
+  featuredOrder    Int?    @map("featured_order")
 
   abbreviation    String?
   legacySection   String  @default("General") @map("section")
@@ -56,6 +58,7 @@ model Study {
   @@unique([branchId, code])
   @@unique([branchId, slug])
   @@index([branchId])
+  @@index([branchId, featuredOrder])
   @@index([sectionId])
   @@index([sampleTypeId])
   @@index([techniqueId])

@@ -1248,6 +1248,21 @@ describe('StudiesService', () => {
       expect(where()).toEqual({ branchId: BRANCH_ID, isActive: true });
     });
 
+    it('findAll con featured devuelve solo destacados ordenados por featuredOrder', async () => {
+      await service.findAll({ branchId: BRANCH_ID, featured: true });
+
+      const args = prisma.study.findMany.mock.calls[0][0] as {
+        where: unknown;
+        orderBy: unknown;
+      };
+      expect(args.where).toEqual({
+        branchId: BRANCH_ID,
+        isActive: true,
+        featuredOrder: { not: null },
+      });
+      expect(args.orderBy).toEqual([{ featuredOrder: 'asc' }, { name: 'asc' }]);
+    });
+
     it('findInactive solo devuelve inactivos', async () => {
       await service.findInactive({ branchId: BRANCH_ID }, user);
 

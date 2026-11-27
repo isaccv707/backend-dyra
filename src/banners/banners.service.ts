@@ -7,7 +7,7 @@ import {
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
 import { PrismaService } from 'prisma/prisma/prisma.service';
-import { BannerPlacement } from '@prisma/client';
+import { BannerPlacement, Prisma } from '@prisma/client';
 
 @Injectable()
 export class BannersService {
@@ -66,6 +66,7 @@ export class BannersService {
     const isActive = rest.isActive ?? true;
     const startAt = this.parseDate(rest.startAt, 'startAt');
     const endAt = this.parseDate(rest.endAt, 'endAt');
+    this.assertPrices(rest.promoPrice, rest.regularPrice);
 
     if (startAt && endAt && startAt >= endAt) {
       throw new BadRequestException('startAt must be before endAt');
@@ -104,6 +105,7 @@ export class BannersService {
           isActive,
           startAt,
           endAt,
+          ...this.textData(rest),
           branch: { connect: { id: branchId } },
         },
         include: { branch: true },
@@ -119,8 +121,23 @@ export class BannersService {
       branchId: newBranchId,
       startAt: rawStartAt,
       endAt: rawEndAt,
+      title,
+      description,
+      altText,
+      linkUrl,
+      ctaLabel,
+      promoPrice,
+      regularPrice,
       ...rest
     } = dto;
+    this.assertPrices(
+      promoPrice === undefined
+        ? currentBanner.promoPrice?.toNumber()
+        : promoPrice,
+      regularPrice === undefined
+        ? currentBanner.regularPrice?.toNumber()
+        : regularPrice,
+    );
 
     // undefined = keep current value, null = clear it.
     const startAt =
@@ -211,6 +228,15 @@ export class BannersService {
         where: { id },
         data: {
           ...rest,
+          ...this.textData({
+            title,
+            description,
+            altText,
+            linkUrl,
+            ctaLabel,
+            promoPrice,
+            regularPrice,
+          }),
           ...(startAt !== undefined && { startAt }),
           ...(endAt !== undefined && { endAt }),
           ...(newOrder !== undefined && { order: newOrder }),
@@ -220,6 +246,58 @@ export class BannersService {
         include: { branch: true },
       });
     });
+  }
+
+  /**
+   * Text and price fields: undefined = keep, null or blank = clear.
+   * Strings are trimmed so the site never renders stray whitespace.
+   */
+  private textData(
+    dto: Pick<
+      UpdateBannerDto,
+      | 'title'
+      | 'description'
+      | 'altText'
+      | 'linkUrl'
+      | 'ctaLabel'
+      | 'promoPrice'
+      | 'regularPrice'
+    >,
+  ) {
+    const text = (value: string | null | undefined) =>
+      value === undefined ? undefined : value?.trim() || null;
+    const price = (value: number | null | undefined) =>
+      value === undefined
+        ? undefined
+        : value === null
+          ? null
+          : new Prisma.Decimal(value);
+
+    return {
+      title: text(dto.title),
+      description: text(dto.description),
+      altText: text(dto.altText),
+      linkUrl: text(dto.linkUrl),
+      ctaLabel: text(dto.ctaLabel),
+      promoPrice: price(dto.promoPrice),
+      regularPrice: price(dto.regularPrice),
+    };
+  }
+
+  /** A struck-through price only makes sense above the promotional one. */
+  private assertPrices(
+    promoPrice: number | null | undefined,
+    regularPrice: number | null | undefined,
+  ) {
+    if (
+      promoPrice != null &&
+      regularPrice != null &&
+      regularPrice <= promoPrice
+    ) {
+      throw new BadRequestException(
+        'El precio normal debe ser mayor que el precio de promoción.',
+      );
+    }
   }
 
   private parseDate(

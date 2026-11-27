@@ -16,6 +16,7 @@ export const STUDY_ALLOWED_FIELDS = [
   'minAge',
   'maxAge',
   'deliveryTime',
+  'featuredOrder',
   'createdAt',
 ];
 
