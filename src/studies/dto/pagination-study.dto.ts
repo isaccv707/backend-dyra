@@ -37,6 +37,15 @@ export class PaginationDto extends PaginatedQueryDto {
   @IsBoolean()
   isPanel?: boolean;
 
+  /**
+   * true = only studies highlighted in the site's "Más solicitados" section
+   * (featuredOrder set), sorted by featuredOrder.
+   */
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  featured?: boolean;
+
   /** Admin only: ignored by public routes (it would reveal outsourced studies). */
   @IsOptional()
   @Transform(toBoolean)

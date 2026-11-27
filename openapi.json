@@ -310,6 +310,14 @@
             }
           },
           {
+            "name": "featured",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "isInternal",
             "required": false,
             "in": "query",
@@ -483,6 +491,14 @@
           },
           {
             "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "featured",
             "required": false,
             "in": "query",
             "schema": {
@@ -668,6 +684,14 @@
             }
           },
           {
+            "name": "featured",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "isInternal",
             "required": false,
             "in": "query",
@@ -841,6 +865,14 @@
           },
           {
             "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "featured",
             "required": false,
             "in": "query",
             "schema": {
@@ -1057,6 +1089,14 @@
           },
           {
             "name": "isPanel",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "featured",
             "required": false,
             "in": "query",
             "schema": {
@@ -2719,7 +2759,8 @@
             "description": "Ubicación del banner dentro del sitio.",
             "schema": {
               "enum": [
-                "HOME"
+                "HOME",
+                "PROMO"
               ],
               "type": "string"
             }
@@ -11778,6 +11819,12 @@
             "type": "number",
             "nullable": true,
             "minimum": 1
+          },
+          "featuredOrder": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 99
           }
         }
       },
@@ -11854,7 +11901,11 @@
         "type": "object",
         "properties": {
           "placement": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "HOME",
+              "PROMO"
+            ]
           },
           "imageUrl": {
             "type": "string",
@@ -11877,6 +11928,42 @@
           "endAt": {
             "type": "string",
             "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          },
+          "altText": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          },
+          "linkUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500,
+            "pattern": "^(\\/(?!\\/)|https?:\\/\\/)"
+          },
+          "ctaLabel": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 40
+          },
+          "promoPrice": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0
+          },
+          "regularPrice": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0
           },
           "branchId": {
             "type": "string",

@@ -8,6 +8,17 @@ model Banner {
   startAt        DateTime?
   endAt          DateTime?
 
+  /// Texto legible del aviso: se muestra junto a la imagen y sirve como alternativa accesible.
+  title        String?
+  description  String?
+  altText      String?  @map("alt_text")
+  /// Destino del botón (ruta interna como /study/perfil-tiroideo o URL externa).
+  linkUrl      String?  @map("link_url")
+  ctaLabel     String?  @map("cta_label")
+  /// Solo promociones: precio de promoción y precio normal (para mostrarlo tachado).
+  promoPrice   Decimal? @map("promo_price") @db.Decimal(10, 2)
+  regularPrice Decimal? @map("regular_price") @db.Decimal(10, 2)
+
   branchId String @map("branch_id")
   branch   Branch @relation(fields: [branchId], references: [id])
 
@@ -17,4 +28,5 @@ model Banner {
 
 enum BannerPlacement {
   HOME
+  PROMO
 }

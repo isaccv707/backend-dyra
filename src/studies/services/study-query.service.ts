@@ -153,6 +153,7 @@ export class StudyQueryService {
       priceSheetId,
       branchId,
       isPanel,
+      featured,
       isInternal,
       providerId,
       sectionId,
@@ -177,6 +178,7 @@ export class StudyQueryService {
       ...(where as Prisma.StudyWhereInput),
       ...(branchId && { branchId }),
       ...(isPanel !== undefined && { isPanel }),
+      ...(featured && { featuredOrder: { not: null } }),
       ...(!publicOnly && {
         ...(isInternal !== undefined && { isInternal }),
         ...(providerId && { providerId }),
@@ -196,7 +198,10 @@ export class StudyQueryService {
         skip,
         take,
         where: whereClause,
-        orderBy,
+        // Featured lists follow the order set in the admin, ties by name.
+        orderBy: featured
+          ? [{ featuredOrder: 'asc' }, { name: 'asc' }]
+          : orderBy,
         include: {
           service: { select: { priceSheetId: true } },
           _count: { select: { panelItems: true } },
